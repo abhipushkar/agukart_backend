@@ -1,0 +1,52 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
+      - name: Add GitHub to known_hosts (ensure SSH connection to GitHub)
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Add DigitalOcean server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan 165.22.9.131 >> ~/.ssh/known_hosts
+
+      - name: Determine the branch to deploy
+        id: deploy_branch
+        run: |
+          echo "Deploying to branch: $GITHUB_REF"
+          if [[ "$GITHUB_REF" == "refs/heads/staging" ]]; then
+            echo "BRANCH=staging" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=/mnt/volume_fra1_01/project.imgglobal.in/ecommercereact/backend" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == "refs/heads/production" ]]; then
+            echo "BRANCH=production" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=/var/www/html/backend" >> $GITHUB_ENV
+          fi
+
+      - name: Pull latest code on DigitalOcean server and Install dependencies
+        run: |
+          ssh root@165.22.9.131 "
+            # Ensure that NVM is sourced for the current shell
+            node -v && 
+            npm -v &&
+            cd ${{ env.DEPLOY_PATH }} && 
+            git pull origin ${{ env.BRANCH }} &&
+            npm install
+          "
