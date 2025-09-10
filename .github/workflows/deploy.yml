@@ -3,7 +3,7 @@ name: Deploy to DigitalOcean
 on:
   push:
     branches:
-      - production
+      - main   # Only deploy when code is pushed to main
 
 jobs:
   deploy:
@@ -32,7 +32,10 @@ jobs:
         id: deploy_branch
         run: |
           echo "Deploying to branch: $GITHUB_REF"
-          if [[ "$GITHUB_REF" == "refs/heads/staging" ]]; then
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            echo "BRANCH=main" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=/var/www/html/backend" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == "refs/heads/staging" ]]; then
             echo "BRANCH=staging" >> $GITHUB_ENV
             echo "DEPLOY_PATH=/mnt/volume_fra1_01/project.imgglobal.in/ecommercereact/backend" >> $GITHUB_ENV
           elif [[ "$GITHUB_REF" == "refs/heads/production" ]]; then
@@ -43,10 +46,12 @@ jobs:
       - name: Pull latest code on DigitalOcean server and Install dependencies
         run: |
           ssh root@165.22.9.131 "
-            # Ensure that NVM is sourced for the current shell
-            node -v && 
+            node -v &&
             npm -v &&
-            cd ${{ env.DEPLOY_PATH }} && 
+            cd ${{ env.DEPLOY_PATH }} &&
+            git fetch origin &&
+            git checkout ${{ env.BRANCH }} &&
             git pull origin ${{ env.BRANCH }} &&
-            npm install
+            npm install --production &&
+            pm2 restart backend || pm2 start server.js --name backend
           "
