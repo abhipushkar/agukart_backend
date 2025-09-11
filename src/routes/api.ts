@@ -136,6 +136,7 @@ routes.post('/getVendorDetails', getVendorDetails)
 // Common vendor routes
 routes.post('vendor/register',vendorRegister)
 
+
 routes.get('/get-all-category-with-gift-card',getAllCategoryWithGiftCards)
 routes.get('/getGiftCardByCategoryId/:id', getGiftCardByCategoryId)
 routes.get('/get-gift-card/:id', getGiftCard)
