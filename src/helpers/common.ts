@@ -269,7 +269,10 @@ export const transporter = nodemailer.createTransport({
     auth: {
         user: process.env.emailUser,
         pass: process.env.emailPass
-    }
+    },
+    tls: {
+    rejectUnauthorized: false
+  },
 });
 
 export const getMainCategory = async (_id: any): Promise<any> => {
@@ -410,7 +413,10 @@ export const sendToEmail = async (email: string, subject: string, body: string, 
         auth: {
             user: process.env.USEREMAIL_NAME!,
             pass: process.env.PASSWORD!
-        }
+        },
+        tls: {
+            rejectUnauthorized: false
+        },
     });
     const mailOptions = {
         from: process.env.USEREMAIL_NAME!,
