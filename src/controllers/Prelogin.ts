@@ -424,7 +424,6 @@ export const socialLogin = async (req: Request, resp: Response) => {
 
 export const registration = async (req: Request, resp: Response) => {
   try {
-
     if (req.body.password !== req.body.confirm_password) {
       return resp.status(400).json({ message: "Password and Confirm Password don't match" });
     }
