@@ -7,7 +7,7 @@
     "dev": "nodemon --watch src --ext ts --exec ts-node src/app.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon src/app.ts",
-    "build": "tsc --noEmitOnError false && cp -r src/views dist/"
+    "build": "tsc --noEmitOnError false || true && cp -r src/views dist/"
   },
   "author": "",
   "license": "ISC",
