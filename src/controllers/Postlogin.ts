@@ -2767,7 +2767,7 @@ export const sendEmailVerificationLink = async (req: CustomRequest, resp: Respon
         });
 
         const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
+            host: "smtpout.secureserver.net",
             port: 465,
             secure: true,
             auth: {
@@ -2847,7 +2847,7 @@ export const changeEmail = async (req: CustomRequest, resp: Response) => {
                 });
 
                 const transporter = nodemailer.createTransport({
-                    host: 'smtp.gmail.com',
+                    host: "smtpout.secureserver.net",
                     port: 465,
                     secure: true,
                     auth: {

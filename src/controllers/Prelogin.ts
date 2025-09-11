@@ -141,7 +141,7 @@ export const sendPasswordResetEmail = async (req: Request, resp: Response) => {
     });
 
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: "smtpout.secureserver.net",
       port: 465,
       secure: true,
       auth: {
@@ -278,7 +278,7 @@ export const adminSendPasswordResetEmail = async (req: Request, resp: Response) 
     });
 
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.in',
+      host: "smtpout.secureserver.net",
       port: 465,
       secure: true,
       auth: {
@@ -461,7 +461,7 @@ export const registration = async (req: Request, resp: Response) => {
       });
 
       const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
+        host: "smtpout.secureserver.net",
         port: 465,
         secure: true,
         auth: {
@@ -472,7 +472,7 @@ export const registration = async (req: Request, resp: Response) => {
 
       const mailOptions = {
         to: existingEmail.email,
-        from: process.env.USER_EMAIL,
+        from: process.env.USEREMAIL_NAME,
         subject: 'Email Verification',
         html: htmlContent,
       };
@@ -531,7 +531,7 @@ export const registration = async (req: Request, resp: Response) => {
     });
 
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: "smtpout.secureserver.net",
       port: 465,
       secure: true,
       auth: {
@@ -542,7 +542,7 @@ export const registration = async (req: Request, resp: Response) => {
 
     const mailOptions = {
       to: user.email,
-      from: process.env.USER_EMAIL,
+      from: process.env.USEREMAIL_NAME,
       subject: 'Email Verification',
       html: htmlContent,
     };
