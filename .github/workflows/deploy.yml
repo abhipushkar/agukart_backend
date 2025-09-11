@@ -45,7 +45,7 @@ jobs:
 
       - name: Pull latest code on DigitalOcean server and Install dependencies
         run: |
-          ssh root@165.22.9.131 "
+          ssh root@165.22.9.131 '
           node -v &&
           npm -v &&
           cd ${{ env.DEPLOY_PATH }} &&
@@ -56,4 +56,4 @@ jobs:
           npm install &&
           npm run build &&
           pm2 restart backend || pm2 start dist/app.js --name backend
-        "
+        '
