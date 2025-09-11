@@ -46,12 +46,14 @@ jobs:
       - name: Pull latest code on DigitalOcean server and Install dependencies
         run: |
           ssh root@165.22.9.131 "
-            node -v &&
-            npm -v &&
-            cd ${{ env.DEPLOY_PATH }} &&
-            git fetch origin &&
-            git checkout ${{ env.BRANCH }} &&
-            git pull origin ${{ env.BRANCH }} &&
-            npm install --production &&
-            pm2 restart backend || pm2 start server.js --name backend
-          "
+          node -v &&
+          npm -v &&
+          cd ${{ env.DEPLOY_PATH }} &&
+          git fetch origin &&
+          git checkout ${{ env.BRANCH }} &&
+          git reset --hard &&
+          git pull origin ${{ env.BRANCH }} &&
+          npm install &&
+          npm run build &&
+          pm2 restart backend || pm2 start dist/app.js --name backend
+        "
