@@ -404,7 +404,7 @@ export const generateUniqueGiftCode = async () => {
 
 export const sendToEmail = async (email: string, subject: string, body: string, cc: string) => {
     const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
+        host: "smtpout.secureserver.net",
         port: 465,
         secure: true,
         auth: {
@@ -413,7 +413,7 @@ export const sendToEmail = async (email: string, subject: string, body: string, 
         }
     });
     const mailOptions = {
-        from: process.env.USER_EMAIL!,
+        from: process.env.USEREMAIL_NAME!,
         to: email,
         cc: cc,
         subject: subject,
