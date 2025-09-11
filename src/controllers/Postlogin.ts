@@ -2774,6 +2774,9 @@ export const sendEmailVerificationLink = async (req: CustomRequest, resp: Respon
                 user: process.env.USEREMAIL_NAME!,
                 pass: process.env.PASSWORD!,
             },
+            tls: {
+                rejectUnauthorized: false
+            },
         });
 
         const mailOptions = {
@@ -2853,6 +2856,9 @@ export const changeEmail = async (req: CustomRequest, resp: Response) => {
                     auth: {
                         user: process.env.USEREMAIL_NAME!,
                         pass: process.env.PASSWORD!,
+                    },
+                    tls:{
+                        rejectUnauthorized:false
                     },
                 });
 

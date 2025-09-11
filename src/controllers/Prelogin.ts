@@ -148,6 +148,9 @@ export const sendPasswordResetEmail = async (req: Request, resp: Response) => {
         user: process.env.USEREMAIL_NAME!,
         pass: process.env.PASSWORD!,
       },
+      tls:{
+        rejectUnauthorized: false
+      },
     });
 
     const mailOptions = {
@@ -284,6 +287,9 @@ export const adminSendPasswordResetEmail = async (req: Request, resp: Response) 
       auth: {
         user: process.env.USEREMAIL_NAME!,
         pass: process.env.PASSWORD!,
+      },
+      tls: {
+        rejectUnauthorized: false
       },
     });
 
@@ -467,6 +473,9 @@ export const registration = async (req: Request, resp: Response) => {
           user: process.env.USEREMAIL_NAME!,
           pass: process.env.PASSWORD!,
         },
+        tls: {
+          rejectUnauthorized: false
+        },
       });
 
       const mailOptions = {
@@ -536,6 +545,9 @@ export const registration = async (req: Request, resp: Response) => {
       auth: {
         user: process.env.USEREMAIL_NAME!,
         pass: process.env.PASSWORD!,
+      },
+      tls: {
+        rejectUnauthorized: false
       },
     });
 
