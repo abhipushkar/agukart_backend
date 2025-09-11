@@ -407,15 +407,12 @@ export const generateUniqueGiftCode = async () => {
 
 export const sendToEmail = async (email: string, subject: string, body: string, cc: string) => {
     const transporter = nodemailer.createTransport({
-        host: "smtpout.secureserver.net",
+        host: "smtp-relay.brevo.com",
         port: 587,
         secure: false,
         auth: {
-            user: process.env.USEREMAIL_NAME!,
-            pass: process.env.PASSWORD!
-        },
-        tls: {
-            rejectUnauthorized: false
+            user: process.env.BREVO_USER!,
+            pass: process.env.BREVO_PASS!
         },
     });
     const mailOptions = {
