@@ -48,8 +48,8 @@ declare module 'express-session' {
 app.use(flash());
 
 app.use((req, res, next) => {
-    res.locals.successMessage = req.flash('success');
-    res.locals.errorMessage = req.flash('error');
+    res.locals.successMessage = (req as any).flash('success');
+    res.locals.errorMessage = (req as any).flash('error');
     res.locals.currentdate = moment;
     next();
 });
