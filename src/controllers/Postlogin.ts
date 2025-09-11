@@ -2767,21 +2767,18 @@ export const sendEmailVerificationLink = async (req: CustomRequest, resp: Respon
         });
 
         const transporter = nodemailer.createTransport({
-            host: "smtpout.secureserver.net",
+            host: "smtp-relay.brevo.com",
             port: 587,
             secure: false,
             auth: {
-                user: process.env.USEREMAIL_NAME!,
-                pass: process.env.PASSWORD!,
-            },
-            tls: {
-                rejectUnauthorized: false
+                user: process.env.BREVO_USER!,
+                pass: process.env.BREVO_PASS!,
             },
         });
 
         const mailOptions = {
             to: user.email,
-            from: process.env.emailUser,
+            from: process.env.USEREMAIL_NAME,
             subject: 'Email Verification',
             html: htmlContent
 
@@ -2850,21 +2847,18 @@ export const changeEmail = async (req: CustomRequest, resp: Response) => {
                 });
 
                 const transporter = nodemailer.createTransport({
-                    host: "smtpout.secureserver.net",
+                    host: "smtp-relay.brevo.com",
                     port: 587,
                     secure: false,
                     auth: {
-                        user: process.env.USEREMAIL_NAME!,
-                        pass: process.env.PASSWORD!,
-                    },
-                    tls:{
-                        rejectUnauthorized:false
+                        user: process.env.BREVO_USER!,
+                        pass: process.env.BREVO_PASS!,
                     },
                 });
 
                 const mailOptions = {
                     to: req.body.email,
-                    from: process.env.emailUser,
+                    from: process.env.USEREMAIL_NAME,
                     subject: 'Email Verification',
                     html: htmlContent
 
