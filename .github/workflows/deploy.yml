@@ -55,5 +55,7 @@ jobs:
             git pull origin ${{ env.BRANCH }} &&
             npm install &&
             npm run build &&
-            pm2 start dist/app.js --name backend --update-env
+            pm2 describe backend > /dev/null \
+            && pm2 restart backend --update-env \
+            || pm2 start dist/app.js --name backend --update-env
           '
