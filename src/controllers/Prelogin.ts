@@ -56,12 +56,49 @@ export const login = async (req: Request, resp: Response) => {
   try {
     const { email, password } = req.body;
 
-    let checkUserEmailVerifyOrNot = await UserEmailModel.findOne({ email: email, status: 'Pending' });
+  let checkUserEmailVerifyOrNot = await UserEmailModel.findOne({ email: email, status: 'Pending' });
 
-    if (checkUserEmailVerifyOrNot) {
-      return resp.status(400).json({ message: 'You cannot login. Please verify your email first.' });
-    }
+  if (checkUserEmailVerifyOrNot) {
+    if (checkUserEmailVerifyOrNot.expiresAt && checkUserEmailVerifyOrNot.expiresAt < new Date()) {
+    const newToken = crypto.randomBytes(20).toString("hex");
+    const newExpiry = new Date(Date.now() + 3600000);
 
+    checkUserEmailVerifyOrNot.verifyToken = newToken;
+    checkUserEmailVerifyOrNot.expiresAt = newExpiry;
+    await checkUserEmailVerifyOrNot.save();
+
+    const templatePath = path.join(__dirname, '..', 'views', 'emailVerificationTemplate.ejs');
+    const htmlContent = await ejs.renderFile(templatePath, {
+      frontendUrl: process.env.FRONTEND_URL,
+      resetToken: newToken,
+    });
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp-relay.brevo.com",
+      port: 2525,
+      secure: false,
+      auth: {
+        user: process.env.BREVO_USER!,
+        pass: process.env.BREVO_PASS!,
+      },
+    });
+
+    const mailOptions = {
+      to: checkUserEmailVerifyOrNot.email,
+      from: process.env.USEREMAIL_NAME,
+      subject: 'Email Verification',
+      html: htmlContent,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return resp.status(400).json({
+      message: "Verification link expired. A new verification link has been sent to your email."
+    });
+  }
+
+  return resp.status(400).json({ message: 'You cannot login. Please verify your email first.' });
+ }
     const user = await User.findOne({
       $or: [{ email: email }, { mobile: email }],
       type: { $ne: 'google' }
@@ -227,6 +264,12 @@ export const verifyEmail = async (req: Request, resp: Response) => {
     if (!userEmailData) {
       return resp.status(400).json({ message: 'Invalid token' });
     }
+
+    if (userEmailData.expiresAt && userEmailData.expiresAt < new Date()) {
+  return resp.status(400).json({
+    message: "Verification link has expired. Please login to request a new one."
+  });
+  } 
 
     userEmailData.status = "Confirmed";
     userEmailData.verifyToken = "";
@@ -451,6 +494,7 @@ export const registration = async (req: Request, resp: Response) => {
       const verifyToken = crypto.randomBytes(20).toString('hex');
 
       existingEmailInUserEmail.verifyToken = verifyToken;
+      existingEmailInUserEmail.expiresAt = new Date(Date.now() + 3600000);
       await existingEmailInUserEmail.save();
 
       const templatePath = path.join(__dirname, '..', 'views', 'emailVerificationTemplate.ejs');
@@ -468,13 +512,6 @@ export const registration = async (req: Request, resp: Response) => {
           pass: process.env.BREVO_PASS!,
         },
       });
-      
-      console.log("🚀 Brevo transporter config:", {
-  host: "smtp-relay.brevo.com",
-  port: 2525,
-  user: process.env.BREVO_USER,
-  from: process.env.USEREMAIL_NAME,
-});
 
       const mailOptions = {
         to: existingEmail.email,
@@ -526,6 +563,7 @@ export const registration = async (req: Request, resp: Response) => {
       email: user.email,
       status: 'Pending',
       verifyToken: verifyToken,
+      expiresAt: new Date(Date.now() + 3600000)
     };
 
     await UserEmailModel.create(userEmailData);
@@ -545,13 +583,6 @@ export const registration = async (req: Request, resp: Response) => {
         pass: process.env.BREVO_PASS!,
       },
     });
-
-    console.log("🚀 Brevo transporter config:", {
-  host: "smtp-relay.brevo.com",
-  port: 2525,
-  user: process.env.BREVO_USER,
-  from: process.env.USEREMAIL_NAME,
-});
 
     const mailOptions = {
       to: user.email,
