@@ -264,7 +264,7 @@ export const getAllAdminParents = async (categoryId: any) => {
 
 export const transporter = nodemailer.createTransport({
         host: "smtp-relay.brevo.com",
-        port: 587,
+        port: 2525,
         secure: false,
         auth: {
             user: process.env.BREVO_USER!,
@@ -405,7 +405,7 @@ export const generateUniqueGiftCode = async () => {
 export const sendToEmail = async (email: string, subject: string, body: string, cc: string) => {
     const transporter = nodemailer.createTransport({
         host: "smtp-relay.brevo.com",
-        port: 587,
+        port: 2525,
         secure: false,
         auth: {
             user: process.env.BREVO_USER!,

@@ -2768,7 +2768,7 @@ export const sendEmailVerificationLink = async (req: CustomRequest, resp: Respon
 
         const transporter = nodemailer.createTransport({
             host: "smtp-relay.brevo.com",
-            port: 587,
+            port: 2525,
             secure: false,
             auth: {
                 user: process.env.BREVO_USER!,
@@ -2848,7 +2848,7 @@ export const changeEmail = async (req: CustomRequest, resp: Response) => {
 
                 const transporter = nodemailer.createTransport({
                     host: "smtp-relay.brevo.com",
-                    port: 587,
+                    port: 2525,
                     secure: false,
                     auth: {
                         user: process.env.BREVO_USER!,
