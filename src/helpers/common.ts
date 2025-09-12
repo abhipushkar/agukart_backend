@@ -263,17 +263,14 @@ export const getAllAdminParents = async (categoryId: any) => {
 };
 
 export const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-        user: process.env.emailUser,
-        pass: process.env.emailPass
-    },
-    tls: {
-    rejectUnauthorized: false
-  },
-});
+        host: "smtp-relay.brevo.com",
+        port: 587,
+        secure: false,
+        auth: {
+            user: process.env.BREVO_USER!,
+            pass: process.env.BREVO_PASS!
+        },
+    });
 
 export const getMainCategory = async (_id: any): Promise<any> => {
     let result: any = await Category.findOne({ _id: _id });
