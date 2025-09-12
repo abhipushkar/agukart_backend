@@ -271,12 +271,6 @@ export const transporter = nodemailer.createTransport({
             pass: process.env.BREVO_PASS!
         },
     });
-    console.log("🚀 Brevo transporter config:", {
-  host: "smtp-relay.brevo.com",
-  port: 2525,
-  user: process.env.BREVO_USER,
-  from: process.env.USEREMAIL_NAME,
-});
 
 export const getMainCategory = async (_id: any): Promise<any> => {
     let result: any = await Category.findOne({ _id: _id });

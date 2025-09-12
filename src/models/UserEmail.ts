@@ -20,6 +20,9 @@ const userEmailSchema = new Schema(
             enum: ['Pending', 'Confirmed', 'Failed'],
             default: 'Pending'
         },
+        expiresAt: {
+            type: Date,
+        }
     },
     {
         timestamps: true,
