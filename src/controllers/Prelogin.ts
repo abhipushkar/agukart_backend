@@ -468,6 +468,13 @@ export const registration = async (req: Request, resp: Response) => {
           pass: process.env.BREVO_PASS!,
         },
       });
+      
+      console.log("🚀 Brevo transporter config:", {
+  host: "smtp-relay.brevo.com",
+  port: 2525,
+  user: process.env.BREVO_USER,
+  from: process.env.USEREMAIL_NAME,
+});
 
       const mailOptions = {
         to: existingEmail.email,
@@ -538,6 +545,13 @@ export const registration = async (req: Request, resp: Response) => {
         pass: process.env.BREVO_PASS!,
       },
     });
+
+    console.log("🚀 Brevo transporter config:", {
+  host: "smtp-relay.brevo.com",
+  port: 2525,
+  user: process.env.BREVO_USER,
+  from: process.env.USEREMAIL_NAME,
+});
 
     const mailOptions = {
       to: user.email,
