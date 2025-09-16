@@ -20,6 +20,18 @@ const variantAttributeSchema = new Schema(
       required: true,
       default:false
     },
+    thumbnail: {
+    type: String,
+    default: ''
+    },
+    preview_image: {
+    type: String,
+    default: ''
+    },
+    main_images:{
+    type: [String],
+    default: []
+    },
     deleted_status: {
       type: Boolean,
       required: true,
