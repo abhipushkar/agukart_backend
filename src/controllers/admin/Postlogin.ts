@@ -1161,78 +1161,157 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 }
 
 export const addVariant = async (req: CustomRequest, resp: Response) => {
+  try {
+    const variant_name = req.body.variant_name;
+    const base_url = process.env.ASSET_URL + "/uploads/variant/";
+    const files: any[] = (req.files as any[]) || [];
 
-    try {
-        const variant_name = req.body.variant_name;
+    const findFile = (key: string) => files.find(f => f.fieldname === key);
+    const findFiles = (key: string) => files.filter(f => f.fieldname === key);
 
-        const existingVariant = await Variant.findOne({ variant_name: variant_name });
-        if (existingVariant && req.body._id == 'new') {
-            return resp.status(400).json({ message: 'Variant name already exists.', success: false });
-        }
+const cleanFileName = (filename: string, fallback: string) => {
+  if (!filename) return "";
+  let cleaned = filename.includes("]")
+    ? filename.split("]").pop() || filename
+    : filename;
 
-        if (req.body._id == 'new') {
+  if (cleaned.startsWith("-")) {
+    cleaned = fallback + cleaned;
+  }
 
-            const variant = await Variant.create({ variant_name: variant_name });
-            const variantAttr = req.body.variant_attr;
-
-            if (variantAttr.length > 0) {
-                for (let i = 0; i < variantAttr.length; i++) {
-                    const attr = variantAttr[i];
-                    await VariantAttribute.create({ variant: variant._id, attribute_value: attr.attr_name, sort_order: attr.sort_order, status: attr.status });
-                }
-            }
-            var id = variant._id;
-            return resp.status(200).json({ message: 'Variant created successfully.', success: true });
-
-        } else {
-            const deletedStatusIds = req.body.deletedAttrIds || [];
-            const variantAttr = req.body.variant_attr || [];
-
-            if (deletedStatusIds.length > 0) {
-                for (let i = 0; i < deletedStatusIds.length; i++) {
-                    const query = { _id: deletedStatusIds[i] };
-                    const updateData = { $set: { deleted_status: true, status: false } };
-                    await VariantAttribute.updateOne(query, updateData);
-                }
-            }
-
-            if (variantAttr.length > 0) {
-                for (let i = 0; i < variantAttr.length; i++) {
-                    if (variantAttr[i]._id != "new") {
-
-                        const query = { _id: variantAttr[i]._id };
-                        const updateData = { $set: { attribute_value: variantAttr[i].attr_name, sort_order: variantAttr[i].sort_order, status: variantAttr[i].status } };
-                        await VariantAttribute.updateOne(query, updateData);
-
-                    } else {
-                        const attr = variantAttr[i];
-                        await VariantAttribute.create({
-                            variant: req.body._id,
-                            attribute_value: attr.attr_name,
-                            sort_order: attr.sort_order,
-                            status: attr.status
-                        });
-                    }
-                }
-            }
-
-            const query = { _id: req.body._id }
-            const updateData = { $set: { variant_name: variant_name } }
-
-            await Variant.updateOne(query, updateData);
-
-            return resp.status(200).json({ message: 'Variant updated successfully.' });
-        }
+  return cleaned;
+};
 
 
-
-    } catch (err) {
-        console.log(err)
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    // check duplicate
+    const existingVariant = await Variant.findOne({ variant_name });
+    if (existingVariant && req.body._id == "new") {
+      return resp
+        .status(400)
+        .json({ message: "Variant name already exists.", success: false });
     }
 
+    let variantId: any;
 
-}
+
+    let variantAttr: any = req.body.variant_attr || [];
+    if (typeof variantAttr === "string") {
+      try {
+        variantAttr = JSON.parse(variantAttr);
+      } catch {
+        variantAttr = [];
+      }
+    }
+
+    let deletedStatusIds: any = req.body.deletedAttrIds || [];
+    if (typeof deletedStatusIds === "string") {
+      try {
+        deletedStatusIds = JSON.parse(deletedStatusIds);
+      } catch {
+        deletedStatusIds = [];
+      }
+    }
+
+    // -------- CREATE --------
+    if (req.body._id == "new") {
+      const variant = await Variant.create({ variant_name });
+      variantId = variant._id;
+
+      for (let i = 0; i < variantAttr.length; i++) {
+        const attr = variantAttr[i];
+
+        const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
+        const previewFile = findFile(`variant_attr[${i}][preview_image]`);
+        const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
+
+       const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
+const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
+const main_images = mainFiles.length
+  ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
+  : [];
+
+        await VariantAttribute.create({
+          variant: variantId,
+          attribute_value: attr.attr_name,
+          sort_order: attr.sort_order,
+          status: attr.status,
+          thumbnail,
+          preview_image,
+          main_images,
+        });
+      }
+
+      return resp
+        .status(200)
+        .json({ message: "Variant created successfully.", success: true });
+    }
+
+    // -------- UPDATE --------
+    else {
+      variantId = req.body._id;
+
+      if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) {
+        await VariantAttribute.updateMany(
+          { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } },
+          { $set: { deleted_status: true, status: false } }
+        );
+      }
+
+      for (let i = 0; i < variantAttr.length; i++) {
+        const attr = variantAttr[i];
+
+        const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
+        const previewFile = findFile(`variant_attr[${i}][preview_image]`);
+        const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
+
+        const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
+const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
+const main_images = mainFiles.length
+  ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
+  : [];
+
+
+        if (attr._id && attr._id !== "new") {
+          await VariantAttribute.updateOne(
+            { _id: attr._id },
+            {
+              $set: {
+                attribute_value: attr.attr_name,
+                sort_order: attr.sort_order,
+                status: attr.status,
+                thumbnail,
+                preview_image,
+                main_images,
+              },
+            }
+          );
+        } else {
+          await VariantAttribute.create({
+            variant: variantId,
+            attribute_value: attr.attr_name,
+            sort_order: attr.sort_order,
+            status: attr.status,
+            thumbnail,
+            preview_image,
+            main_images,
+          });
+        }
+      }
+
+      await Variant.updateOne({ _id: variantId }, { $set: { variant_name } });
+
+      return resp.status(200).json({ message: "Variant updated successfully." });
+    }
+  } catch (err) {
+    console.log(err);
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
+
+
+
 
 export const variantList = async (req: CustomRequest, resp: Response) => {
     try {
@@ -1399,6 +1478,19 @@ export const addVariantAttribute = async (req: CustomRequest, resp: Response) =>
         const variant = req.body.variant;
         const attribute_value = req.body.attribute_value;
 
+        const base_url = process.env.ASSET_URL + '/uploads/variant/';
+        const files: any = req.files || {};
+
+        const thumbnail = files.thumbnail?.[0]
+        ? base_url + files.thumbnail[0].filename
+        : '';
+        const preview_image = files.preview_image?.[0]
+        ? base_url + files.preview_image[0].filename
+        : '';
+        const main_images = files.main_images
+        ? files.main_images.map((f: any) => base_url + f.filename)
+        : [];
+
         if (req.body._id == 'new') {
 
             const chkVariantAttribute = await VariantAttribute.findOne({ attribute_value: attribute_value, variant: variant });
@@ -1407,7 +1499,7 @@ export const addVariantAttribute = async (req: CustomRequest, resp: Response) =>
                 return resp.status(400).json({ message: 'Variant Attribute already exists with selected variant.' });
             }
 
-            await VariantAttribute.create({ variant: variant, attribute_value: attribute_value });
+            await VariantAttribute.create({ variant: variant, attribute_value: attribute_value, thumbnail, preview_image, main_images });
             return resp.status(200).json({ message: 'Variant Attribute created successfully.', success: true });
 
         } else {
@@ -1419,7 +1511,7 @@ export const addVariantAttribute = async (req: CustomRequest, resp: Response) =>
             }
 
             const query = { _id: req.body._id }
-            const updateData = { $set: { variant: variant, attribute_value: attribute_value } }
+            const updateData = { $set: { variant: variant, attribute_value: attribute_value, thumbnail, preview_image, main_images } }
 
             await VariantAttribute.updateOne(query, updateData);
 
@@ -1898,337 +1990,305 @@ function rtrim(str: any, charlist: any) {
 }
 
 export const getProductList = async (req: CustomRequest, resp: Response) => {
-    try {
-        const baseUrl = process.env.ASSET_URL + "/uploads/product/";
-        const parentBaseUrl = process.env.ASSET_URL + "/uploads/parent_product/";
-        const category: any = req.query.category || null;
-        const type = (req.query.type as string) || null; // 'active' | 'inactive' | 'all' | 'draft' | 'delete' | 'sold-out'
-        const designation_id = req.user?.designation_id;
-        const user_id = req.user?._id;
+  try {
+    const baseUrl = process.env.ASSET_URL + "/uploads/product/";
+    const parentBaseUrl = process.env.ASSET_URL + "/uploads/parent_product/";
+    const category: any = req.query.category || null;
+    const type = (req.query.type as string) || null; // active | inactive | all | draft | delete | sold-out
+    const designation_id = req.user?.designation_id;
+    const user_id = req.user?._id;
 
-        const matchExpr: any[] = [
-            { $eq: ["$parent_id", "$$parentId"] },
-            { $eq: ["$isDeleted", false] },
-            ...(type !== "draft" ? [{ $eq: ["$draft_status", false] }] : []),
-            ...(designation_id == 3 ? [{ $eq: ["$vendor_id", user_id] }] : []),
-        ];
+    const pipeline: any[] = [];
 
-        const pipeline: any[] = [];
-
-        // -------- Parent -> Variations lookup ----------
-        pipeline.push(
+    // ---------- Variations lookup ----------
+    pipeline.push(
+      {
+        $lookup: {
+          from: "products",
+          let: { parentId: "$_id" },
+          pipeline: [
             {
-                $lookup: {
-                    from: "products",
-                    let: { parentId: "$_id" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: { $and: matchExpr },
-                            },
-                        },
-                    ],
-                    as: "productData",
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$parent_id", "$$parentId"] },
+                    { $eq: ["$isDeleted", false] },
+                    ...(type !== "draft" ? [{ $eq: ["$draft_status", false] }] : []),
+                    ...(designation_id == 3 ? [{ $eq: ["$vendor_id", user_id] }] : []),
+                  ],
                 },
+              },
             },
-            {
-                $unwind: {
-                    path: "$productData",
-                    preserveNullAndEmptyArrays: true,
-                },
-            }
-        );
+          ],
+          as: "productData",
+        },
+      },
+      { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } }
+    );
 
-        // Exclude zero/empty qty from ALL tabs except 'sold-out'
-        if (type !== "sold-out") {
-            pipeline.push({
-                $match: {
-                    $expr: {
-                        $gt: [
-                            {
-                                $convert: {
-                                    input: "$productData.qty",
-                                    to: "double",
-                                    onError: 0, // handles '', 'abc', etc.
-                                    onNull: 0, // handles null/missing
-                                },
-                            },
-                            0,
+    // Exclude sold-out qty unless explicitly requested
+    if (type !== "sold-out") {
+      pipeline.push({
+        $match: {
+          $expr: {
+            $gt: [
+              {
+                $convert: { input: "$productData.qty", to: "double", onError: 0, onNull: 0 },
+              },
+              0,
+            ],
+          },
+        },
+      });
+    }
+
+    if (category) {
+      pipeline.push({
+        $match: { "productData.category": new mongoose.Types.ObjectId(category) },
+      });
+    }
+
+    pipeline.push(
+      {
+        $group: {
+          _id: "$_id",
+          product_title: { $first: "$product_title" },
+          image: { $first: "$image" },
+          seller_sku: { $first: "$seller_sku" },
+          updatedAt: { $first: "$updatedAt" },
+          description: { $first: "$description" },
+          vendor_id: { $first: "$vendor_id" },
+          productData: { $push: "$productData" },
+        },
+      },
+      {
+        $addFields: {
+          type: "variations",
+          image: {
+            $cond: {
+              if: { $ne: ["$image", null] },
+              then: { $concat: [parentBaseUrl, "$image"] },
+              else: null,
+            },
+          },
+          productData: {
+            $map: {
+              input: "$productData",
+              as: "pd",
+              in: {
+                $mergeObjects: [
+                  {
+                    $cond: {
+                      if: {
+                        $and: [
+                          { $eq: ["$$pd.draft_status", true] },
+                          { $ne: [type, "draft"] },
                         ],
-                    },
-                },
-            });
-        }
-
-        if (category) {
-            pipeline.push({
-                $match: { "productData.category": new mongoose.Types.ObjectId(category) },
-            });
-        }
-
-        pipeline.push(
-            {
-                $group: {
-                    _id: "$_id",
-                    product_title: { $first: "$product_title" },
-                    image: { $first: "$image" },
-                    seller_sku: { $first: "$seller_sku" },
-                    updatedAt: { $first: "$updatedAt" },
-                    description: { $first: "$description" },
-                    vendor_id: { $first: "$vendor_id" },
-                    productData: { $push: "$productData" },
-                },
-            },
-            {
-                $addFields: {
-                    type: "variations",
-                    image: {
-                        $cond: {
-                            if: { $ne: ["$image", null] },
-                            then: { $concat: [parentBaseUrl, "$image"] },
-                            else: null,
-                        },
-                    },
-                    productData: {
-                        $map: {
-                            input: "$productData",
-                            as: "pd",
-                            in: {
-                                $mergeObjects: [
-                                    {
-                                        $cond: {
-                                            if: {
-                                                $and: [
-                                                    { $eq: ["$$pd.draft_status", true] },
-                                                    { $ne: [type, "draft"] },
-                                                ],
-                                            },
-                                            then: {},
-                                            else: {
-                                                $mergeObjects: [
-                                                    "$$pd",
-                                                    {
-                                                        image: {
-                                                            $map: {
-                                                                input: "$$pd.image",
-                                                                as: "img",
-                                                                in: { $concat: [baseUrl, "$$img"] },
-                                                            },
-                                                        },
-                                                        parent_sku: "$seller_sku",
-                                                        productStatus: {
-                                                            $cond: {
-                                                                if: { $eq: ["$$pd.draft_status", true] },
-                                                                then: {
-                                                                    $cond: {
-                                                                        if: { $eq: [type, "draft"] },
-                                                                        then: "draft",
-                                                                        else: "$$REMOVE",
-                                                                    },
-                                                                },
-                                                                else: {
-                                                                    $switch: {
-                                                                        branches: [
-                                                                            { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
-                                                                            { case: { $eq: [type, "delete"] }, then: "delete" },
-                                                                            {
-                                                                                case: { $in: [type, ["active", "inactive", "all"]] },
-                                                                                then: {
-                                                                                    $cond: {
-                                                                                        if: { $eq: ["$$pd.status", true] },
-                                                                                        then: "active",
-                                                                                        else: "inactive",
-                                                                                    },
-                                                                                },
-                                                                            },
-                                                                        ],
-                                                                        default: "unknown",
-                                                                    },
-                                                                },
-                                                            },
-                                                        },
-                                                    },
-                                                ],
-                                            },
-                                        },
-                                    },
-                                ],
-                            },
-                        },
-                    },
-                },
-            }
-        );
-
-        if (type !== "all") {
-            pipeline.push({
-                $match: {
-                    $or: [{ productData: { $ne: [] } }, { type: "product" }],
-                },
-            });
-        }
-
-        if (designation_id == 3) {
-            pipeline.push({
-                $match: { productData: { $ne: [] } },
-            });
-        }
-
-        // -------- Union with non-variant products ----------
-        pipeline.push({
-            $unionWith: {
-                coll: "products",
-                pipeline: [
-                    {
-                        $match: {
-                            parent_id: null,
-                            isDeleted: type === "delete",
-                            draft_status: type === "draft",
-                            ...(type !== "draft" && { draft_status: false }),
-                            ...(designation_id == 3 && { vendor_id: user_id }),
-                            ...(category && { category: new mongoose.Types.ObjectId(category) }),
-                            ...(type === "active" && { status: true }),
-                            ...(type === "inactive" && { status: false }),
-
-                            // Exclude zero/empty qty from ALL tabs except 'sold-out'
-                            ...(type !== "sold-out" && {
-                                $expr: {
-                                    $gt: [
-                                        {
-                                            $convert: {
-                                                input: "$qty",
-                                                to: "double",
-                                                onError: 0,
-                                                onNull: 0,
-                                            },
-                                        },
-                                        0,
-                                    ],
-                                },
-                            }),
-                        },
-                    },
-
-                    // SOLD-OUT: only items whose converted qty equals 0 and status true
-                    ...(type === "sold-out"
-                        ? [
-                            {
-                                $match: {
-                                    $and: [
-                                        { status: true },
-                                        {
-                                            $expr: {
-                                                $eq: [
-                                                    {
-                                                        $convert: {
-                                                            input: "$qty",
-                                                            to: "double",
-                                                            onError: 0,
-                                                            onNull: 0,
-                                                        },
-                                                    },
-                                                    0,
-                                                ],
-                                            },
-                                        },
-                                    ],
-                                },
-                            },
-                        ]
-                        : []),
-
-                    {
-                        $addFields: {
-                            type: "product",
+                      },
+                      then: {},
+                      else: {
+                        $mergeObjects: [
+                          "$$pd",
+                          {
                             image: {
-                                $map: {
-                                    input: "$image",
-                                    as: "img",
-                                    in: { $concat: [baseUrl, "$$img"] },
-                                },
+                              $map: {
+                                input: "$$pd.image",
+                                as: "img",
+                                in: { $concat: [baseUrl, "$$img"] },
+                              },
                             },
+                            parent_sku: "$seller_sku",
                             productStatus: {
-                                $switch: {
+                              $cond: {
+                                if: { $eq: ["$$pd.draft_status", true] },
+                                then: {
+                                  $cond: {
+                                    if: { $eq: [type, "draft"] },
+                                    then: "draft",
+                                    else: "$$REMOVE",
+                                  },
+                                },
+                                else: {
+                                  $switch: {
                                     branches: [
-                                        { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
-                                        { case: { $eq: [type, "delete"] }, then: "delete" },
-                                        { case: { $eq: [type, "draft"] }, then: "draft" },
-                                        {
-                                            case: { $in: [type, ["active", "inactive", "all"]] },
-                                            then: {
-                                                $cond: {
-                                                    if: { $eq: ["$status", true] },
-                                                    then: "active",
-                                                    else: "inactive",
-                                                },
-                                            },
+                                      { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
+                                      { case: { $eq: [type, "delete"] }, then: "delete" },
+                                      {
+                                        case: { $in: [type, ["active", "inactive", "all"]] },
+                                        then: {
+                                          $cond: {
+                                            if: { $eq: ["$$pd.status", true] },
+                                            then: "active",
+                                            else: "inactive",
+                                          },
                                         },
+                                      },
                                     ],
                                     default: "unknown",
+                                  },
                                 },
+                              },
                             },
-                        },
+                          },
+                        ],
+                      },
                     },
-                    {
-                        $project: {
-                            _id: 1,
-                            product_title: 1,
-                            zoom: 1,
-                            bestseller: 1,
-                            popular_gifts: 1,
-                            featured: 1,
-                            category: 1,
-                            sku_code: 1,
-                            qty: 1,
-                            price: 1,
-                            sale_price: 1,
-                            sale_start_date: 1,
-                            sale_end_date: 1,
-                            description: 1,
-                            vendor_id: 1,
-                            image: 1,
-                            type: 1,
-                            product_bedge: 1,
-                            updatedAt: 1,
-                            isDeleted: 1,
-                            draft_status: 1,
-                            sort_order: 1,
-                            status: {
-                                $cond: {
-                                    if: { $eq: ["$draft_status", true] },
-                                    then: {
-                                        $cond: {
-                                            if: { $eq: [type, "draft"] },
-                                            then: "draft",
-                                            else: "$$REMOVE",
-                                        },
-                                    },
-                                    else: "$productStatus",
-                                },
-                            },
-                        },
-                    },
+                  },
                 ],
+              },
             },
-        });
+          },
+        },
+      }
+    );
 
-        // Final sort
-        pipeline.push({ $sort: { updatedAt: -1 } });
-
-        const combinedData = await ParentProduct.aggregate(pipeline);
-
-        return resp.status(200).json({
-            message: "Product retrieved successfully.",
-            data: combinedData,
-        });
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({
-            message: "Something went wrong. Please try again.",
-            error,
-        });
+    if (type !== "all") {
+      pipeline.push({
+        $match: { $or: [{ productData: { $ne: [] } }, { type: "product" }] },
+      });
     }
+
+    if (designation_id == 3) {
+      pipeline.push({ $match: { productData: { $ne: [] } } });
+    }
+
+    // ---------- Union with simple products ----------
+    const productMatch: any = {
+      parent_id: null,
+      ...(designation_id == 3 && { vendor_id: user_id }),
+      ...(category && { category: new mongoose.Types.ObjectId(category) }),
+    };
+
+    // type-based conditions
+    if (type === "delete") productMatch.isDeleted = true;
+    if (type === "draft") productMatch.draft_status = true;
+    if (type === "active") productMatch.status = true;
+    if (type === "inactive") productMatch.status = false;
+
+    // qty filter
+    if (type !== "sold-out") {
+      productMatch.$expr = {
+        $gt: [
+          { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
+          0,
+        ],
+      };
+    }
+
+    const unionPipeline: any[] = [{ $match: productMatch }];
+
+    if (type === "sold-out") {
+      unionPipeline.push({
+        $match: {
+          $and: [
+            { status: true },
+            {
+              $expr: {
+                $eq: [
+                  { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
+                  0,
+                ],
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    unionPipeline.push(
+      {
+        $addFields: {
+          type: "product",
+          image: {
+            $map: {
+              input: "$image",
+              as: "img",
+              in: { $concat: [baseUrl, "$$img"] },
+            },
+          },
+          productStatus: {
+            $switch: {
+              branches: [
+                { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
+                { case: { $eq: [type, "delete"] }, then: "delete" },
+                { case: { $eq: [type, "draft"] }, then: "draft" },
+                {
+                  case: { $in: [type, ["active", "inactive", "all"]] },
+                  then: {
+                    $cond: {
+                      if: { $eq: ["$status", true] },
+                      then: "active",
+                      else: "inactive",
+                    },
+                  },
+                },
+              ],
+              default: "unknown",
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          product_title: 1,
+          zoom: 1,
+          bestseller: 1,
+          popular_gifts: 1,
+          featured: 1,
+          category: 1,
+          sku_code: 1,
+          qty: 1,
+          price: 1,
+          sale_price: 1,
+          sale_start_date: 1,
+          sale_end_date: 1,
+          description: 1,
+          vendor_id: 1,
+          image: 1,
+          type: 1,
+          product_bedge: 1,
+          updatedAt: 1,
+          isDeleted: 1,
+          draft_status: 1,
+          sort_order: 1,
+          status: {
+            $cond: {
+              if: { $eq: ["$draft_status", true] },
+              then: {
+                $cond: {
+                  if: { $eq: [type, "draft"] },
+                  then: "draft",
+                  else: "$$REMOVE",
+                },
+              },
+              else: "$productStatus",
+            },
+          },
+        },
+      }
+    );
+
+    pipeline.push({ $unionWith: { coll: "products", pipeline: unionPipeline } });
+
+    // Final sort
+    pipeline.push({ $sort: { updatedAt: -1 } });
+
+    const combinedData = await ParentProduct.aggregate(pipeline);
+
+    return resp.status(200).json({
+      message: "Product retrieved successfully.",
+      data: combinedData,
+    });
+  } catch (error) {
+    console.error(error);
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+      error,
+    });
+  }
 };
+
 
 
 export const productChangeStatus = async (req: CustomRequest, resp: Response) => {

@@ -26,6 +26,7 @@ import CityModel from "../models/City";
 import SalesDetailsModel from "../models/Sales_detail";
 import RatingModel from "../models/Rating";
 import followModel from "../models/Follow";
+import CouponCartModel from "../models/CouponCart";
 import VendorModel from "../models/VendorDetail";
 import MessageModel from "../models/SenderMessage";
 import CouponModel from "../models/Coupon";
@@ -3708,15 +3709,25 @@ export const getVendorCartDetails = async (req: CustomRequest, resp: Response) =
 
         netAmount = subTotal;
 
-        const couponDoc = await CouponModel.findOne({ vendor_id: req.params.id });
+        // const couponDoc = await CouponModel.findOne({ vendor_id: req.params.id });
 
-        if (couponDoc) {
-            if (couponDoc.discount_type == 'percentage') {
-                discountAmount = (netAmount * couponDoc.discount_amount) / 100;
-            } else {
-                discountAmount = Number(couponDoc.discount_amount);
-            }
+        // if (couponDoc) {
+        //     if (couponDoc.discount_type == 'percentage') {
+        //         discountAmount = (netAmount * couponDoc.discount_amount) / 100;
+        //     } else {
+        //         discountAmount = Number(couponDoc.discount_amount);
+        //     }
+        // }
+        const appliedCoupon = await CouponCartModel.findOne({
+        user_id: req.user._id,
+        vendor_id: req.params.id
+        });
+
+       if (appliedCoupon?.coupon_data?.discount_amount) {
+         discountAmount = appliedCoupon.coupon_data.discount_amount;
         }
+
+
 
 
         netAmount = netAmount - discountAmount;

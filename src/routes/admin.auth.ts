@@ -234,6 +234,7 @@ import {
 
 import validationMiddleware from "../utils/multivalidate";
 import { loginValid, createStoreValid, updateStoreValid, updateStoreStatusValid, categoryValid, statusValid, validateChangePassword, brandValid, validateProfile, informationValid, vendorValid } from "../validators/adminvalidators";
+import { upload } from "../middleware/fileupload";
 
 const routes = express.Router();
 routes.post('/change-password', validationMiddleware(validateChangePassword), changePassword)
@@ -272,7 +273,10 @@ routes.delete('/delete-brand/:id', deleteBrand);
 routes.get('/edit-brand/:id', getBrand);
 
 // Variant API's
-routes.post('/add-variant', addVariant)
+routes.post('/add-variant',  (req, res, next) => {
+    (req as any).filepath = 'variant';
+    next();
+  },  upload.any(), addVariant)
 routes.get('/get-variant', variantList)
 routes.post('/change-status-variant', variantChangeStatus);
 routes.post('/change-status-variant-category', variantCategoryChangeStatus);
@@ -284,7 +288,7 @@ routes.get('/get-variant-by-category/:id', getVariantDataByCategoryId)
 // Variant Attribute API's
 routes.get('/get-all-active-variants', getAllActiveVariant)
 
-routes.post('/add-variant-attribute', addVariantAttribute)
+routes.post('/add-variant-attribute', addVariantAttribute);
 routes.get('/get-variant-attribute', variantAttributeList)
 routes.post('/change-status-variant-attribute', variantAttributeChangeStatus);
 routes.delete('/delete-variant-attribute/:id', deleteVariantAttribute);
