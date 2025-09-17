@@ -135,17 +135,23 @@ const deleteFile = (filePath: string) => {
 
 const saveFile = async (file: any, cleanedName: string) => {
   if (!file) return "";
+
   const uploadDir = path.join("uploads", "variant");
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
-  const fullPath = path.join(uploadDir, cleanedName);
+  const fullPath = path.join(uploadDir, cleanedName.replace(path.extname(cleanedName), ".webp"));
 
-  // If you want WebP conversion:
-  await convertToWebP(file.buffer, fullPath.replace(path.extname(cleanedName), ".webp"));
-  return process.env.ASSET_URL + "/uploads/variant/" + path.basename(fullPath.replace(path.extname(cleanedName), ".webp"));
+  try {
+    await sharp(file.path).toFormat("webp").toFile(fullPath);
+  } catch (e) {
+    console.error("Sharp conversion failed, fallback saving raw file:", e);
+    await fs.promises.copyFile(file.path, fullPath); // fallback: copy original file
+  }
 
+  return process.env.ASSET_URL + "/uploads/variant/" + path.basename(fullPath);
 };
+
 
 
 export const addSlider = async (req: Request, resp: Response) => {
