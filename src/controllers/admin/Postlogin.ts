@@ -1160,133 +1160,80 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
 }
 
-export const addVariant = async (req: CustomRequest, resp: Response) => {
-  try {
-    const variant_name = req.body.variant_name;
-    const base_url = process.env.ASSET_URL + "/uploads/variant/";
-    const files: any[] = (req.files as any[]) || [];
+    export const addVariant = async (req: CustomRequest, resp: Response) => {
+    try {
+        const variant_name = req.body.variant_name;
+        const base_url = process.env.ASSET_URL + "/uploads/variant/";
+        const files: any[] = (req.files as any[]) || [];
+        console.log("Uploaded files:", files.map(f => f.filename));
 
-    const findFile = (key: string) => files.find(f => f.fieldname === key);
-    const findFiles = (key: string) => files.filter(f => f.fieldname === key);
+        const findFile = (key: string) => files.find(f => f.fieldname === key);
+        const findFiles = (key: string) => files.filter(f => f.fieldname === key);
 
-const cleanFileName = (filename: string, fallback: string) => {
-  if (!filename) return "";
-  let cleaned = filename.includes("]")
-    ? filename.split("]").pop() || filename
-    : filename;
+    const cleanFileName = (filename: string, fallback: string) => {
+    if (!filename) return "";
 
-  if (cleaned.startsWith("-")) {
-    cleaned = fallback + cleaned;
-  }
-
-  return cleaned;
-};
-
-
-    // check duplicate
-    const existingVariant = await Variant.findOne({ variant_name });
-    if (existingVariant && req.body._id == "new") {
-      return resp
-        .status(400)
-        .json({ message: "Variant name already exists.", success: false });
+    const match = filename.match(/\[(preview_image|thumbnail|main_images)\](.*)/);
+    if (match) {
+        return match[1] + (match[2] || "");
     }
 
-    let variantId: any;
-
-
-    let variantAttr: any = req.body.variant_attr || [];
-    if (typeof variantAttr === "string") {
-      try {
-        variantAttr = JSON.parse(variantAttr);
-      } catch {
-        variantAttr = [];
-      }
+    let cleaned = filename.includes("]") ? filename.split("]").pop() || filename : filename;
+    if (cleaned.startsWith("-")) {
+        cleaned = fallback + cleaned;
     }
+    return cleaned;
+    };
 
-    let deletedStatusIds: any = req.body.deletedAttrIds || [];
-    if (typeof deletedStatusIds === "string") {
-      try {
-        deletedStatusIds = JSON.parse(deletedStatusIds);
-      } catch {
-        deletedStatusIds = [];
-      }
-    }
 
-    // -------- CREATE --------
-    if (req.body._id == "new") {
-      const variant = await Variant.create({ variant_name });
-      variantId = variant._id;
+        // check duplicate
+        const existingVariant = await Variant.findOne({ variant_name });
+        if (existingVariant && req.body._id == "new") {
+        return resp
+            .status(400)
+            .json({ message: "Variant name already exists.", success: false });
+        }
 
-      for (let i = 0; i < variantAttr.length; i++) {
-        const attr = variantAttr[i];
+        let variantId: any;
 
-        const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
-        const previewFile = findFile(`variant_attr[${i}][preview_image]`);
-        const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
 
-       const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
-const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
-const main_images = mainFiles.length
-  ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
-  : [];
+        let variantAttr: any = req.body.variant_attr || [];
+        if (typeof variantAttr === "string") {
+        try {
+            variantAttr = JSON.parse(variantAttr);
+        } catch {
+            variantAttr = [];
+        }
+        }
 
-        await VariantAttribute.create({
-          variant: variantId,
-          attribute_value: attr.attr_name,
-          sort_order: attr.sort_order,
-          status: attr.status,
-          thumbnail,
-          preview_image,
-          main_images,
-        });
-      }
+        let deletedStatusIds: any = req.body.deletedAttrIds || [];
+        if (typeof deletedStatusIds === "string") {
+        try {
+            deletedStatusIds = JSON.parse(deletedStatusIds);
+        } catch {
+            deletedStatusIds = [];
+        }
+        }
 
-      return resp
-        .status(200)
-        .json({ message: "Variant created successfully.", success: true });
-    }
+        // -------- CREATE --------
+        if (req.body._id == "new") {
+        const variant = await Variant.create({ variant_name });
+        variantId = variant._id;
 
-    // -------- UPDATE --------
-    else {
-      variantId = req.body._id;
+        for (let i = 0; i < variantAttr.length; i++) {
+            const attr = variantAttr[i];
 
-      if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) {
-        await VariantAttribute.updateMany(
-          { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } },
-          { $set: { deleted_status: true, status: false } }
-        );
-      }
-
-      for (let i = 0; i < variantAttr.length; i++) {
-        const attr = variantAttr[i];
-
-        const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
-        const previewFile = findFile(`variant_attr[${i}][preview_image]`);
-        const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
+            const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
+            const previewFile = findFile(`variant_attr[${i}][preview_image]`);
+            const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
 
         const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
-const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
-const main_images = mainFiles.length
-  ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
-  : [];
+    const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
+    const main_images = mainFiles.length
+    ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
+    : [];
 
-
-        if (attr._id && attr._id !== "new") {
-          await VariantAttribute.updateOne(
-            { _id: attr._id },
-            {
-              $set: {
-                attribute_value: attr.attr_name,
-                sort_order: attr.sort_order,
-                status: attr.status,
-                thumbnail,
-                preview_image,
-                main_images,
-              },
-            }
-          );
-        } else {
-          await VariantAttribute.create({
+            await VariantAttribute.create({
             variant: variantId,
             attribute_value: attr.attr_name,
             sort_order: attr.sort_order,
@@ -1294,21 +1241,77 @@ const main_images = mainFiles.length
             thumbnail,
             preview_image,
             main_images,
-          });
+            });
         }
-      }
 
-      await Variant.updateOne({ _id: variantId }, { $set: { variant_name } });
+        return resp
+            .status(200)
+            .json({ message: "Variant created successfully.", success: true });
+        }
 
-      return resp.status(200).json({ message: "Variant updated successfully." });
+        // -------- UPDATE --------
+        else {
+        variantId = req.body._id;
+
+        if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) {
+            await VariantAttribute.updateMany(
+            { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } },
+            { $set: { deleted_status: true, status: false } }
+            );
+        }
+
+        for (let i = 0; i < variantAttr.length; i++) {
+            const attr = variantAttr[i];
+
+            const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
+            const previewFile = findFile(`variant_attr[${i}][preview_image]`);
+            const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
+
+            const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
+    const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
+    const main_images = mainFiles.length
+    ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
+    : [];
+
+
+            if (attr._id && attr._id !== "new") {
+            await VariantAttribute.updateOne(
+                { _id: attr._id },
+                {
+                $set: {
+                    attribute_value: attr.attr_name,
+                    sort_order: attr.sort_order,
+                    status: attr.status,
+                    thumbnail,
+                    preview_image,
+                    main_images,
+                },
+                }
+            );
+            } else {
+            await VariantAttribute.create({
+                variant: variantId,
+                attribute_value: attr.attr_name,
+                sort_order: attr.sort_order,
+                status: attr.status,
+                thumbnail,
+                preview_image,
+                main_images,
+            });
+            }
+        }
+
+        await Variant.updateOne({ _id: variantId }, { $set: { variant_name } });
+
+        return resp.status(200).json({ message: "Variant updated successfully." });
+        }
+    } catch (err) {
+        console.log(err);
+        return resp
+        .status(500)
+        .json({ message: "Something went wrong. Please try again." });
     }
-  } catch (err) {
-    console.log(err);
-    return resp
-      .status(500)
-      .json({ message: "Something went wrong. Please try again." });
-  }
-};
+    };
 
 
 
@@ -1478,19 +1481,6 @@ export const addVariantAttribute = async (req: CustomRequest, resp: Response) =>
         const variant = req.body.variant;
         const attribute_value = req.body.attribute_value;
 
-        const base_url = process.env.ASSET_URL + '/uploads/variant/';
-        const files: any = req.files || {};
-
-        const thumbnail = files.thumbnail?.[0]
-        ? base_url + files.thumbnail[0].filename
-        : '';
-        const preview_image = files.preview_image?.[0]
-        ? base_url + files.preview_image[0].filename
-        : '';
-        const main_images = files.main_images
-        ? files.main_images.map((f: any) => base_url + f.filename)
-        : [];
-
         if (req.body._id == 'new') {
 
             const chkVariantAttribute = await VariantAttribute.findOne({ attribute_value: attribute_value, variant: variant });
@@ -1499,7 +1489,7 @@ export const addVariantAttribute = async (req: CustomRequest, resp: Response) =>
                 return resp.status(400).json({ message: 'Variant Attribute already exists with selected variant.' });
             }
 
-            await VariantAttribute.create({ variant: variant, attribute_value: attribute_value, thumbnail, preview_image, main_images });
+            await VariantAttribute.create({ variant: variant, attribute_value: attribute_value});
             return resp.status(200).json({ message: 'Variant Attribute created successfully.', success: true });
 
         } else {
@@ -1511,7 +1501,7 @@ export const addVariantAttribute = async (req: CustomRequest, resp: Response) =>
             }
 
             const query = { _id: req.body._id }
-            const updateData = { $set: { variant: variant, attribute_value: attribute_value, thumbnail, preview_image, main_images } }
+            const updateData = { $set: { variant: variant, attribute_value: attribute_value } }
 
             await VariantAttribute.updateOne(query, updateData);
 
