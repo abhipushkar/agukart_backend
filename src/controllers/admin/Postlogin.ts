@@ -133,6 +133,21 @@ const deleteFile = (filePath: string) => {
     });
 };
 
+const saveFile = async (file: any, cleanedName: string) => {
+  if (!file) return "";
+  const uploadDir = path.join("uploads", "variant");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+  const fullPath = path.join(uploadDir, cleanedName);
+
+  // If you want WebP conversion:
+  await convertToWebP(file.buffer, fullPath.replace(path.extname(cleanedName), ".webp"));
+  return process.env.ASSET_URL + "/uploads/variant/" + path.basename(fullPath.replace(path.extname(cleanedName), ".webp"));
+
+};
+
+
 export const addSlider = async (req: Request, resp: Response) => {
     try {
         if (!req.hasOwnProperty('file') && req.body._id === '0') {
@@ -1227,11 +1242,12 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             const previewFile = findFile(`variant_attr[${i}][preview_image]`);
             const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
 
-        const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
-    const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
-    const main_images = mainFiles.length
-    ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
-    : [];
+const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
+const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
+const main_images = mainFiles.length
+  ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
+  : [];
+
 
             await VariantAttribute.create({
             variant: variantId,
@@ -1266,12 +1282,12 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
             const previewFile = findFile(`variant_attr[${i}][preview_image]`);
             const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
+const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
+const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
+const main_images = mainFiles.length
+  ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
+  : [];
 
-            const thumbnail = thumbFile ? base_url + cleanFileName(thumbFile.filename, "thumbnail") : "";
-    const preview_image = previewFile ? base_url + cleanFileName(previewFile.filename, "preview_image") : "";
-    const main_images = mainFiles.length
-    ? mainFiles.map(f => base_url + cleanFileName(f.filename, "main_images"))
-    : [];
 
 
             if (attr._id && attr._id !== "new") {
