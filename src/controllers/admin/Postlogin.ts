@@ -1191,20 +1191,20 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         const findFile = (key: string) => files.find(f => f.fieldname === key);
         const findFiles = (key: string) => files.filter(f => f.fieldname === key);
 
-    const cleanFileName = (filename: string, fallback: string) => {
-    if (!filename) return "";
+        const cleanFileName = (filename: string, fallback: string) => {
+        if (!filename) return "";
 
-    const match = filename.match(/\[(preview_image|thumbnail|main_images)\](.*)/);
-    if (match) {
+        const match = filename.match(/\[(preview_image|thumbnail|main_images)\](.*)/);
+        if (match) {
         return match[1] + (match[2] || "");
-    }
+        }
 
-    let cleaned = filename.includes("]") ? filename.split("]").pop() || filename : filename;
-    if (cleaned.startsWith("-")) {
+        let cleaned = filename.includes("]") ? filename.split("]").pop() || filename : filename;
+        if (cleaned.startsWith("-")) {
         cleaned = fallback + cleaned;
-    }
-    return cleaned;
-    };
+        }
+        return cleaned;
+        };
 
 
         // check duplicate
@@ -1248,11 +1248,11 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             const previewFile = findFile(`variant_attr[${i}][preview_image]`);
             const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
 
-const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
-const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
-const main_images = mainFiles.length
-  ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
-  : [];
+        const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
+        const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
+        const main_images = mainFiles.length
+        ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
+        : [];
 
 
             await VariantAttribute.create({
@@ -1288,29 +1288,42 @@ const main_images = mainFiles.length
             const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
             const previewFile = findFile(`variant_attr[${i}][preview_image]`);
             const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
-const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
-const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
-const main_images = mainFiles.length
-  ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
-  : [];
-
-
+            const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
+            const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
+            const main_images = mainFiles.length
+            ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
+            : [];
 
             if (attr._id && attr._id !== "new") {
+            const existingAttr = await VariantAttribute.findById(attr._id);
+
+            const thumbnail = thumbFile
+            ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail"))
+            : existingAttr?.thumbnail || "";
+
+            const preview_image = previewFile
+            ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image"))
+            : existingAttr?.preview_image || "";
+
+            const main_images = mainFiles.length
+            ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
+            : existingAttr?.main_images || [];
+
             await VariantAttribute.updateOne(
-                { _id: attr._id },
-                {
-                $set: {
-                    attribute_value: attr.attr_name,
-                    sort_order: attr.sort_order,
-                    status: attr.status,
-                    thumbnail,
-                    preview_image,
-                    main_images,
-                },
-                }
+            { _id: attr._id },
+            {
+            $set: {
+            attribute_value: attr.attr_name,
+            sort_order: attr.sort_order,
+            status: attr.status,
+            thumbnail,
+            preview_image,
+            main_images,
+            },
+            }
             );
-            } else {
+            }
+            else {
             await VariantAttribute.create({
                 variant: variantId,
                 attribute_value: attr.attr_name,
