@@ -78,6 +78,7 @@ import CartCouponModel from "../../models/CartCoupon";
 import ParentCartModel from "../../models/ParentCart";
 import AddressModel from "../../models/Address";
 import _ from 'lodash';
+import { main } from "ts-node/dist/bin";
 dayjs.extend(duration);
 
 interface CustomRequest extends Request {
@@ -2479,15 +2480,39 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
         const variantData = productData.variant_data;
         const variantArr: any = [];
         variantData.map((data: any) => {
-            variantArr.push({ variant_name: data.variant_name })
+            variantArr.push({ variant_name: data.variant_name})
         })
         const variantAttrData = productData.variant_attr_data;
         const variantAttrArr: any = [];
         variantAttrData.map((data: any) => {
-            variantAttrArr.push({ attribute_value: data.attribute_value })
-        })
+            variantAttrArr.push({ 
+                _id: data._id,
+                attribute_value: data.attribute_value,
+                thumbnail: data.thumbnail,
+                preview_image: data.preview_image,
+                main_images: data.main_images || [],
+            });
+        });
         productData.variant_attr_data = variantAttrArr;
         productData.variant_data = variantArr;
+        if(productData?.combinationData){
+            productData.combinationData = productData.combinationData.map((combination: any) => {
+            return {
+                ...combination,
+                combinations: combination.combinations.map((comb: any) => {
+                const matchedAttr = variantAttrArr.find((a: any) =>
+                    comb.combIds.includes(String(a._id))
+                );
+                return {
+                    ...comb, 
+                    thumbnail: matchedAttr?.thumbnail || '',
+                    preview_image: matchedAttr?.preview_image || '',
+                    main_images: matchedAttr?.main_images || [],
+                };
+                }) 
+            };
+            });
+        }
         productData.sale_start_date = resp.locals.currentdate(productData.sale_start_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
         productData.sale_end_date = resp.locals.currentdate(productData.sale_end_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
         productData.restock_date = resp.locals.currentdate(productData.restock_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
