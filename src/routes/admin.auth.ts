@@ -302,7 +302,14 @@ routes.get('/get-child-category', getChildCategory)
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )
-routes.post('/add-product', addProduct)
+routes.post(
+  '/add-product',
+  (req, res, next) => {
+    (req as any).filepath = 'product';
+    next();
+  },
+  upload.any(), addProduct);
+
 routes.post('/upload-product-video', uploadProductVideo);
 routes.get('/get-active-occassion', getAllActiveOccassion);
 routes.post('/add-product-images', uploadImages);
