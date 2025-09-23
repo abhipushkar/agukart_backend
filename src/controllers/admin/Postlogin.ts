@@ -153,7 +153,58 @@ const saveFile = async (file: any, cleanedName: string) => {
   return process.env.ASSET_URL + "/uploads/variant/" + path.basename(fullPath);
 };
 
+const saveProductFile = async (file: any, cleanedName: string) => {
+  if (!file) return "";
 
+  const uploadDir = path.join("uploads", "product");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const parsed = path.parse(cleanedName);
+  const finalFileName = `${parsed.name}-${Date.now()}.webp`; 
+  const fullPath = path.join(uploadDir, finalFileName);
+
+  try {
+    await sharp(file.path).toFormat("webp").toFile(fullPath);
+  } catch (e) {
+    console.error("Sharp conversion failed, fallback saving raw file:", e);
+    await fs.promises.copyFile(file.path, fullPath);
+  }
+
+  return process.env.ASSET_URL + "/uploads/product/" + finalFileName;
+};
+
+function processTabs(tabs: any[]) {
+  return tabs.map((tab, idx) => {
+    if (
+      tab.description &&
+      typeof tab.description === "string" &&
+      tab.description.includes("data:image")
+    ) {
+      // ✅ extract base64
+      const match = tab.description.match(/data:image\/(.*?);base64,([^"]*)/);
+      if (match) {
+        const ext = match[1] || "png";
+        const base64Data = match[2];
+        const buffer = Buffer.from(base64Data, "base64");
+
+        // ✅ save to uploads/product/tabs/
+        const filename = `tab-${Date.now()}-${idx}.${ext}`;
+        const savePath = path.join("uploads", "product", "tabs", filename);
+        fs.mkdirSync(path.dirname(savePath), { recursive: true });
+        fs.writeFileSync(savePath, buffer);
+
+        // ✅ replace base64 with file URL
+        tab.description = tab.description.replace(
+          /data:image\/.*?;base64,[^"]*/g,
+          `${process.env.ASSET_URL}/uploads/product/tabs/${filename}`
+        );
+      }
+    }
+    return tab;
+  });
+}
 
 export const addSlider = async (req: Request, resp: Response) => {
     try {
@@ -1684,74 +1735,92 @@ export const getVariantAttribute = async (req: CustomRequest, resp: Response) =>
 }
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
-    try {
-        const data: any = {
-            category: req.body.category,
-            variant_id: req.body.variant_id,
-            bestseller: req.body.bestseller,
-            popular_gifts: req.body.popular_gifts,
-            variant_attribute_id: req.body.variant_attribute_id,
-            product_title: req.body.product_title,
-            product_type: req.body.product_type,
-            tax_ratio: req.body.tax_ratio,
-            bullet_points: Buffer.from(req.body.bullet_points, 'utf-8').toString('base64'),
-            description: Buffer.from(req.body.description, 'utf-8').toString('base64'),
-            customize: req.body.customize,
-            search_terms: req.body.search_terms,
-            launch_date: req.body.launch_date,
-            release_date: req.body.release_date,
-            vendor_id: req.body.vendor_id,
-            brand_id: req.body.brand_id,
-            sku_code: req.body.sku_code,
-            tax_code: req.body.tax_code,
-            shipping_templates: req.body.shipping_templates,
-            price: req.body.price,
-            sale_price: req.body.sale_price,
-            sale_start_date: req.body.sale_start_date,
-            sale_end_date: req.body.sale_end_date,
-            qty: req.body.qty,
-            max_order_qty: req.body.max_order_qty,
-            color: req.body.color,
-            can_offer: req.body.can_offer,
-            gift_wrap: req.body.gift_wrap,
-            restock_date: req.body.restock_date,
-            production_time: req.body.production_time,
-            gender: req.body.gender,
-            size: req.body.size,
-            size_map: req.body.size_map,
-            color_textarea: req.body.color_textarea,
-            color_map: req.body.color_map,
-            style_name: req.body.style_name,
-            shipping_weight: req.body.shipping_weight,
-            shipping_weight_unit: req.body.shipping_weight_unit,
-            display_dimension_length: req.body.display_dimension_length,
-            display_dimension_width: req.body.display_dimension_width,
-            display_dimension_height: req.body.display_dimension_height,
-            display_dimension_unit: req.body.display_dimension_unit,
-            package_dimension_height: req.body.package_dimension_height,
-            package_dimension_length: req.body.package_dimension_length,
-            package_dimension_width: req.body.package_dimension_width,
-            package_dimension_unit: req.body.package_dimension_unit,
-            package_weight: req.body.package_weight,
-            package_weight_unit: req.body.package_weight_unit,
-            unit_count: req.body.unit_count,
-            unit_count_type: req.body.unit_count_type,
-            how_product_made: req.body.how_product_made,
-            occasion: req.body.occasion,
-            design: req.body.design,
-            material: req.body.material,
-            product_size: req.body.product_size,
-            isCombination: req.body.isCombination,
-            combinationData: req.body.combinationData,
-            variations_data: req.body.variations_data,
-            form_values: req.body.form_values,
-            customizationData: req.body.customizationData,
-            tabs: req.body.tabs,
-            exchangePolicy: req.body.exchangePolicy,
-            zoom: req.body.zoom
-        }
+  try {
+    const files: any[] = (req.files as any[]) || [];
+    const findFile = (key: string) => files.find(f => f.fieldname === key);
+    const findFiles = (key: string) => files.filter(f => f.fieldname === key);
 
-        // if (req.body.sale_price > req.body.price) {
+    // helper to safely parse JSON from form-data
+    const parseJSON = (val: any, fallback: any) => {
+      try {
+        return typeof val === "string" ? JSON.parse(val) : val || fallback;
+      } catch {
+        return fallback;
+      }
+    };
+
+    const data: any = {
+      category: req.body.category,
+      variant_id: req.body.variant_id,
+      bestseller: req.body.bestseller,
+      popular_gifts: req.body.popular_gifts,
+      variant_attribute_id: req.body.variant_attribute_id,
+      product_title: req.body.product_title,
+      product_type: req.body.product_type,
+      tax_ratio: req.body.tax_ratio,
+      bullet_points: req.body.bullet_points
+        ? Buffer.from(req.body.bullet_points, "utf-8").toString("base64")
+        : "",
+      description: req.body.description
+        ? Buffer.from(req.body.description, "utf-8").toString("base64")
+        : "",
+      customize: req.body.customize,
+      search_terms: req.body.search_terms,
+      launch_date: req.body.launch_date,
+      release_date: req.body.release_date,
+      vendor_id: req.body.vendor_id,
+      brand_id: req.body.brand_id,
+      sku_code: req.body.sku_code,
+      tax_code: req.body.tax_code,
+      shipping_templates: req.body.shipping_templates,
+      price: req.body.price ? Number(req.body.price) : undefined,
+      sale_price: req.body.sale_price ? Number(req.body.sale_price) : undefined,
+      sale_start_date: req.body.sale_start_date,
+      sale_end_date: req.body.sale_end_date,
+      qty: req.body.qty ? Number(req.body.qty) : undefined,
+      max_order_qty: req.body.max_order_qty,
+      color: req.body.color,
+      can_offer: req.body.can_offer,
+      gift_wrap: req.body.gift_wrap,
+      restock_date: req.body.restock_date,
+      production_time: req.body.production_time,
+      gender: req.body.gender,
+      size: req.body.size,
+      size_map: req.body.size_map,
+      color_textarea: req.body.color_textarea,
+      color_map: req.body.color_map,
+      style_name: req.body.style_name,
+      shipping_weight: req.body.shipping_weight,
+      shipping_weight_unit: req.body.shipping_weight_unit,
+      display_dimension_length: req.body.display_dimension_length,
+      display_dimension_width: req.body.display_dimension_width,
+      display_dimension_height: req.body.display_dimension_height,
+      display_dimension_unit: req.body.display_dimension_unit,
+      package_dimension_height: req.body.package_dimension_height,
+      package_dimension_length: req.body.package_dimension_length,
+      package_dimension_width: req.body.package_dimension_width,
+      package_dimension_unit: req.body.package_dimension_unit,
+      package_weight: req.body.package_weight,
+      package_weight_unit: req.body.package_weight_unit,
+      unit_count: req.body.unit_count,
+      unit_count_type: req.body.unit_count_type,
+      how_product_made: req.body.how_product_made,
+      occasion: req.body.occasion,
+      design: req.body.design,
+      material: req.body.material,
+      product_size: req.body.product_size,
+      isCombination:
+        req.body.isCombination === "true" || req.body.isCombination === true,
+      combinationData: parseJSON(req.body.combinationData, []),
+      variations_data: parseJSON(req.body.variations_data, []),
+      form_values: parseJSON(req.body.form_values, {}),
+      customizationData: parseJSON(req.body.customizationData, {}),
+      tabs: parseJSON(req.body.tabs, []),
+      exchangePolicy: req.body.exchangePolicy,
+      zoom: parseJSON(req.body.zoom, {}),
+    };
+     
+     // if (req.body.sale_price > req.body.price) {
         //     return resp.status(400).json({ message: 'Sale price cannot be greater than price.', success: false });
         // }
         // let percentage = 0;
@@ -1759,56 +1828,258 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
         //     percentage = ((req.body.price - req.body.sale_price) / req.body.price) * 100;
         // }
         // data.discount = percentage;
+        
+    // 🔹 Process nested combinationData images
+    if (Array.isArray(data.combinationData)) {
+      data.combinationData = await Promise.all(
+        data.combinationData.map(async (variant: any, vIdx: number) => {
+          if (Array.isArray(variant.combinations)) {
+            variant.combinations = await Promise.all(
+              variant.combinations.map(async (comb: any, cIdx: number) => {
+                const combThumb = findFile(
+                  `combinationData[${vIdx}][combinations][${cIdx}][thumbnail]`
+                );
+                const combPreview = findFile(
+                  `combinationData[${vIdx}][combinations][${cIdx}][preview_image]`
+                );
+                const combMains = findFiles(
+                  `combinationData[${vIdx}][combinations][${cIdx}][main_images][]`
+                );
 
-        if (req.body._id == 'new') {
-            const existingCombination = await Product.findOne({ sku_code: req.body.sku_code });
+                return {
+                  ...comb,
+                  thumbnail: combThumb
+                    ? await saveProductFile(
+                        combThumb,
+                        `comb-thumb-${Date.now()}`
+                      )
+                    : comb.thumbnail ?? undefined,
 
-            if (existingCombination) {
-                return resp.status(400).json({ message: 'SKU Code already exists.', success: false });
-            }
-            data.draft_status = false;
-            const product = await Product.create(data);
+                  preview_image: combPreview
+                    ? await saveProductFile(
+                        combPreview,
+                        `comb-preview-${Date.now()}`
+                      )
+                    : comb.preview_image ?? undefined,
 
-            let cat = await CategoryModel.findById(req.body.category)
-            if (cat && product && req.body.category) {
-                const slug = slugify(`${cat.slug}-${String(product._id).padStart(4, '0')}`, {
-                    lower: true,   // Convert the slug to lowercase
-                    remove: /[*+~.()'"!:@]/g,  // Remove special characters
-                });
-                await Product.findByIdAndUpdate(product._id, { slug: slug });
-            }
-
-            await PromotionalOfferModel.updateMany({ purchased_items: 'Entire Catalog' }, { $push: { product_id: product._id } });
-
-            return resp.status(200).json({ message: 'Product created successfully.', product, success: true });
-        } else {
-
-            const existingCombination = await Product.findOne({ sku_code: req.body.sku_code, _id: { $ne: req.body._id } });
-
-            if (existingCombination) {
-                return resp.status(400).json({ message: 'SKU Code already exists.', success: false });
-            }
-
-            const query = { _id: req.body._id }
-
-            const updateData = { $set: data }
-
-            data.draft_status = false;
-
-            await Product.updateOne(query, updateData);
-
-            return resp.status(200).json({ message: 'Product updated successfully.' });
-        }
-
-
-
-    } catch (err) {
-        console.log(err)
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+                  main_images:
+                    combMains.length > 0
+                      ? await Promise.all(
+                          combMains.map((f, i) =>
+                            saveProductFile(f, `comb-main-${Date.now()}-${i}`)
+                          )
+                        )
+                      : comb.main_images ?? undefined,
+                };
+              })
+            );
+          }
+          return variant;
+        })
+      );
     }
 
+    // 🔹 variations_data
+    if (req.body.variations_data !== undefined) {
+      data.variations_data = parseJSON(req.body.variations_data, []);
+    }
 
-}
+    // 🔹 tabs
+    if (req.body.tabs !== undefined) {
+      data.tabs = parseJSON(req.body.tabs, []);
+    }
+
+    // 🔹 remove undefined fields
+    Object.keys(data).forEach((k) => {
+      if (data[k] === undefined) delete data[k];
+    });
+
+    // 🔹 Single images
+    if (findFile("thumbnail")) {
+      data.thumbnail = await saveProductFile(
+        findFile("thumbnail"),
+        "thumbnail-" + Date.now()
+      );
+    } else if (req.body.thumbnail !== undefined) {
+      data.thumbnail = req.body.thumbnail;
+    }
+
+    if (findFile("preview_image")) {
+      data.preview_image = await saveProductFile(
+        findFile("preview_image"),
+        "preview-" + Date.now()
+      );
+    } else if (req.body.preview_image !== undefined) {
+      data.preview_image = req.body.preview_image;
+    }
+
+    if (findFile("edit_preview_image")) {
+      data.edit_preview_image = await saveProductFile(
+        findFile("edit_preview_image"),
+        "edit-preview-" + Date.now()
+      );
+    } else if (req.body.edit_preview_image !== undefined) {
+      data.edit_preview_image = req.body.edit_preview_image;
+    }
+
+    // 🔹 Multiple images
+    if (findFiles("main_images").length > 0) {
+      data.main_images = await Promise.all(
+        findFiles("main_images").map((f, idx) =>
+          saveProductFile(f, `main-${Date.now()}-${idx}`)
+        )
+      );
+    } else if (req.body.main_images !== undefined) {
+      data.main_images = Array.isArray(req.body.main_images)
+        ? req.body.main_images
+        : [req.body.main_images];
+    }
+
+    if (findFile("edit_main_image")) {
+      data.edit_main_image = await saveProductFile(
+        findFile("edit_main_image"),
+        "edit-main-" + Date.now()
+      );
+    } else if (req.body.edit_main_image !== undefined) {
+      data.edit_main_image = req.body.edit_main_image;
+    }
+
+    // 🔹 Create or Update
+    if (req.body._id == "new") {
+      const existingCombination = await Product.findOne({
+        sku_code: req.body.sku_code,
+      });
+
+      if (existingCombination) {
+        return resp
+          .status(400)
+          .json({ message: "SKU Code already exists.", success: false });
+      }
+
+      data.draft_status = false;
+      const product = await Product.create(data);
+
+      let cat = await CategoryModel.findById(req.body.category);
+      if (cat && product && req.body.category) {
+        const slug = slugify(
+          `${cat.slug}-${String(product._id).padStart(4, "0")}`,
+          {
+            lower: true,
+            remove: /[*+~.()'"!:@]/g,
+          }
+        );
+        await Product.findByIdAndUpdate(product._id, { slug });
+      }
+
+      await PromotionalOfferModel.updateMany(
+        { purchased_items: "Entire Catalog" },
+        { $push: { product_id: product._id } }
+      );
+
+      return resp.status(200).json({
+        message: "Product created successfully.",
+        product,
+        success: true,
+      });
+    } else {
+      const existingCombination = await Product.findOne({
+        sku_code: req.body.sku_code,
+        _id: { $ne: req.body._id },
+      });
+
+      if (existingCombination) {
+        return resp
+          .status(400)
+          .json({ message: "SKU Code already exists.", success: false });
+      }
+
+      const existingProduct = await Product.findById(req.body._id);
+
+      // 🔹 Merge combinationData
+      if (req.body.combinationData !== undefined) {
+        const newCombinationData = parseJSON(req.body.combinationData, []);
+        if (existingProduct && Array.isArray(existingProduct.combinationData)) {
+          data.combinationData = existingProduct.combinationData.map(
+            (oldComb: any, idx: number) => {
+              const newComb = newCombinationData[idx] || {};
+              return {
+                ...oldComb,
+                ...newComb,
+                combinations: Array.isArray(oldComb.combinations)
+                  ? oldComb.combinations.map((oldSub: any, subIdx: number) => {
+                      const newSub =
+                        (newComb.combinations &&
+                          newComb.combinations[subIdx]) ||
+                        {};
+                      return {
+                        ...oldSub,
+                        thumbnail:
+                          "thumbnail" in newSub
+                            ? newSub.thumbnail
+                            : oldSub.thumbnail,
+                        preview_image:
+                          "preview_image" in newSub
+                            ? newSub.preview_image
+                            : oldSub.preview_image,
+                        main_images:
+                          "main_images" in newSub
+                            ? newSub.main_images
+                            : oldSub.main_images,
+                        ...Object.fromEntries(
+                          Object.entries(newSub).filter(
+                            ([k]) =>
+                              !["thumbnail", "preview_image", "main_images"].includes(
+                                k
+                              )
+                          )
+                        ),
+                      };
+                    })
+                  : newComb.combinations || [],
+              };
+            }
+          );
+        } else {
+          data.combinationData = newCombinationData;
+        }
+      }
+
+      // 🔹 Merge variations_data
+      if (req.body.variations_data !== undefined) {
+        const newVariations = parseJSON(req.body.variations_data, []);
+        data.variations_data = existingProduct?.variations_data
+          ? [...existingProduct.variations_data, ...newVariations]
+          : newVariations;
+      }
+
+      // 🔹 Tabs
+      if (req.body.tabs !== undefined) {
+        let newTabs = parseJSON(req.body.tabs, []);
+        newTabs = processTabs(newTabs);
+        data.tabs = newTabs;
+      }
+
+      data.draft_status = false;
+
+      Object.keys(data).forEach((k) => {
+        if (data[k] === undefined) delete data[k];
+      });
+
+      await Product.updateOne({ _id: req.body._id }, { $set: data });
+
+      return resp
+        .status(200)
+        .json({ message: "Product updated successfully." });
+    }
+  } catch (err) {
+    console.log(err);
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
+
+
 
 export const uploadProductVideo = async (req: Request, resp: Response) => {
     upload(req, resp, async function (err: any) {
@@ -2426,6 +2697,8 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
 
         const id = req.params.id;
 
+
+
         const pipeline: any = [
             {
                 '$match': {
@@ -2472,16 +2745,81 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
             }
         ]
 
-        const product = await Product.aggregate(pipeline);
-        const productData = product[0];
+const product = await Product.aggregate(pipeline);
+const productData = product[0];
 
-        if (!productData)
-            return resp.status(200).json({ message: "No Product Found ", productData: {} });
-        const variantData = productData.variant_data;
-        const variantArr: any = [];
-        variantData.map((data: any) => {
-            variantArr.push({ variant_name: data.variant_name})
-        })
+if (!productData)
+  return resp.status(200).json({ message: "No Product Found ", productData: {} });
+
+// 🔽 ADD THIS NORMALIZATION BLOCK HERE
+// --- Normalize combinationData ---
+if (typeof productData.combinationData === "string") {
+  try {
+    productData.combinationData = JSON.parse(productData.combinationData);
+  } catch (e) {
+    productData.combinationData = [];
+  }
+}
+if (!Array.isArray(productData.combinationData)) {
+  productData.combinationData = [];
+}
+
+// --- Normalize variations_data ---
+if (Array.isArray(productData.variations_data)) {
+  productData.variations_data = productData.variations_data.map((item: any) => {
+    if (typeof item === "string") {
+      try {
+        return JSON.parse(item);
+      } catch {
+        return item;
+      }
+    }
+    return item;
+  });
+} else if (typeof productData.variations_data === "string") {
+  try {
+    productData.variations_data = JSON.parse(productData.variations_data);
+  } catch {
+    productData.variations_data = [];
+  }
+}
+
+// --- Normalize form_values ---
+if (typeof productData.form_values === "string") {
+  try {
+    productData.form_values = JSON.parse(productData.form_values);
+  } catch {
+    productData.form_values = {};
+  }
+}
+
+// --- Normalize tabs ---
+if (Array.isArray(productData.tabs)) {
+  productData.tabs = productData.tabs.map((item: any) => {
+    if (typeof item === "string") {
+      try {
+        return JSON.parse(item);
+      } catch {
+        return item;
+      }
+    }
+    return item;
+  });
+} else if (typeof productData.tabs === "string") {
+  try {
+    productData.tabs = JSON.parse(productData.tabs);
+  } catch {
+    productData.tabs = [];
+  }
+}
+// 🔼 END NORMALIZATION BLOCK
+
+const variantData = productData.variant_data;
+const variantArr: any = [];
+variantData.map((data: any) => {
+  variantArr.push({ variant_name: data.variant_name })
+})
+
         const variantAttrData = productData.variant_attr_data;
         const variantAttrArr: any = [];
         variantAttrData.map((data: any) => {
@@ -2495,24 +2833,54 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
         });
         productData.variant_attr_data = variantAttrArr;
         productData.variant_data = variantArr;
-        if(productData?.combinationData){
-            productData.combinationData = productData.combinationData.map((combination: any) => {
-            return {
-                ...combination,
-                combinations: combination.combinations.map((comb: any) => {
-                const matchedAttr = variantAttrArr.find((a: any) =>
-                    comb.combIds.includes(String(a._id))
-                );
-                return {
-                    ...comb, 
-                    thumbnail: matchedAttr?.thumbnail || '',
-                    preview_image: matchedAttr?.preview_image || '',
-                    main_images: matchedAttr?.main_images || [],
-                };
-                }) 
-            };
-            });
-        }
+if (productData?.combinationData) {
+  productData.combinationData = productData.combinationData.map((combination: any) => {
+    return {
+      ...combination,
+      combinations: (combination.combinations || []).map((comb: any) => {
+        const matchedAttr = variantAttrArr.find((a: any) =>
+          Array.isArray(comb.combIds) && comb.combIds.includes(String(a._id))
+        );
+
+return {
+  ...comb,
+
+  // ✅ Always prefer product thumbnail if it exists (even empty string)
+  thumbnail:
+    comb.thumbnail !== undefined && comb.thumbnail !== null
+      ? comb.thumbnail
+      : matchedAttr?.thumbnail || "",
+
+  // ✅ Always prefer product preview if it exists
+  preview_image:
+    comb.preview_image !== undefined && comb.preview_image !== null
+      ? comb.preview_image
+      : matchedAttr?.preview_image || "",
+
+  // ✅ Keep DB edit preview if set
+  edit_preview_image:
+    comb.edit_preview_image !== undefined && comb.edit_preview_image !== null
+      ? comb.edit_preview_image
+      : "",
+
+  // ✅ Always prefer product main_images if exists
+  main_images:
+    comb.main_images !== undefined && comb.main_images !== null
+      ? comb.main_images
+      : matchedAttr?.main_images || [],
+
+  // ✅ Keep DB edit main if set
+  edit_main_image:
+    comb.edit_main_image !== undefined && comb.edit_main_image !== null
+      ? comb.edit_main_image
+      : "",
+};
+
+      }),
+    };
+  });
+}
+
         productData.sale_start_date = resp.locals.currentdate(productData.sale_start_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
         productData.sale_end_date = resp.locals.currentdate(productData.sale_end_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
         productData.restock_date = resp.locals.currentdate(productData.restock_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
@@ -2534,10 +2902,12 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
         productData.description = decodedDescription;
         productData.bullet_points = decodedBulletPoints;
 
+        console.log("product Data", productData);
+
         return resp.status(200).json({ message: "Product retrieved successfully.", productData });
 
     } catch (error) {
-
+         console.log(error);
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
 
     }
