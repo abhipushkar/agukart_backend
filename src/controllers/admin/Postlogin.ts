@@ -1,4 +1,5 @@
 import e, { Response, Request } from "express";
+import qs from "qs";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
@@ -6,6 +7,7 @@ import sharp from "sharp";
 import * as fs from 'fs';
 import * as path from 'path';
 import slugify from "slugify";
+import eventBus from "../../events";
 import User from '../../models/User';
 import Category from '../../models/Category';
 import Variant from '../../models/Variant';
@@ -85,6 +87,15 @@ interface CustomRequest extends Request {
     user?: any;
     files?: any;
 }
+
+// helper to safely parse JSON from form-data
+const parseJSON = (val: any, fallback: any) => {
+  try {
+    return typeof val === "string" ? JSON.parse(val) : val || fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 const storage1 = multer.memoryStorage();
 
@@ -1238,7 +1249,6 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         const variant_name = req.body.variant_name;
         const base_url = process.env.ASSET_URL + "/uploads/variant/";
         const files: any[] = (req.files as any[]) || [];
-        console.log("Uploaded files:", files.map(f => f.filename));
 
         const findFile = (key: string) => files.find(f => f.fieldname === key);
         const findFiles = (key: string) => files.filter(f => f.fieldname === key);
@@ -1266,6 +1276,7 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             .status(400)
             .json({ message: "Variant name already exists.", success: false });
         }
+        
 
         let variantId: any;
 
@@ -1326,12 +1337,36 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         // -------- UPDATE --------
         else {
         variantId = req.body._id;
-
+        
+        const existingVariant = await Variant.findById(variantId);
+        const oldName = existingVariant?.variant_name;
         if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) {
             await VariantAttribute.updateMany(
             { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } },
             { $set: { deleted_status: true, status: false } }
             );
+
+            // 🔹 Emit event for each soft-deleted attribute
+           for (const id of deletedStatusIds) {
+           const existingAttr = await VariantAttribute.findById(id);
+           if (existingAttr) {
+           let correctVariantName = existingVariant?.variant_name;
+           const sampleProduct = await Product.findOne({ variant_id: variantId }, { variations_data: 1 });
+           if (sampleProduct) {
+           const match = sampleProduct.variations_data.find(v =>
+           v.values.includes(existingAttr?.attribute_value)
+           );
+           if (match) correctVariantName = match.name;
+        }
+
+           eventBus.emit("attributeDeleted", {
+           id,
+           value: existingAttr?.attribute_value,
+           variantName: correctVariantName
+        });
+       }
+     }
+
         }
 
         for (let i = 0; i < variantAttr.length; i++) {
@@ -1348,6 +1383,22 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
             if (attr._id && attr._id !== "new") {
             const existingAttr = await VariantAttribute.findById(attr._id);
+
+            // find correct variantName from Product
+            let correctVariantName = existingVariant?.variant_name;
+            const sampleProduct = await Product.findOne(
+            { variant_id: variantId },
+            { variations_data: 1 }
+          );
+
+            if (sampleProduct) {
+            const match = sampleProduct.variations_data.find(v =>
+            v.values.includes(existingAttr?.attribute_value)
+          );
+          if (match) {
+          correctVariantName = match.name; // <-- "Stone"
+          }
+        }
 
             const thumbnail = thumbFile
             ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail"))
@@ -1374,6 +1425,8 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             },
             }
             );
+            // 🔹 Emit event for Attribute update
+            eventBus.emit("attributeUpdated", { id: attr._id, value: attr.attr_name, oldValue: existingAttr?.attribute_value, variantName: correctVariantName });
             }
             else {
             await VariantAttribute.create({
@@ -1389,6 +1442,9 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         }
 
         await Variant.updateOne({ _id: variantId }, { $set: { variant_name } });
+
+        // 🔹 Emit event for Variant update
+        eventBus.emit("variantUpdated", { id: variantId, oldName, name: variant_name });
 
         return resp.status(200).json({ message: "Variant updated successfully." });
         }
@@ -1736,18 +1792,11 @@ export const getVariantAttribute = async (req: CustomRequest, resp: Response) =>
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
+
+    req.body = qs.parse(req.body, { allowDots: true, depth: 20, arrayLimit: 100 });
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
-
-    // helper to safely parse JSON from form-data
-    const parseJSON = (val: any, fallback: any) => {
-      try {
-        return typeof val === "string" ? JSON.parse(val) : val || fallback;
-      } catch {
-        return fallback;
-      }
-    };
 
     const data: any = {
       category: req.body.category,
@@ -1811,7 +1860,7 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
       product_size: req.body.product_size,
       isCombination:
         req.body.isCombination === "true" || req.body.isCombination === true,
-      combinationData: parseJSON(req.body.combinationData, []),
+      combinationData: req.body.combinationData || [],
       variations_data: parseJSON(req.body.variations_data, []),
       form_values: parseJSON(req.body.form_values, {}),
       customizationData: parseJSON(req.body.customizationData, {}),
@@ -1828,14 +1877,17 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
         //     percentage = ((req.body.price - req.body.sale_price) / req.body.price) * 100;
         // }
         // data.discount = percentage;
-        
+
     // 🔹 Process nested combinationData images
     if (Array.isArray(data.combinationData)) {
       data.combinationData = await Promise.all(
         data.combinationData.map(async (variant: any, vIdx: number) => {
-          if (Array.isArray(variant.combinations)) {
-            variant.combinations = await Promise.all(
-              variant.combinations.map(async (comb: any, cIdx: number) => {
+          let combinations = variant.combinations;
+          if (!Array.isArray(combinations)) {
+            combinations = combinations ? [combinations] : [];
+          }
+            combinations = await Promise.all(
+              combinations.map(async (comb: any, cIdx: number) => {
                 const combThumb = findFile(
                   `combinationData[${vIdx}][combinations][${cIdx}][thumbnail]`
                 );
@@ -1845,9 +1897,16 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
                 const combMains = findFiles(
                   `combinationData[${vIdx}][combinations][${cIdx}][main_images][]`
                 );
+                            const combEditMain = findFile(
+              `combinationData[${vIdx}][combinations][${cIdx}][edit_main_image]`
+            );
+            const combEditPreview = findFile(
+              `combinationData[${vIdx}][combinations][${cIdx}][edit_preview_image]`
+            );
 
                 return {
                   ...comb,
+                  combIds: comb.combIds || [],
                   thumbnail: combThumb
                     ? await saveProductFile(
                         combThumb,
@@ -1870,11 +1929,20 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
                           )
                         )
                       : comb.main_images ?? undefined,
+                                edit_main_image: combEditMain
+                ? await saveProductFile(combEditMain, `edit-main-${Date.now()}`)
+                : (typeof comb.edit_main_image === "string" ? comb.edit_main_image : ""),
+
+              edit_preview_image: combEditPreview
+                ? await saveProductFile(combEditPreview, `edit-preview-${Date.now()}`)
+                : (typeof comb.edit_preview_image === "string" ? comb.edit_preview_image : ""),
                 };
               })
             );
-          }
-          return variant;
+          
+          return{ ...variant,
+            combinations
+          };
         })
       );
     }
@@ -1883,7 +1951,6 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
     if (req.body.variations_data !== undefined) {
       data.variations_data = parseJSON(req.body.variations_data, []);
     }
-
     // 🔹 tabs
     if (req.body.tabs !== undefined) {
       data.tabs = parseJSON(req.body.tabs, []);
@@ -1997,60 +2064,46 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
 
       // 🔹 Merge combinationData
       if (req.body.combinationData !== undefined) {
-        const newCombinationData = parseJSON(req.body.combinationData, []);
-        if (existingProduct && Array.isArray(existingProduct.combinationData)) {
-          data.combinationData = existingProduct.combinationData.map(
-            (oldComb: any, idx: number) => {
-              const newComb = newCombinationData[idx] || {};
+      const newCombinationData = data.combinationData || [];
+
+      if (
+      existingProduct &&
+      Array.isArray(existingProduct.combinationData) &&
+      existingProduct.combinationData.length > 0
+      ) {
+      data.combinationData = newCombinationData.map((newComb: any, idx: number) => {
+      const oldComb = existingProduct.combinationData[idx] || {};
+      return {
+        ...oldComb,
+        ...newComb,
+        combinations: Array.isArray(newComb.combinations)
+          ? newComb.combinations.map((newSub: any, subIdx: number) => {
+              const oldSub =
+                (oldComb.combinations && oldComb.combinations[subIdx]) || {};
               return {
-                ...oldComb,
-                ...newComb,
-                combinations: Array.isArray(oldComb.combinations)
-                  ? oldComb.combinations.map((oldSub: any, subIdx: number) => {
-                      const newSub =
-                        (newComb.combinations &&
-                          newComb.combinations[subIdx]) ||
-                        {};
-                      return {
-                        ...oldSub,
-                        thumbnail:
-                          "thumbnail" in newSub
-                            ? newSub.thumbnail
-                            : oldSub.thumbnail,
-                        preview_image:
-                          "preview_image" in newSub
-                            ? newSub.preview_image
-                            : oldSub.preview_image,
-                        main_images:
-                          "main_images" in newSub
-                            ? newSub.main_images
-                            : oldSub.main_images,
-                        ...Object.fromEntries(
-                          Object.entries(newSub).filter(
-                            ([k]) =>
-                              !["thumbnail", "preview_image", "main_images"].includes(
-                                k
-                              )
-                          )
-                        ),
-                      };
-                    })
-                  : newComb.combinations || [],
+                ...oldSub,
+                ...newSub,
+                thumbnail: newSub.thumbnail ?? oldSub.thumbnail,
+                preview_image: newSub.preview_image ?? oldSub.preview_image,
+                main_images: newSub.main_images ?? oldSub.main_images,
+                edit_main_image: newSub.edit_main_image ?? oldSub.edit_main_image,
+                edit_preview_image:
+                  newSub.edit_preview_image ?? oldSub.edit_preview_image,
               };
-            }
-          );
-        } else {
-          data.combinationData = newCombinationData;
-        }
-      }
+            })
+          : oldComb.combinations || [],
+        };
+       });
+      } else {
+       data.combinationData = newCombinationData;
+    }
+    }
 
       // 🔹 Merge variations_data
-      if (req.body.variations_data !== undefined) {
-        const newVariations = parseJSON(req.body.variations_data, []);
-        data.variations_data = existingProduct?.variations_data
-          ? [...existingProduct.variations_data, ...newVariations]
-          : newVariations;
-      }
+     if (req.body.variations_data !== undefined) {
+    data.variations_data = parseJSON(req.body.variations_data, []);
+    }
+
 
       // 🔹 Tabs
       if (req.body.tabs !== undefined) {
@@ -2065,7 +2118,7 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
         if (data[k] === undefined) delete data[k];
       });
 
-      await Product.updateOne({ _id: req.body._id }, { $set: data });
+      await Product.updateOne({ _id: req.body._id }, { $set: {...data, combinationData: data.combinationData, },});
 
       return resp
         .status(200)
@@ -2692,227 +2745,231 @@ export const deleteProduct = async (req: CustomRequest, resp: Response) => {
 }
 
 export const editProduct = async (req: CustomRequest, resp: Response) => {
+  try {
+    const id = req.params.id;
 
+    const pipeline: any = [
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(id),
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "category",
+          foreignField: "_id",
+          as: "category_data",
+        },
+      },
+      { $unwind: { path: "$category_data", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "variants",
+          localField: "variant_id",
+          foreignField: "_id",
+          as: "variant_data",
+        },
+      },
+      {
+        $lookup: {
+          from: "brands",
+          localField: "brand_id",
+          foreignField: "_id",
+          as: "brand_data",
+        },
+      },
+      { $unwind: { path: "$brand_data", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "variantattributes",
+          localField: "variant_attribute_id",
+          foreignField: "_id",
+          as: "variant_attr_data",
+        },
+      },
+    ];
+
+    const product = await Product.aggregate(pipeline);
+    const productData = product[0];
+
+    if (!productData) {
+      return resp
+        .status(200)
+        .json({ message: "No Product Found", productData: {} });
+    }
+
+    // --- Normalize combinationData ---
+    if (typeof productData.combinationData === "string") {
     try {
-
-        const id = req.params.id;
-
-
-
-        const pipeline: any = [
-            {
-                '$match': {
-                    '_id': new mongoose.Types.ObjectId(id),
-                }
-            }, {
-                '$lookup': {
-                    'from': 'categories',
-                    'localField': 'category',
-                    'foreignField': '_id',
-                    'as': 'category_data'
-                }
-            }, {
-                '$unwind': {
-                    'path': '$category_data',
-                    'preserveNullAndEmptyArrays': true
-                }
-            }, {
-                '$lookup': {
-                    'from': 'variants',
-                    'localField': 'variant_id',
-                    'foreignField': '_id',
-                    'as': 'variant_data'
-                }
-            }, {
-                '$lookup': {
-                    'from': 'brands',
-                    'localField': 'brand_id',
-                    'foreignField': '_id',
-                    'as': 'brand_data'
-                }
-            }, {
-                '$unwind': {
-                    'path': '$brand_data',
-                    'preserveNullAndEmptyArrays': true
-                }
-            }, {
-                '$lookup': {
-                    'from': 'variantattributes',
-                    'localField': 'variant_attribute_id',
-                    'foreignField': '_id',
-                    'as': 'variant_attr_data'
-                }
-            }
-        ]
-
-const product = await Product.aggregate(pipeline);
-const productData = product[0];
-
-if (!productData)
-  return resp.status(200).json({ message: "No Product Found ", productData: {} });
-
-// 🔽 ADD THIS NORMALIZATION BLOCK HERE
-// --- Normalize combinationData ---
-if (typeof productData.combinationData === "string") {
-  try {
     productData.combinationData = JSON.parse(productData.combinationData);
-  } catch (e) {
+    } catch {
     productData.combinationData = [];
-  }
-}
-if (!Array.isArray(productData.combinationData)) {
-  productData.combinationData = [];
-}
+   }
+   }
+   if (
+   !Array.isArray(productData.combinationData) &&
+   typeof productData.combinationData !== "object"
+   ) {
+     productData.combinationData = [];
+   }
 
-// --- Normalize variations_data ---
-if (Array.isArray(productData.variations_data)) {
-  productData.variations_data = productData.variations_data.map((item: any) => {
-    if (typeof item === "string") {
+    // --- Normalize variations_data ---
+    if (Array.isArray(productData.variations_data)) {
+      productData.variations_data = productData.variations_data.map(
+        (item: any) => {
+          if (typeof item === "string") {
+            try {
+              return JSON.parse(item);
+            } catch {
+              return item;
+            }
+          }
+          return item;
+        }
+      );
+    } else if (typeof productData.variations_data === "string") {
       try {
-        return JSON.parse(item);
+        productData.variations_data = JSON.parse(productData.variations_data);
       } catch {
-        return item;
+        productData.variations_data = [];
       }
     }
-    return item;
-  });
-} else if (typeof productData.variations_data === "string") {
-  try {
-    productData.variations_data = JSON.parse(productData.variations_data);
-  } catch {
-    productData.variations_data = [];
-  }
-}
 
-// --- Normalize form_values ---
-if (typeof productData.form_values === "string") {
-  try {
-    productData.form_values = JSON.parse(productData.form_values);
-  } catch {
-    productData.form_values = {};
-  }
-}
-
-// --- Normalize tabs ---
-if (Array.isArray(productData.tabs)) {
-  productData.tabs = productData.tabs.map((item: any) => {
-    if (typeof item === "string") {
+    // --- Normalize form_values ---
+    if (typeof productData.form_values === "string") {
       try {
-        return JSON.parse(item);
+        productData.form_values = JSON.parse(productData.form_values);
       } catch {
-        return item;
+        productData.form_values = {};
       }
     }
-    return item;
-  });
-} else if (typeof productData.tabs === "string") {
-  try {
-    productData.tabs = JSON.parse(productData.tabs);
-  } catch {
-    productData.tabs = [];
+
+    // --- Normalize tabs ---
+    if (Array.isArray(productData.tabs)) {
+      productData.tabs = productData.tabs.map((item: any) => {
+        if (typeof item === "string") {
+          try {
+            return JSON.parse(item);
+          } catch {
+            return item;
+          }
+        }
+        return item;
+      });
+    } else if (typeof productData.tabs === "string") {
+      try {
+        productData.tabs = JSON.parse(productData.tabs);
+      } catch {
+        productData.tabs = [];
+      }
+    }
+
+    // --- Variant + Attribute restructuring ---
+    const variantArr = productData.variant_data.map((data: any) => ({
+      variant_name: data.variant_name,
+    }));
+
+    const variantAttrArr = productData.variant_attr_data.map((data: any) => ({
+      _id: data._id,
+      attribute_value: data.attribute_value,
+      thumbnail: data.thumbnail,
+      preview_image: data.preview_image,
+      main_images: data.main_images || [],
+    }));
+
+    productData.variant_data = variantArr;
+    productData.variant_attr_data = variantAttrArr;
+
+    // --- Map combinationData with attributes ---
+    if (productData?.combinationData) {
+      productData.combinationData = productData.combinationData.map(
+        (combination: any) => ({
+          ...combination,
+          combinations: (combination.combinations || []).map((comb: any) => {
+            const matchedAttr = variantAttrArr.find(
+              (a: any) =>
+                Array.isArray(comb.combIds) &&
+                comb.combIds.includes(String(a._id))
+            );
+
+            return {
+              ...comb,
+              thumbnail:
+                comb.thumbnail !== undefined && comb.thumbnail !== null
+                  ? comb.thumbnail
+                  : matchedAttr?.thumbnail || "",
+              preview_image:
+                comb.preview_image !== undefined && comb.preview_image !== null
+                  ? comb.preview_image
+                  : matchedAttr?.preview_image || "",
+              edit_preview_image: comb.edit_preview_image && comb.edit_preview_image !== "{}" ? comb.edit_preview_image
+               : comb.edit_preview_image || "",
+              main_images:
+                comb.main_images !== undefined && comb.main_images !== null
+                  ? comb.main_images
+                  : matchedAttr?.main_images || [],
+              edit_main_image: comb.edit_main_image && comb.edit_main_image !== "{}" ? comb.edit_main_image
+                : comb.edit_main_image || "",
+            };
+          }),
+        })
+      );
+    }
+
+    // --- Format dates ---
+    productData.sale_start_date = resp.locals
+      .currentdate(productData.sale_start_date)
+      .tz("Asia/Kolkata")
+      .format("DD-MM-YYYY HH:mm:ss");
+    productData.sale_end_date = resp.locals
+      .currentdate(productData.sale_end_date)
+      .tz("Asia/Kolkata")
+      .format("DD-MM-YYYY HH:mm:ss");
+    productData.restock_date = resp.locals
+      .currentdate(productData.restock_date)
+      .tz("Asia/Kolkata")
+      .format("DD-MM-YYYY HH:mm:ss");
+    productData.launch_date = resp.locals
+      .currentdate(productData.launch_date)
+      .tz("Asia/Kolkata")
+      .format("DD-MM-YYYY HH:mm:ss");
+    productData.release_date = resp.locals
+      .currentdate(productData.release_date)
+      .tz("Asia/Kolkata")
+      .format("DD-MM-YYYY HH:mm:ss");
+
+    // --- Base URLs ---
+    productData.imageBaseUrl =
+      productData.image.length > 0
+        ? process.env.ASSET_URL + "/uploads/product/"
+        : "";
+    productData.videoBaseUrl =
+      productData.videos.length > 0
+        ? process.env.ASSET_URL + "/uploads/video/"
+        : "";
+
+    // --- Decode text fields ---
+    productData.bullet_points = Buffer.from(
+      productData.bullet_points,
+      "base64"
+    ).toString("utf-8");
+    productData.description = Buffer.from(
+      productData.description,
+      "base64"
+    ).toString("utf-8");
+
+    return resp.status(200).json({
+      message: "Product retrieved successfully.",
+      productData,
+    });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
   }
-}
-// 🔼 END NORMALIZATION BLOCK
-
-const variantData = productData.variant_data;
-const variantArr: any = [];
-variantData.map((data: any) => {
-  variantArr.push({ variant_name: data.variant_name })
-})
-
-        const variantAttrData = productData.variant_attr_data;
-        const variantAttrArr: any = [];
-        variantAttrData.map((data: any) => {
-            variantAttrArr.push({ 
-                _id: data._id,
-                attribute_value: data.attribute_value,
-                thumbnail: data.thumbnail,
-                preview_image: data.preview_image,
-                main_images: data.main_images || [],
-            });
-        });
-        productData.variant_attr_data = variantAttrArr;
-        productData.variant_data = variantArr;
-if (productData?.combinationData) {
-  productData.combinationData = productData.combinationData.map((combination: any) => {
-    return {
-      ...combination,
-      combinations: (combination.combinations || []).map((comb: any) => {
-        const matchedAttr = variantAttrArr.find((a: any) =>
-          Array.isArray(comb.combIds) && comb.combIds.includes(String(a._id))
-        );
-
-return {
-  ...comb,
-
-  // ✅ Always prefer product thumbnail if it exists (even empty string)
-  thumbnail:
-    comb.thumbnail !== undefined && comb.thumbnail !== null
-      ? comb.thumbnail
-      : matchedAttr?.thumbnail || "",
-
-  // ✅ Always prefer product preview if it exists
-  preview_image:
-    comb.preview_image !== undefined && comb.preview_image !== null
-      ? comb.preview_image
-      : matchedAttr?.preview_image || "",
-
-  // ✅ Keep DB edit preview if set
-  edit_preview_image:
-    comb.edit_preview_image !== undefined && comb.edit_preview_image !== null
-      ? comb.edit_preview_image
-      : "",
-
-  // ✅ Always prefer product main_images if exists
-  main_images:
-    comb.main_images !== undefined && comb.main_images !== null
-      ? comb.main_images
-      : matchedAttr?.main_images || [],
-
-  // ✅ Keep DB edit main if set
-  edit_main_image:
-    comb.edit_main_image !== undefined && comb.edit_main_image !== null
-      ? comb.edit_main_image
-      : "",
 };
 
-      }),
-    };
-  });
-}
-
-        productData.sale_start_date = resp.locals.currentdate(productData.sale_start_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
-        productData.sale_end_date = resp.locals.currentdate(productData.sale_end_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
-        productData.restock_date = resp.locals.currentdate(productData.restock_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
-        productData.launch_date = resp.locals.currentdate(productData.launch_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
-        productData.release_date = resp.locals.currentdate(productData.release_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss');
-        let imageBaseUrl = '';
-        let videoBaseUrl = '';
-        if (productData.image.length > 0) {
-            imageBaseUrl = process.env.ASSET_URL + '/uploads/product/';
-        }
-        if (productData.videos.length > 0) {
-            videoBaseUrl = process.env.ASSET_URL + '/uploads/video/';
-        }
-        productData.imageBaseUrl = imageBaseUrl;
-        productData.videoBaseUrl = videoBaseUrl;
-        const decodedBulletPoints = Buffer.from(productData.bullet_points, 'base64').toString('utf-8');
-        const decodedDescription = Buffer.from(productData.description, 'base64').toString('utf-8');
-
-        productData.description = decodedDescription;
-        productData.bullet_points = decodedBulletPoints;
-
-        console.log("product Data", productData);
-
-        return resp.status(200).json({ message: "Product retrieved successfully.", productData });
-
-    } catch (error) {
-         console.log(error);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-
-    }
-
-}
 
 export const getActivePolicy = async (req: CustomRequest, resp: Response) => {
 
@@ -9370,105 +9427,240 @@ export const copySameProduct = async (req: CustomRequest, res: Response) => {
 };
 
 export const addDraftProduct = async (req: CustomRequest, res: Response) => {
-    try {
-        const data: any = {
-            category: req.body.category,
-            variant_id: req.body.variant_id,
-            bestseller: req.body.bestseller,
-            popular_gifts: req.body.popular_gifts,
-            variant_attribute_id: req.body.variant_attribute_id,
-            product_title: req.body.product_title,
-            product_type: req.body.product_type,
-            tax_ratio: req.body.tax_ratio,
-            bullet_points: Buffer.from(req.body.bullet_points, 'utf-8').toString('base64'),
-            description: Buffer.from(req.body.description, 'utf-8').toString('base64'),
-            customize: req.body.customize,
-            search_terms: req.body.search_terms,
-            launch_date: req.body.launch_date,
-            release_date: req.body.release_date,
-            vendor_id: req.body.vendor_id,
-            brand_id: req.body.brand_id,
-            sku_code: req.body.sku_code,
-            tax_code: req.body.tax_code,
-            shipping_templates: req.body.shipping_templates,
-            price: req.body.price,
-            sale_price: req.body.sale_price,
-            sale_start_date: req.body.sale_start_date,
-            sale_end_date: req.body.sale_end_date,
-            qty: req.body.qty,
-            max_order_qty: req.body.max_order_qty,
-            color: req.body.color,
-            can_offer: req.body.can_offer,
-            gift_wrap: req.body.gift_wrap,
-            restock_date: req.body.restock_date,
-            production_time: req.body.production_time,
-            gender: req.body.gender,
-            size: req.body.size,
-            size_map: req.body.size_map,
-            color_textarea: req.body.color_textarea,
-            color_map: req.body.color_map,
-            style_name: req.body.style_name,
-            shipping_weight: req.body.shipping_weight,
-            shipping_weight_unit: req.body.shipping_weight_unit,
-            display_dimension_length: req.body.display_dimension_length,
-            display_dimension_width: req.body.display_dimension_width,
-            display_dimension_height: req.body.display_dimension_height,
-            display_dimension_unit: req.body.display_dimension_unit,
-            package_dimension_height: req.body.package_dimension_height,
-            package_dimension_length: req.body.package_dimension_length,
-            package_dimension_width: req.body.package_dimension_width,
-            package_dimension_unit: req.body.package_dimension_unit,
-            package_weight: req.body.package_weight,
-            package_weight_unit: req.body.package_weight_unit,
-            unit_count: req.body.unit_count,
-            unit_count_type: req.body.unit_count_type,
-            how_product_made: req.body.how_product_made,
-            occasion: req.body.occasion,
-            design: req.body.design,
-            material: req.body.material,
-            product_size: req.body.product_size,
-            isCombination: req.body.isCombination,
-            combinationData: req.body.combinationData,
-            variations_data: req.body.variations_data,
-            form_values: req.body.form_values,
-            customizationData: req.body.customizationData,
-            tabs: req.body.tabs,
-            exchangePolicy: req.body.exchangePolicy,
-            zoom: req.body.zoom,
+  try {
+    req.body = qs.parse(req.body, { allowDots: true, depth: 20, arrayLimit: 100 });
+    const files: any[] = (req.files as any[]) || [];
+    const findFile = (key: string) => files.find(f => f.fieldname === key);
+    const findFiles = (key: string) => files.filter(f => f.fieldname === key);
+
+    const parseJSON = (val: any, fallback: any) => {
+      try {
+        return typeof val === "string" ? JSON.parse(val) : val || fallback;
+      } catch {
+        return fallback;
+      }
+    };
+
+    const data: any = {
+      category: req.body.category,
+      variant_id: req.body.variant_id,
+      bestseller: req.body.bestseller,
+      popular_gifts: req.body.popular_gifts,
+      variant_attribute_id: req.body.variant_attribute_id,
+      product_title: req.body.product_title,
+      product_type: req.body.product_type,
+      tax_ratio: req.body.tax_ratio,
+      bullet_points: req.body.bullet_points
+        ? Buffer.from(req.body.bullet_points, "utf-8").toString("base64")
+        : "",
+      description: req.body.description
+        ? Buffer.from(req.body.description, "utf-8").toString("base64")
+        : "",
+      customize: req.body.customize,
+      search_terms: req.body.search_terms,
+      launch_date: req.body.launch_date,
+      release_date: req.body.release_date,
+      vendor_id: req.body.vendor_id,
+      brand_id: req.body.brand_id,
+      sku_code: req.body.sku_code,
+      tax_code: req.body.tax_code,
+      shipping_templates: req.body.shipping_templates,
+      price: req.body.price ? Number(req.body.price) : undefined,
+      sale_price: req.body.sale_price ? Number(req.body.sale_price) : undefined,
+      sale_start_date: req.body.sale_start_date,
+      sale_end_date: req.body.sale_end_date,
+      qty: req.body.qty ? Number(req.body.qty) : undefined,
+      max_order_qty: req.body.max_order_qty,
+      color: req.body.color,
+      can_offer: req.body.can_offer,
+      gift_wrap: req.body.gift_wrap,
+      restock_date: req.body.restock_date,
+      production_time: req.body.production_time,
+      gender: req.body.gender,
+      size: req.body.size,
+      size_map: req.body.size_map,
+      color_textarea: req.body.color_textarea,
+      color_map: req.body.color_map,
+      style_name: req.body.style_name,
+      shipping_weight: req.body.shipping_weight,
+      shipping_weight_unit: req.body.shipping_weight_unit,
+      display_dimension_length: req.body.display_dimension_length,
+      display_dimension_width: req.body.display_dimension_width,
+      display_dimension_height: req.body.display_dimension_height,
+      display_dimension_unit: req.body.display_dimension_unit,
+      package_dimension_height: req.body.package_dimension_height,
+      package_dimension_length: req.body.package_dimension_length,
+      package_dimension_width: req.body.package_dimension_width,
+      package_dimension_unit: req.body.package_dimension_unit,
+      package_weight: req.body.package_weight,
+      package_weight_unit: req.body.package_weight_unit,
+      unit_count: req.body.unit_count,
+      unit_count_type: req.body.unit_count_type,
+      how_product_made: req.body.how_product_made,
+      occasion: req.body.occasion,
+      design: req.body.design,
+      material: req.body.material,
+      product_size: req.body.product_size,
+      isCombination:
+        req.body.isCombination === "true" || req.body.isCombination === true,
+      combinationData: parseJSON(req.body.combinationData, []),
+      variations_data: parseJSON(req.body.variations_data, []),
+      form_values: parseJSON(req.body.form_values, {}),
+      customizationData: parseJSON(req.body.customizationData, {}),
+      tabs: parseJSON(req.body.tabs, []),
+      exchangePolicy: req.body.exchangePolicy,
+      zoom: parseJSON(req.body.zoom, {}),
+    };
+
+    // 🔹 Process nested combinationData images
+    if (Array.isArray(data.combinationData)) {
+      data.combinationData = await Promise.all(
+        data.combinationData.map(async (variant: any, vIdx: number) => {
+        let combinations = variant.combinations;
+        if (!Array.isArray(combinations)) {
+           combinations = combinations ? [combinations] : [];
         }
+            combinations = await Promise.all(
+              combinations.map(async (comb: any, cIdx: number) => {
+                const combThumb = findFile(
+                  `combinationData[${vIdx}][combinations][${cIdx}][thumbnail]`
+                );
+                const combPreview = findFile(
+                  `combinationData[${vIdx}][combinations][${cIdx}][preview_image]`
+                );
+                const combMains = findFiles(
+                  `combinationData[${vIdx}][combinations][${cIdx}][main_images][]`
+                );
 
-        if (req.body._id == 'new') {
-            // const existingCombination = await Product.findOne({ sku_code: req.body.sku_code });
-
-            // if (existingCombination) {
-            //     return res.status(400).json({ message: 'SKU Code already exists.', success: false });
-            // }
-            data.draft_status = true;
-            const product = await Product.create(data);
-            product.status = false;
-
-            let cat = await CategoryModel.findById(req.body.category)
-            if (cat && product && req.body.category) {
-                const slug = slugify(`${cat.slug}-${String(product._id).padStart(4, '0')}`, {
-                    lower: true,
-                    remove: /[*+~.()'"!:@]/g,
-                });
-                await Product.findByIdAndUpdate(product._id, { slug: slug });
-            }
-
-            await PromotionalOfferModel.updateMany({ purchased_items: 'Entire Catalog' }, { $push: { product_id: product._id } });
-
-            return res.status(200).json({ message: 'Product created successfully.', product, success: true });
-        } else {
-            const product = await Product.findByIdAndUpdate(req.body._id, { ...data, draft_status: true }, { new: true });
-
-            return res.status(200).json({ message: 'Product updated successfully.', product, success: true });
-        }
-    } catch (error) {
-        console.error('Error creating/updating product:', error);
-        return res.status(500).json({ message: 'Something went wrong. Please try again.' });
+                return {
+                  ...comb,
+                  thumbnail: combThumb
+                    ? await saveProductFile(
+                        combThumb,
+                        `comb-thumb-${Date.now()}`
+                      )
+                    : comb.thumbnail ?? undefined,
+                  preview_image: combPreview
+                    ? await saveProductFile(
+                        combPreview,
+                        `comb-preview-${Date.now()}`
+                      )
+                    : comb.preview_image ?? undefined,
+                  main_images:
+                    combMains.length > 0
+                      ? await Promise.all(
+                          combMains.map((f, i) =>
+                            saveProductFile(f, `comb-main-${Date.now()}-${i}`)
+                          )
+                        )
+                      : comb.main_images ?? undefined,
+                };
+              })
+            );
+          return variant;
+        })
+      );
     }
-}
+
+    // 🔹 Handle single images
+    if (findFile("thumbnail")) {
+      data.thumbnail = await saveProductFile(
+        findFile("thumbnail"),
+        "thumbnail-" + Date.now()
+      );
+    } else if (req.body.thumbnail !== undefined) {
+      data.thumbnail = req.body.thumbnail;
+    }
+
+    if (findFile("preview_image")) {
+      data.preview_image = await saveProductFile(
+        findFile("preview_image"),
+        "preview-" + Date.now()
+      );
+    } else if (req.body.preview_image !== undefined) {
+      data.preview_image = req.body.preview_image;
+    }
+
+    if (findFile("edit_preview_image")) {
+      data.edit_preview_image = await saveProductFile(
+        findFile("edit_preview_image"),
+        "edit-preview-" + Date.now()
+      );
+    } else if (req.body.edit_preview_image !== undefined) {
+      data.edit_preview_image = req.body.edit_preview_image;
+    }
+
+    if (findFiles("main_images").length > 0) {
+      data.main_images = await Promise.all(
+        findFiles("main_images").map((f, idx) =>
+          saveProductFile(f, `main-${Date.now()}-${idx}`)
+        )
+      );
+    } else if (req.body.main_images !== undefined) {
+      data.main_images = Array.isArray(req.body.main_images)
+        ? req.body.main_images
+        : [req.body.main_images];
+    }
+
+    if (findFile("edit_main_image")) {
+      data.edit_main_image = await saveProductFile(
+        findFile("edit_main_image"),
+        "edit-main-" + Date.now()
+      );
+    } else if (req.body.edit_main_image !== undefined) {
+      data.edit_main_image = req.body.edit_main_image;
+    }
+
+    // 🔹 Always draft
+    data.draft_status = true;
+
+    // 🔹 Create or Update
+    if (req.body._id == "new") {
+      const product = await Product.create({ ...data, status: false });
+
+      const cat = await CategoryModel.findById(req.body.category);
+      if (cat && product && req.body.category) {
+        const slug = slugify(
+          `${cat.slug}-${String(product._id).padStart(4, "0")}`,
+          {
+            lower: true,
+            remove: /[*+~.()'"!:@]/g,
+          }
+        );
+        await Product.findByIdAndUpdate(product._id, { slug });
+      }
+
+      await PromotionalOfferModel.updateMany(
+        { purchased_items: "Entire Catalog" },
+        { $push: { product_id: product._id } }
+      );
+
+      return res.status(200).json({
+        message: "Draft product created successfully.",
+        product,
+        success: true,
+      });
+    } else {
+      const product = await Product.findByIdAndUpdate(
+        req.body._id,
+        { ...data, draft_status: true },
+        { new: true }
+      );
+
+      return res.status(200).json({
+        message: "Draft product updated successfully.",
+        product,
+        success: true,
+      });
+    }
+  } catch (error) {
+    console.error("Error creating/updating draft product:", error);
+    return res
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
+
 
 export const addWalletBalanceByAdmin = async (req: CustomRequest, res: Response) => {
     try {
