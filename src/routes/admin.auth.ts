@@ -543,7 +543,11 @@ routes.post('/extend-gift-card-expiry-date', extandGiftCardExpiryDate)
 
 routes.post('/set-product-bedge', setProductBedge);
 
-routes.post('/add-draft-product', addDraftProduct)
+routes.post('/add-draft-product', (req, res, next) => {
+    (req as any).filepath = 'product';
+    next();
+  },
+  upload.any(), addDraftProduct)
 
 routes.post('/add-wallet-balance-by-admin', addWalletBalanceByAdmin)
 
