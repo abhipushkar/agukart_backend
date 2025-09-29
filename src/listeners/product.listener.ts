@@ -35,14 +35,17 @@ eventBus.on("variantUpdated", async (variant) => {
       }
     );
 
-    // 3. ✅ Update variations_data.name (based on variantId, safer than name)
+    // 3. Update variations_data.name (variantId is stored as string in Product)
     if (variant._id) {
-      await Product.updateMany(
-        { "variations_data.variantId": new mongoose.Types.ObjectId(variant._id) },
-        { $set: { "variations_data.$[var].name": variant.name } },
-        { arrayFilters: [{ "var.variantId": new mongoose.Types.ObjectId(variant._id) }] }
-      );
-    }
+    const variantIdStr = String(variant._id);
+
+    await Product.updateMany(
+    { "variations_data.variantId": variantIdStr },
+    { $set: { "variations_data.$[var].name": variant.name } },
+    { arrayFilters: [{ "var.variantId": variantIdStr }] }
+  );
+ }
+
 
     console.log(`✅ Variant name updated everywhere: ${variant.oldName} → ${variant.name}`);
   } catch (err) {
