@@ -7,22 +7,19 @@ eventBus.on("variantUpdated", async (variant) => {
   try {
     console.log("Variant updated:", variant);
 
-    // 1. Update variant_name
+    // 1. Update combinationData.variant_name
     await Product.updateMany(
       { "combinationData.variant_name": variant.oldName },
       {
         $set: { "combinationData.$[var].variant_name": variant.name },
       },
       {
-        arrayFilters: [
-          { "var.variant_name": variant.oldName },
-          { "comb.name1": variant.oldName }, // nested filter for name1
-        ],
+        arrayFilters: [{ "var.variant_name": variant.oldName }],
         strict: false,
         strictArrayFilters: false,
       }
     );
-    
+
     // 2. Update nested name1 in combinations
     await Product.updateMany(
       { "combinationData.combinations.name1": variant.oldName },
@@ -37,10 +34,22 @@ eventBus.on("variantUpdated", async (variant) => {
         strictArrayFilters: false,
       }
     );
+
+    // 3. ✅ Update variations_data.name (based on variantId, safer than name)
+    if (variant._id) {
+      await Product.updateMany(
+        { "variations_data.variantId": new mongoose.Types.ObjectId(variant._id) },
+        { $set: { "variations_data.$[var].name": variant.name } },
+        { arrayFilters: [{ "var.variantId": new mongoose.Types.ObjectId(variant._id) }] }
+      );
+    }
+
+    console.log(`✅ Variant name updated everywhere: ${variant.oldName} → ${variant.name}`);
   } catch (err) {
     console.error("variantUpdated listener error:", err);
   }
 });
+
 
 // Attribute update listener
 eventBus.on("attributeUpdated", async (attr) => {
