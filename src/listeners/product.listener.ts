@@ -36,15 +36,14 @@ eventBus.on("variantUpdated", async (variant) => {
     );
 
     // 3. Update variations_data.name (variantId is stored as string in Product)
-    if (variant._id) {
-    const variantIdStr = String(variant._id);
+    if (variant.id || variant._id) {
+    const variantIdStr = String(variant.id || variant._id);
 
     await Product.updateMany(
-    {},
-    { $set: { "variations_data.$[elem].name": variant.name } },
-    { arrayFilters: [{ "elem.variantId": variantIdStr }] }
+    { "variations_data.variantId": variantIdStr },
+    { $set: { "variations_data.$.name": variant.name } }
    );
- }
+  }
 
     console.log(`✅ Variant name updated everywhere: ${variant.oldName} → ${variant.name}`);
   } catch (err) {
