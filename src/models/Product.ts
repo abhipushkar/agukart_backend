@@ -367,7 +367,14 @@ const productSchema = new Schema(
     zoom: {
       type: Object,
       default: {},
-    }
+    },
+    inActiveReason: {
+      type: String,
+      default: '' 
+    },
+    deletedVariantIds: [{
+      type: String
+    }]
   },
   {
     timestamps: true,

@@ -147,3 +147,36 @@ eventBus.on("attributeDeleted", async (attr) => {
     console.error("attributeDeleted listener error:", err);
   }
 });
+
+
+
+// Variant delete listener
+eventBus.on("variantDeleted", async (variant) => {
+  try {
+    console.log("Variant deleted event received:", variant);
+
+    const variantIdStr = String(variant.id);
+
+    const result = await Product.updateMany(
+      {
+        $or: [
+          { variant_id: variantIdStr },
+          { "variations_data.variantId": variantIdStr }
+        ]
+      },
+      {
+        $set: {
+          status: false,                  // globally inactive
+          inactiveReason: "variant_deleted"
+        },
+        $addToSet: { deletedVariantIds: variantIdStr } // track which variant caused it
+      }
+    );
+
+    console.log(
+      `❌ Variant ${variantIdStr} deleted → ${result.modifiedCount} products marked inactive with reason`
+    );
+  } catch (err) {
+    console.error("variantDeleted listener error:", err);
+  }
+});
