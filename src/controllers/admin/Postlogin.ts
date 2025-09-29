@@ -1573,6 +1573,9 @@ export const deleteVariant = async (req: CustomRequest, resp: Response) => {
 
             await Variant.findByIdAndUpdate({ _id: id }, { deletedAt: resp.locals.currentdate().tz('Asia/Kolkata') }, { new: true });
             await VariantAttribute.updateMany({ variant_id: id }, { deletedAt: resp.locals.currentdate().tz('Asia/Kolkata') });
+
+            // Emit event so all related products are marked inactive
+            eventBus.emit("variantDeleted", { id });
             return resp.status(200).json({ message: 'Variant deleted successfully.' });
 
         } else {
@@ -2469,7 +2472,13 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
                                           $cond: {
                                             if: { $eq: ["$$pd.status", true] },
                                             then: "active",
-                                            else: "inactive",
+                                            else: {
+                                                $cond: {
+                                                    if: { $ne: ["$$pd.inactiveReason", ""] },
+                                                    then: { $concat: ["inactive (", "$$pd.inactiveReason", ")"] },
+                                                    else: "inactive"
+                                                }
+                                            },
                                           },
                                         },
                                       },
@@ -2568,7 +2577,13 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
                     $cond: {
                       if: { $eq: ["$status", true] },
                       then: "active",
-                      else: "inactive",
+                      else: {
+                        $cond: {
+                            if: { $ne: ["$inactiveReason", ""] },
+                            then: { $concat: ["inactive (", "$inactiveReason", ")"] },
+                            else: "inactive"
+                        }
+                      },
                     },
                   },
                 },
@@ -2958,6 +2973,19 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
       productData.description,
       "base64"
     ).toString("utf-8");
+
+    // --- Add variant-deleted error info ---
+    if (
+    productData.inactiveReason === "variant_deleted" &&
+    productData.deletedVariantIds?.length
+    ) {
+    productData.variations_data = productData.variations_data.map((v: any) => ({
+    ...v,
+    error: productData.deletedVariantIds.includes(v.variantId)
+      ? "❌ This variant has been deleted from original source."
+      : null,
+    }));
+  }
 
     return resp.status(200).json({
       message: "Product retrieved successfully.",
