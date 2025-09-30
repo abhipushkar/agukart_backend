@@ -2472,13 +2472,7 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
                                           $cond: {
                                             if: { $eq: ["$$pd.status", true] },
                                             then: "active",
-                                            else: {
-                                                $cond: {
-                                                    if: { $ne: ["$$pd.inactiveReason", ""] },
-                                                    then: { $concat: ["inactive (", "$$pd.inactiveReason", ")"] },
-                                                    else: "inactive"
-                                                }
-                                            },
+                                            else: "inactive"
                                           },
                                         },
                                       },
@@ -2488,6 +2482,13 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
                                 },
                               },
                             },
+                            inactiveReason: {
+                              $cond: {
+                                 if: { $ne: ["$$pd.inactiveReason", ""] },
+                                 then: "$$pd.inactiveReason",
+                                 else: null
+                             }
+                           },
                           },
                         ],
                       },
@@ -2577,19 +2578,20 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
                     $cond: {
                       if: { $eq: ["$status", true] },
                       then: "active",
-                      else: {
-                        $cond: {
-                            if: { $ne: ["$inactiveReason", ""] },
-                            then: { $concat: ["inactive (", "$inactiveReason", ")"] },
-                            else: "inactive"
-                        }
-                      },
+                      else: "inactive"
                     },
                   },
                 },
               ],
               default: "unknown",
             },
+          },
+          inactiveReason: {
+            $cond: {
+               if: { $ne: ["$inactiveReason", ""] },
+               then: "$inactiveReason",
+               else: null
+            }
           },
         },
       },
