@@ -228,7 +228,12 @@ import {
     getOrderHistory2,
     getReviews,
     getFavoriteProducts,
-    getUserDashboardData
+    getUserDashboardData,
+    createAttributeList,
+    getAttributeList,
+    getAttributeListById,
+    updateAttributeList,
+    deleteAttributeList
 } from "../controllers/admin/Postlogin";
 
 
@@ -299,6 +304,13 @@ routes.get('/get-all-active-category', getAllActiveCategory)
 routes.get('/get-parent-category', getParentCategory)
 routes.get('/get-admin-parent-category', getAdminParentcategory)
 routes.get('/get-child-category', getChildCategory)
+
+// Attribute List API's
+routes.post('/create-attribute-list', createAttributeList);
+routes.get('/get-attribute-list', getAttributeList);
+routes.get('/get-attribute-detail/:id', getAttributeListById);
+routes.put('/update-attribute-list/:id', updateAttributeList);
+routes.delete('/delete-attribute-list/:id', deleteAttributeList);
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )

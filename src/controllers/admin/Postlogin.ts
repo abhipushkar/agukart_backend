@@ -18,6 +18,7 @@ import Brand from '../../models/Brand';
 import ParentProduct from '../../models/ParentProduct';
 import CombinationProduct from '../../models/CombinationProduct';
 import Sales from '../../models/Sales';
+import AttributesList from "../../models/AttributesList";
 import { getAllCategoryTreeids, getAllParentCategory, convertToWebP, buildCategoryAdminPath, buildCategoryPath, getAllParents, getAllAdminParents, generateUniqueId, getAllChildCategory, buildAdminCategoryPath, buildAdminCategoryPathTitles, generateAffiliateCode, sendToEmail, buildCategoryPathTitles, generateUniqueGiftCode } from "../../helpers/common";
 import mongoose, { Types, PipelineStage, ObjectId, AnyArray } from "mongoose";
 import SalesDetailsModel from "../../models/Sales_detail";
@@ -1793,6 +1794,117 @@ export const getVariantAttribute = async (req: CustomRequest, resp: Response) =>
 
 }
 
+export const createAttributeList = async (req: CustomRequest, resp: Response) => {
+    try {
+        const attributeList = await AttributesList.create(req.body);
+        return resp.status(201).json({
+            success: true,
+            message: 'Attribute List created successfully.',
+            data: attributeList
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong. Please try again.'
+        });
+    }
+};
+
+
+export const getAttributeList = async (req: CustomRequest, resp: Response) => {
+    try {
+        const attributes = await AttributesList.find({ isDeleted: false }).sort({createdAt: -1});
+        return resp.status(200).json({
+            success: true,
+            message: 'Attribute List retrieved successfully.',
+            data: attributes
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong. Please try again.'
+        })
+    }
+}
+
+export const getAttributeListById = async (req: CustomRequest, resp: Response) => {
+    try {
+        const attribute = await AttributesList.findOne({
+            _id: req.params.id,
+            isDeleted: false
+        });
+
+        if(!attribute) {
+            return resp.status(404).json({
+                success: false,
+                message: 'Data not found'
+            })
+        }
+        return resp.status(200).json({
+            success: true,
+            message: 'Attribute retrieved successfully.',
+            data: attribute
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong. Please try again.'
+        })
+    }
+}
+
+export const updateAttributeList = async (req: CustomRequest, resp: Response) => {
+    try {
+        const attribute = await AttributesList.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            { new: true, runValidators: true}
+        );
+        if(!attribute) {
+            return resp.status(404).json({
+                success: false,
+                message: 'Attribute not found'
+            });
+        }
+
+        return resp.status(200).json({
+            success: true,
+            message: 'Attribute List updated successfully.',
+            data: attribute
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+        success: false,
+        message: error.message || "Something went wrong. Please try again."
+    });
+    }
+}
+
+export const deleteAttributeList = async (req: CustomRequest, resp: Response) => {
+    try {
+        const attribute = await AttributesList.findByIdAndUpdate(
+            req.params.id,
+            { isDeleted: true},
+            { new: true }
+        );
+        if(!attribute) {
+            return resp.status(404).json({
+                success: false,
+                message: 'Attribute not found'
+            });
+        }
+        return resp.status(200).json({
+            success: true,
+            message: 'Attribute List deleted successfully'
+        })
+    } catch (error: any) {
+        return resp.status(500).json({
+        success: false,
+        message: error.message || "Something went wrong. Please try again."
+    });
+    }
+}
+
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
 
@@ -1952,8 +2064,24 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
 
     // 🔹 variations_data
     if (req.body.variations_data !== undefined) {
-      data.variations_data = parseJSON(req.body.variations_data, []);
+      let parsed = parseJSON(req.body.variations_data, []);
+
+      data.variations_data = parsed.map((v: any)=> {
+        if(v.variantId) {
+            return {
+                ...v,
+                type: "global"
+            };
+        } else {
+            return {
+                ...v,
+                type: "custom",
+                customId: v.customId || new mongoose.Types.ObjectId().toString()
+            };
+        }
+      });
     }
+    
     // 🔹 tabs
     if (req.body.tabs !== undefined) {
       data.tabs = parseJSON(req.body.tabs, []);
@@ -2104,7 +2232,22 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
 
       // 🔹 Merge variations_data
      if (req.body.variations_data !== undefined) {
-    data.variations_data = parseJSON(req.body.variations_data, []);
+        let parsed = parseJSON(req.body.variations_data, []);
+
+        data.variations_data = parsed.map((v: any)=> {
+            if(v.variantId){
+                return {
+                    ...v,
+                    type: "global"
+                };
+            }else {
+                return {
+                    ...v,
+                    type: "custom",
+                    customId: v.customId || new mongoose.Types.ObjectId().toString()
+                };
+            }
+        });
     }
 
 
@@ -9541,6 +9684,20 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
       exchangePolicy: req.body.exchangePolicy,
       zoom: parseJSON(req.body.zoom, {}),
     };
+
+    let parsedVariations = parseJSON(req.body.variations_data, []);
+    data.variations_data = parsedVariations.map((v: any) => {
+    if (v.variantId) {
+    return { ...v, type: "global" };
+    } else {
+    return {
+      ...v,
+      type: "custom",
+      customId: v.customId || new mongoose.Types.ObjectId().toString()
+    };
+   }
+  });
+
 
     // 🔹 Process nested combinationData images
     if (Array.isArray(data.combinationData)) {
