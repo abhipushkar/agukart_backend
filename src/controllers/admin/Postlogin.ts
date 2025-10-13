@@ -9790,7 +9790,62 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
     };
    }
   });
+    
+  // 🔹 Process customizationData deeply (supports thumbnails, previews, main_images, edit_main_image, edit_preview_image)
+if (data.customizationData?.customizations && Array.isArray(data.customizationData.customizations)) {
+  data.customizationData.customizations = await Promise.all(
+    data.customizationData.customizations.map(async (cust: any, cIdx: number) => {
+      if (Array.isArray(cust.optionList)) {
+        cust.optionList = await Promise.all(
+          cust.optionList.map(async (opt: any, oIdx: number) => {
+            // 🔍 Find possible uploaded files
+            const optThumb = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][thumbnail]`);
+            const optPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][preview_image]`);
+            const optMainImages = findFiles(`customizationData[customizations][${cIdx}][optionList][${oIdx}][main_images][]`);
+            const optEditMain = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_main_image]`);
+            const optEditPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_preview_image]`);
 
+            // 🔹 Parse crop data JSONs if sent
+            if (opt.edit_main_image_data && typeof opt.edit_main_image_data === "string") {
+              try { opt.edit_main_image_data = JSON.parse(opt.edit_main_image_data); } catch {}
+            }
+            if (opt.edit_preview_image_data && typeof opt.edit_preview_image_data === "string") {
+              try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
+            }
+
+            // 🔹 Save uploaded files
+            const processedOpt = {
+              ...opt,
+              thumbnail: optThumb
+                ? await saveProductFile(optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}`)
+                : opt.thumbnail || "",
+              preview_image: optPreview
+                ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
+                : opt.preview_image || "",
+              main_images:
+                optMainImages.length > 0
+                  ? await Promise.all(
+                      optMainImages.map((f, i) =>
+                        saveProductFile(f, `custom-main-${Date.now()}-${cIdx}-${oIdx}-${i}`)
+                      )
+                    )
+                  : opt.main_images || [],
+              edit_main_image: optEditMain
+                ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
+                : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
+              edit_preview_image: optEditPreview
+                ? await saveProductFile(optEditPreview, `custom-edit-preview-${Date.now()}-${cIdx}-${oIdx}`)
+                : (typeof opt.edit_preview_image === "string" ? opt.edit_preview_image : "")
+            };
+
+            return processedOpt;
+          })
+        );
+      }
+      return cust;
+    })
+  );
+}
 
     // 🔹 Process nested combinationData images
     if (Array.isArray(data.combinationData)) {
