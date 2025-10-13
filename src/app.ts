@@ -22,7 +22,15 @@ const app = express();
 const path = require('path');
  
 //pre routes
-app.use('/uploads', express.static('uploads')); 
+app.use(
+  "/uploads",
+  cors({
+    origin: '*',
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
+  }),
+  express.static("uploads")
+);
 app.use(express.static(path.join(__dirname, 'public'))); 
 app.use(bodyParser.urlencoded({limit: '100mb', extended: true }));
 app.use(bodyParser.json({ limit: '100mb' }));
