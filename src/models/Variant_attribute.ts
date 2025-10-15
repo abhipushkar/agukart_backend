@@ -12,7 +12,7 @@ const variantAttributeSchema = new Schema(
       default: null,
     },
     sort_order: {
-      type: String,
+      type: Number,
       default: null,
     },
     status: {
