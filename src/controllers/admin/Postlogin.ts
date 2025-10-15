@@ -1604,7 +1604,7 @@ export const getVariant = async (req: CustomRequest, resp: Response) => {
             return resp.status(403).json({ message: 'Variant not found.' });
         }
 
-        const variantAttributes = await VariantAttribute.find({ variant: variant._id, deleted_status: false }).sort({ attribute_value: 1 });
+        const variantAttributes = await VariantAttribute.find({ variant: variant._id, deleted_status: false }).sort({ sort_order: 1 });
 
         const variantWithAttributes = variant.toObject() as any;
         variantWithAttributes.variantAttributes = variantAttributes || [];
@@ -1853,32 +1853,43 @@ export const getAttributeListById = async (req: CustomRequest, resp: Response) =
     }
 }
 
-export const updateAttributeList = async (req: CustomRequest, resp: Response) => {
-    try {
-        const attribute = await AttributesList.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true}
-        );
-        if(!attribute) {
-            return resp.status(404).json({
-                success: false,
-                message: 'Attribute not found'
-            });
-        }
+export const updateAttributeList = async (req: CustomRequest, res: Response) => {
+  try {
+    const id = req.params.id;
 
-        return resp.status(200).json({
-            success: true,
-            message: 'Attribute List updated successfully.',
-            data: attribute
-        });
-    } catch (error: any) {
-        return resp.status(500).json({
+    const existing = await AttributesList.findById(id);
+    if (!existing) {
+      return res.status(404).json({
         success: false,
-        message: error.message || "Something went wrong. Please try again."
-    });
+        message: "Attribute not found"
+      });
     }
-}
+
+    const createdAt = (existing as any).createdAt;
+
+    const newData = {
+      ...req.body,
+      _id: id,
+      createdAt,
+      updatedAt: new Date()
+    };
+
+    await AttributesList.replaceOne({ _id: id }, newData, { runValidators: true });
+
+    const updated = await AttributesList.findById(id);
+    return res.status(200).json({
+      success: true,
+      message: "Attribute List fully replaced successfully.",
+      data: updated
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong."
+    });
+  }
+};
+
 
 export const deleteAttributeList = async (req: CustomRequest, resp: Response) => {
     try {

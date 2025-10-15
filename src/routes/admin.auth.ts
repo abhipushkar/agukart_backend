@@ -309,7 +309,7 @@ routes.get('/get-child-category', getChildCategory)
 routes.post('/create-attribute-list', createAttributeList);
 routes.get('/get-attribute-list', getAttributeList);
 routes.get('/get-attribute-detail/:id', getAttributeListById);
-routes.put('/update-attribute-list/:id', updateAttributeList);
+routes.post('/update-attribute-list/:id', updateAttributeList);
 routes.delete('/delete-attribute-list/:id', deleteAttributeList);
 
 // Product API's
