@@ -42,6 +42,11 @@ const categorySchema = new Schema(
       required: true,
       default: false
     },
+    attributeList_id: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AttributeList' ,
+      default: []
+    }],
     variant_id: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Variant',

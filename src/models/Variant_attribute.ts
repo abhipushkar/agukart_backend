@@ -48,6 +48,11 @@ const variantAttributeSchema = new Schema(
   }
 );
 
+variantAttributeSchema.index(
+  { variant: 1, attribute_value: 1 },
+  { unique: true, partialFilterExpression: { deleted_status: false } }
+);
+
 const VariantAttributeModel = model('VariantAttribute', variantAttributeSchema);
 
 export default VariantAttributeModel;

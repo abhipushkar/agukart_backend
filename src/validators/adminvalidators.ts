@@ -38,6 +38,9 @@ export const categoryValid = Joi.object({
     variant_id: Joi.array().items(objectId).required().messages({
         'array.includes': 'Variant id must be a valid ObjectId'
     }),
+    attributeList_id: Joi.array().items(objectId).required().messages({
+        'array.includes': 'attribute List id must be a valid ObjectId'
+    }),
     productsMatch: Joi.string().optional().allow(''),
     equalTo: Joi.string().optional().allow(''),
     value: Joi.string().optional().allow(''),
