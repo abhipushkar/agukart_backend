@@ -27,7 +27,7 @@ export const upload = multer({
                                 fieldSize: 10 * 1024 * 1024, 
                                 fileSize: 10 * 1024 * 1024, 
                                 fields: 1000,               
-                                files: 20                 
+                                files: 1000                 
                                 },
                             fileFilter: (req, file, cb) => {
                                 if (file.mimetype.startsWith('image/')) {

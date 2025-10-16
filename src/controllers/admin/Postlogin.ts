@@ -363,7 +363,7 @@ export const getSlider = async (req: Request, resp: Response) => {
 
 export const addCategory = async (req: CustomRequest, resp: Response) => {
     try {
-        const { title, description, meta_title, meta_keywords, meta_description, variant_id, parent_id, bestseller, equalTo, productsMatch, value, restricted_keywords } = req.body;
+        const { title, description, meta_title, meta_keywords, meta_description, variant_id, parent_id, bestseller, equalTo, productsMatch, value, restricted_keywords, attributeList_id } = req.body;
 
         // const existingCategory = await Category.findOne({ title });
 
@@ -400,6 +400,7 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
                 parent_id,
                 parent_slug,
                 variant_id,
+                attributeList_id,
                 bestseller,
                 productsMatch,
                 equalTo,
@@ -416,6 +417,7 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
                     parent_id,
                     parent_slug,
                     variant_id,
+                    attributeList_id,
                     slug,
                     bestseller,
                     productsMatch,
@@ -674,102 +676,120 @@ export const deleteCategory = async (req: CustomRequest, resp: Response) => {
 }
 
 export const getCategory = async (req: CustomRequest, resp: Response) => {
-
-    try {
-
-        const pipeline: any = [
-            {
-                '$match': {
-                    '_id': new mongoose.Types.ObjectId(req.params.id)
-                }
-            }, {
-                '$lookup': {
-                    'from': 'categories',
-                    'localField': 'parent_id',
-                    'foreignField': '_id',
-                    'as': 'parent_data'
-                }
-            }, {
-                '$lookup': {
-                    'from': 'variants',
-                    'localField': 'variant_id',
-                    'foreignField': '_id',
-                    'as': 'variant_data'
-                }
-            }, {
-                '$unwind': {
-                    'path': '$parent_data',
-                    'preserveNullAndEmptyArrays': true
-                }
-            }, {
-                '$project': {
-                    '_id': 1,
-                    'title': 1,
-                    'slug': 1,
-                    'image': 1,
-                    'topRatedImage': 1,
-                    'equalTo': 1,
-                    'productsMatch': 1,
-                    'value': 1,
-                    'status': 1,
-                    'description': 1,
-                    'meta_title': 1,
-                    'meta_keywords': 1,
-                    'meta_description': 1,
-                    'bestseller': 1,
-                    'parent_id': 1,
-                    'parent_name': '$parent_data.title',
-                    'parent_status': '$parent_data.status',
-                    'variant_id': 1,
-                    'variant_data': 1,
-                    'restricted_keywords': 1
-                }
-            }
-        ]
-        const checkUser: any = await User.findOne({ _id: req.user._id });
-        const categoryData = await Category.aggregate(pipeline);
-        const category = categoryData[0];
-
-        if (!category) {
-            return resp.status(403).json({ message: 'Category not found.' });
+  try {
+    const pipeline: any = [
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(req.params.id)
         }
-        const baseurl = process.env.ASSET_URL + '/uploads/category/';
-
-        const data: any = {
-            _id: category._id,
-            title: category.title,
-            slug: category.slug,
-            parent_id: category.parent_id,
-            bestseller: category.bestseller,
-            variant_id: category.variant_id,
-            image: baseurl + category.image,
-            topRatedImage: baseurl + category.topRatedImage,
-            status: category.status,
-            description: category.description,
-            meta_title: category.meta_title,
-            meta_keywords: category.meta_keywords,
-            meta_description: category.meta_description,
-            variant_data: category.variant_data,
-            productsMatch: category.productsMatch,
-            equalTo: category.equalTo,
-            value: category.value,
-            restricted_keywords: category.restricted_keywords
+      },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'parent_id',
+          foreignField: '_id',
+          as: 'parent_data'
         }
-
-        if (category.parent_id != null) {
-            data.parent_name = category.parent_name;
-            data.parent_status = category.parent_status;
+      },
+      {
+        $lookup: {
+          from: 'variants',
+          localField: 'variant_id',
+          foreignField: '_id',
+          as: 'variant_data'
         }
+      },
+      {
+        $lookup: {
+          from: 'attributelists',
+          localField: 'attributeList_id',
+          foreignField: '_id',
+          as: 'attributeList_data'
+        }
+      },
+      {
+        $unwind: {
+          path: '$parent_data',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          slug: 1,
+          image: 1,
+          topRatedImage: 1,
+          equalTo: 1,
+          productsMatch: 1,
+          value: 1,
+          status: 1,
+          description: 1,
+          meta_title: 1,
+          meta_keywords: 1,
+          meta_description: 1,
+          bestseller: 1,
+          parent_id: 1,
+          parent_name: '$parent_data.title',
+          parent_status: '$parent_data.status',
+          variant_id: 1,
+          variant_data: 1,
+          attributeList_id: 1,
+          attributeList_data: 1,
+          restricted_keywords: 1
+        }
+      }
+    ];
 
-        return resp.status(200).json({ message: 'Category retrieved successfully.', data });
+    const categoryData = await Category.aggregate(pipeline);
+    const category = categoryData[0];
 
-    } catch (error) {
-
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-
+    if (!category) {
+      return resp.status(404).json({ message: 'Category not found.' });
     }
 
-}
+    const baseurl = process.env.ASSET_URL + '/uploads/category/';
+
+    const data: any = {
+      _id: category._id,
+      title: category.title,
+      slug: category.slug,
+      parent_id: category.parent_id,
+      bestseller: category.bestseller,
+      variant_id: category.variant_id,
+      attributeList_id: category.attributeList_id,
+      image: baseurl + category.image,
+      topRatedImage: baseurl + category.topRatedImage,
+      status: category.status,
+      description: category.description,
+      meta_title: category.meta_title,
+      meta_keywords: category.meta_keywords,
+      meta_description: category.meta_description,
+      variant_data: category.variant_data,
+      attributeList_data: category.attributeList_data,
+      productsMatch: category.productsMatch,
+      equalTo: category.equalTo,
+      value: category.value,
+      restricted_keywords: category.restricted_keywords
+    };
+
+    if (category.parent_id != null) {
+      data.parent_name = category.parent_name;
+      data.parent_status = category.parent_status;
+    }
+
+    return resp.status(200).json({
+      message: 'Category retrieved successfully.',
+      data
+    });
+  } catch (error) {
+    console.error('❌ getCategory error:', error);
+    return resp
+      .status(500)
+      .json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
 
 export const userList = async (req: CustomRequest, resp: Response) => {
 
@@ -1861,35 +1881,73 @@ export const updateAttributeList = async (req: CustomRequest, res: Response) => 
     if (!existing) {
       return res.status(404).json({
         success: false,
-        message: "Attribute not found"
+        message: "Attribute not found",
       });
     }
 
     const createdAt = (existing as any).createdAt;
 
-    const newData = {
+    const data = {
       ...req.body,
       _id: id,
       createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
-    await AttributesList.replaceOne({ _id: id }, newData, { runValidators: true });
+    if (data.values && data.values.length > 0) {
+      const vals = data.values.map((v: any) => v.value?.trim().toLowerCase());
+      if (vals.length !== new Set(vals).size) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Duplicate dropdown values are not allowed within the same attribute.",
+        });
+      }
+    }
+
+    if (data.subAttributes && data.subAttributes.length > 0) {
+      const subNames = data.subAttributes.map((s: any) =>
+        s.name?.trim().toLowerCase()
+      );
+      if (subNames.length !== new Set(subNames).size) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Duplicate sub-attribute names are not allowed within the same attribute.",
+        });
+      }
+
+      for (const sub of data.subAttributes) {
+        if (sub.values && sub.values.length > 0) {
+          const valNames = sub.values.map((v: any) =>
+            v.value?.trim().toLowerCase()
+          );
+          if (valNames.length !== new Set(valNames).size) {
+            return res.status(400).json({
+              success: false,
+              message: `Duplicate values found in sub-attribute "${sub.name}". Each value must be unique.`,
+            });
+          }
+        }
+      }
+    }
+    await AttributesList.replaceOne({ _id: id }, data, { runValidators: true });
 
     const updated = await AttributesList.findById(id);
+
     return res.status(200).json({
       success: true,
       message: "Attribute List fully replaced successfully.",
-      data: updated
+      data: updated,
     });
   } catch (error: any) {
+    console.error("Error updating attribute:", error);
     return res.status(500).json({
       success: false,
-      message: error.message || "Something went wrong."
+      message: error.message || "Something went wrong.",
     });
   }
 };
-
 
 export const deleteAttributeList = async (req: CustomRequest, resp: Response) => {
     try {
