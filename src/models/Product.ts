@@ -339,6 +339,9 @@ const productSchema = new Schema(
         type: Schema.Types.Mixed
       }
     ],
+    dynamicFields:{
+       type: Schema.Types.Mixed
+    },
     form_values: {
       type: Object,
       default: {}
