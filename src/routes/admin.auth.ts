@@ -233,7 +233,8 @@ import {
     getAttributeList,
     getAttributeListById,
     updateAttributeList,
-    deleteAttributeList
+    deleteAttributeList,
+    getAttributeListByCategoryId
 } from "../controllers/admin/Postlogin";
 
 
@@ -288,7 +289,8 @@ routes.post('/change-status-variant-category', variantCategoryChangeStatus);
 routes.post('/change-status-variant-product', variantProductStatus);
 routes.delete('/delete-variant/:id', deleteVariant);
 routes.get('/edit-variant/:id', getVariant);
-routes.get('/get-variant-by-category/:id', getVariantDataByCategoryId)
+routes.get('/get-variant-by-category/:id', getVariantDataByCategoryId);
+routes.get('/get-attributeList-by-category/:id', getAttributeListByCategoryId);
 
 // Variant Attribute API's
 routes.get('/get-all-active-variants', getAllActiveVariant)

@@ -2051,6 +2051,7 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
       tabs: parseJSON(req.body.tabs, []),
       exchangePolicy: req.body.exchangePolicy,
       zoom: parseJSON(req.body.zoom, {}),
+      dynamicFields: parseJSON(req.body.dynamicFields, {}),
     };
      
      // if (req.body.sale_price > req.body.price) {
@@ -3167,6 +3168,17 @@ export const editProduct = async (req: CustomRequest, resp: Response) => {
       }
     }
 
+    // --- Normalize dynamicFields ---
+   if (typeof productData.dynamicFields === "string") {
+     try {
+     productData.dynamicFields = JSON.parse(productData.dynamicFields);
+    } catch {
+     productData.dynamicFields = {};
+    }
+    } else if (!productData.dynamicFields || typeof productData.dynamicFields !== "object") {
+    productData.dynamicFields = {};
+    }
+
     // --- Normalize tabs ---
     if (Array.isArray(productData.tabs)) {
       productData.tabs = productData.tabs.map((item: any) => {
@@ -3397,6 +3409,30 @@ export const getVariantDataByCategoryId = async (req: Request, resp: Response) =
     } catch (err) {
         console.log(err)
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    }
+}
+
+export const getAttributeListByCategoryId = async (req: Request, resp: Response) => {
+    try {
+        const category_id = req.params.id;
+        const category = await Category.findOne({_id: category_id});
+        
+        if(!category) {
+           return resp.status(404).send('Category not found'); 
+        }
+        
+        if(!category.attributeList_id || category.attributeList_id.length === 0) {
+            return resp.status(404).json({ message: "No attribute lists assigned to this category." });
+        }
+        
+        const attributeLists = await AttributesList.find({
+            _id: {$in: category.attributeList_id },
+            status: true,
+        });
+        return resp.status(200).json({ message: "Attribute lists fetched successfully." , attributeLists, });
+    } catch (error) {
+      console.error("Error fetching attribute list:", error);
+      return resp.status(500).json({ message: "Something went wrong. Please try again."});
     }
 }
 
@@ -9845,6 +9881,7 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
       tabs: parseJSON(req.body.tabs, []),
       exchangePolicy: req.body.exchangePolicy,
       zoom: parseJSON(req.body.zoom, {}),
+      dynamicFields: parseJSON(req.body.dynamicFields, {}),
     };
 
     let parsedVariations = parseJSON(req.body.variations_data, []);
