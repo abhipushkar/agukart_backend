@@ -22,6 +22,19 @@ const variantSchema = new Schema(
       required: true,
       default:false
     },
+    guide_name: {
+    type: String,
+    default: ""
+    },
+    guide_file: {
+    type: String,
+    default: ""
+    },
+    guide_type: {
+    type: String,
+    enum: ["image", "pdf", ""],
+    default: "",
+    },
     deletedAt:{
       type:Date,
       default:null
