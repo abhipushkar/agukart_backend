@@ -184,18 +184,30 @@ const saveProductFile = async (file: any, cleanedName: string) => {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
+  const mime = file.mimetype?.toLowerCase() || "";
+  const ext = path.extname(file.originalname)?.toLowerCase() || "";
   const parsed = path.parse(cleanedName);
-  const finalFileName = `${parsed.name}-${Date.now()}.webp`; 
-  const fullPath = path.join(uploadDir, finalFileName);
+  const baseName = parsed.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const timestamp = Date.now();
+
+  let finalFileName = "";
+  let fullPath = "";
 
   try {
-    await sharp(file.path).toFormat("webp").toFile(fullPath);
+    if (mime.startsWith("image/")) {
+      finalFileName = `${baseName}-${timestamp}.webp`;
+      fullPath = path.join(uploadDir, finalFileName);
+      await sharp(file.path).toFormat("webp").toFile(fullPath);
+    } else {
+      finalFileName = `${baseName}-${timestamp}${ext}`;
+      fullPath = path.join(uploadDir, finalFileName);
+      await fs.promises.copyFile(file.path, fullPath);
+    }
+    return process.env.ASSET_URL + "/uploads/product/" + finalFileName;
   } catch (e) {
-    console.error("Sharp conversion failed, fallback saving raw file:", e);
-    await fs.promises.copyFile(file.path, fullPath);
+    console.error("File save failed:", e);
+    return "";
   }
-
-  return process.env.ASSET_URL + "/uploads/product/" + finalFileName;
 };
 
 function processTabs(tabs: any[]) {
@@ -1334,6 +1346,7 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         // 🆕 Handle guide chart upload for Variant
         const guideFile = findFile("guide_file"); // single file upload field
         const guide_name = req.body.guide_name || "";
+        const guide_description = req.body.guide_description || "";
         let guide_file = "";
         let guide_type = "";
 
@@ -1344,7 +1357,7 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
         // -------- CREATE --------
         if (req.body._id == "new") {
-        const variant = await Variant.create({ variant_name, guide_name, guide_file, guide_type });
+        const variant = await Variant.create({ variant_name, guide_name, guide_file, guide_type, guide_description });
         variantId = variant._id;
 
         for (let i = 0; i < variantAttr.length; i++) {
@@ -1484,7 +1497,7 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             }
         }
 
-            const updateData: any = { variant_name, guide_name };
+            const updateData: any = { variant_name, guide_name, guide_description };
 
             if (guideFile) {
             updateData.guide_file = guide_file;
@@ -2162,6 +2175,44 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
           if (!Array.isArray(combinations)) {
             combinations = combinations ? [combinations] : [];
           }
+                // 🔹 Handle guide data for each variant (if sent)
+      let guide = [];
+
+      if (Array.isArray(variant.guide)) {
+        guide = await Promise.all(
+          variant.guide.map(async (g: any, gIdx: number) => {
+            const guideFile = findFile(`combinationData[${vIdx}][guide][${gIdx}][guide_file]`);
+            let guide_file = g.guide_file || "";
+            let guide_type = g.guide_type || "";
+
+            if (guideFile) {
+              guide_file = await saveProductFile(
+                guideFile,
+                `guide-${Date.now()}-${vIdx}-${gIdx}`
+              );
+              // Detect type dynamically
+              if (guideFile.mimetype.includes("pdf")) {
+                guide_type = "pdf";
+              } else if (guideFile.mimetype.includes("image")) {
+                guide_type = "image";
+              } else {
+                guide_type = "document";
+              }
+            }
+
+            return {
+              guide_name: g.guide_name || "",
+              guide_description: g.guide_description || "",
+              guide_file,
+              guide_type,
+            };
+          })
+        );
+      }
+
+      // Attach guide to variant
+      variant.guide = guide;
+
             combinations = await Promise.all(
               combinations.map(async (comb: any, cIdx: number) => {
                 const combThumb = findFile(
@@ -2217,7 +2268,7 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
             );
           
           return{ ...variant,
-            combinations
+            combinations, guide 
           };
         })
       );
@@ -9990,6 +10041,39 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
         if (!Array.isArray(combinations)) {
            combinations = combinations ? [combinations] : [];
         }
+        // 🔹 Handle guide data for each variant (if sent)
+let guide = [];
+
+if (Array.isArray(variant.guide)) {
+  guide = await Promise.all(
+    variant.guide.map(async (g: any, gIdx: number) => {
+      const guideFile = findFile(`combinationData[${vIdx}][guide][${gIdx}][guide_file]`);
+      let guide_file = g.guide_file || "";
+      let guide_type = g.guide_type || "";
+
+      if (guideFile) {
+        guide_file = await saveProductFile(
+          guideFile,
+          `guide-${Date.now()}-${vIdx}-${gIdx}`
+        );
+
+        if (guideFile.mimetype.includes("pdf")) guide_type = "pdf";
+        else if (guideFile.mimetype.includes("image")) guide_type = "image";
+        else guide_type = "document";
+      }
+
+      return {
+        guide_name: g.guide_name || "",
+        guide_description: g.guide_description || "",
+        guide_file,
+        guide_type,
+      };
+    })
+  );
+}
+
+variant.guide = guide;
+
             combinations = await Promise.all(
               combinations.map(async (comb: any, cIdx: number) => {
                 const combThumb = findFile(

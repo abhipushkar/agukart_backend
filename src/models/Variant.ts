@@ -30,6 +30,10 @@ const variantSchema = new Schema(
     type: String,
     default: ""
     },
+    guide_description:{
+    type: String,
+    default: '',
+    },
     guide_type: {
     type: String,
     enum: ["image", "pdf", ""],
