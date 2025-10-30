@@ -146,24 +146,35 @@ const deleteFile = (filePath: string) => {
     });
 };
 
-const saveFile = async (file: any, cleanedName: string) => {
+export const saveFile = async (file: any, cleanedName: string, folder: string = "variant") => {
   if (!file) return "";
 
-  const uploadDir = path.join("uploads", "variant");
+  const uploadDir = path.join("uploads", folder);
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
-  const fullPath = path.join(uploadDir, cleanedName.replace(path.extname(cleanedName), ".webp"));
+
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isImage = file.mimetype.startsWith("image/");
+  const isPDF = file.mimetype === "application/pdf";
+
+  const finalExt = isImage ? ".webp" : ext;
+  const fullPath = path.join(uploadDir, cleanedName.replace(path.extname(cleanedName), finalExt));
 
   try {
-    await sharp(file.path).toFormat("webp").toFile(fullPath);
+    if (isImage) {
+      await sharp(file.path).toFormat("webp").toFile(fullPath);
+    } else {
+      await fs.promises.copyFile(file.path, fullPath);
+    }
   } catch (e) {
-    console.error("Sharp conversion failed, fallback saving raw file:", e);
-    await fs.promises.copyFile(file.path, fullPath); // fallback: copy original file
+    console.error("File save failed:", e);
+    await fs.promises.copyFile(file.path, fullPath);
   }
 
-  return process.env.ASSET_URL + "/uploads/variant/" + path.basename(fullPath);
+  return process.env.ASSET_URL + `/uploads/${folder}/` + path.basename(fullPath);
 };
+
 
 const saveProductFile = async (file: any, cleanedName: string) => {
   if (!file) return "";
@@ -1320,9 +1331,20 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         }
         }
 
+        // 🆕 Handle guide chart upload for Variant
+        const guideFile = findFile("guide_file"); // single file upload field
+        const guide_name = req.body.guide_name || "";
+        let guide_file = "";
+        let guide_type = "";
+
+        if (guideFile) {
+        guide_file = await saveFile(guideFile, guideFile.filename, "guide");
+        guide_type = guideFile.mimetype === "application/pdf" ? "pdf" : "image";
+        }
+
         // -------- CREATE --------
         if (req.body._id == "new") {
-        const variant = await Variant.create({ variant_name });
+        const variant = await Variant.create({ variant_name, guide_name, guide_file, guide_type });
         variantId = variant._id;
 
         for (let i = 0; i < variantAttr.length; i++) {
@@ -1462,7 +1484,14 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
             }
         }
 
-        await Variant.updateOne({ _id: variantId }, { $set: { variant_name } });
+            const updateData: any = { variant_name, guide_name };
+
+            if (guideFile) {
+            updateData.guide_file = guide_file;
+            updateData.guide_type = guide_type;
+          }
+
+        await Variant.updateOne({ _id: variantId }, { $set: updateData });
 
         // 🔹 Emit event for Variant update
         eventBus.emit("variantUpdated", { id: variantId, oldName, name: variant_name });
