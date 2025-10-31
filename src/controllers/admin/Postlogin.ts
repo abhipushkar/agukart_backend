@@ -2109,18 +2109,18 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
 if (data.customizationData?.customizations && Array.isArray(data.customizationData.customizations)) {
   data.customizationData.customizations = await Promise.all(
     data.customizationData.customizations.map(async (cust: any, cIdx: number) => {
+      
+      // 🔹 Process optionList images
       if (Array.isArray(cust.optionList)) {
         cust.optionList = await Promise.all(
           cust.optionList.map(async (opt: any, oIdx: number) => {
-
-            // 🔍 Find possible uploaded files
             const optThumb = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][thumbnail]`);
             const optPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][preview_image]`);
             const optMainImages = findFiles(`customizationData[customizations][${cIdx}][optionList][${oIdx}][main_images][]`);
             const optEditMain = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_main_image]`);
             const optEditPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_preview_image]`);
 
-            // 🔹 Parse crop data fields (JSON → object)
+            // Parse crop data if sent
             if (opt.edit_main_image_data && typeof opt.edit_main_image_data === "string") {
               try { opt.edit_main_image_data = JSON.parse(opt.edit_main_image_data); } catch {}
             }
@@ -2128,18 +2128,14 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
               try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
             }
 
-            // 🔹 Save all uploaded files
-            const processedOpt = {
+            return {
               ...opt,
-
               thumbnail: optThumb
                 ? await saveProductFile(optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}`)
                 : opt.thumbnail || "",
-
               preview_image: optPreview
                 ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
                 : opt.preview_image || "",
-
               main_images:
                 optMainImages.length > 0
                   ? await Promise.all(
@@ -2148,24 +2144,47 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
                       )
                     )
                   : opt.main_images || "",
-
               edit_main_image: optEditMain
                 ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
                 : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
-
               edit_preview_image: optEditPreview
                 ? await saveProductFile(optEditPreview, `custom-edit-preview-${Date.now()}-${cIdx}-${oIdx}`)
                 : (typeof opt.edit_preview_image === "string" ? opt.edit_preview_image : ""),
             };
-
-            return processedOpt;
           })
         );
       }
+
+      // 🔹 Handle GUIDE (for each customization)
+      if (cust.guide) {
+        const guideFile = findFile(`customizationData[customizations][${cIdx}][guide][guide_file]`);
+        let guide_file = cust.guide.guide_file || "";
+        let guide_type = cust.guide.guide_type || "";
+
+        if (guideFile) {
+          guide_file = await saveProductFile(guideFile, `guide-${Date.now()}-${cIdx}`);
+          if (guideFile.mimetype.includes("pdf")) {
+            guide_type = "pdf";
+          } else if (guideFile.mimetype.includes("image")) {
+            guide_type = "image";
+          } else {
+            guide_type = "document";
+          }
+        }
+
+        cust.guide = {
+          guide_name: cust.guide.guide_name || "",
+          guide_description: cust.guide.guide_description || "",
+          guide_file,
+          guide_type,
+        };
+      }
+
       return cust;
     })
   );
 }
+
 
     // 🔹 Process nested combinationData images
     if (Array.isArray(data.combinationData)) {
@@ -2428,6 +2447,16 @@ if (req.body.customizationData !== undefined) {
           };
         });
       }
+      // Preserve old guide if not replaced
+if (newCust.guide && oldCust.guide) {
+  newCust.guide = {
+    ...oldCust.guide,
+    ...newCust.guide,
+    guide_file: newCust.guide.guide_file ?? oldCust.guide.guide_file,
+    guide_type: newCust.guide.guide_type ?? oldCust.guide.guide_type,
+  };
+}
+
       return newCust;
     });
   }
@@ -10027,6 +10056,29 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
             return processedOpt;
           })
         );
+      }
+            if (cust.guide) {
+        const guideFile = findFile(`customizationData[customizations][${cIdx}][guide][guide_file]`);
+        let guide_file = cust.guide.guide_file || "";
+        let guide_type = cust.guide.guide_type || "";
+
+        if (guideFile) {
+          guide_file = await saveProductFile(guideFile, `guide-${Date.now()}-${cIdx}`);
+          if (guideFile.mimetype.includes("pdf")) {
+            guide_type = "pdf";
+          } else if (guideFile.mimetype.includes("image")) {
+            guide_type = "image";
+          } else {
+            guide_type = "document";
+          }
+        }
+
+        cust.guide = {
+          guide_name: cust.guide.guide_name || "",
+          guide_description: cust.guide.guide_description || "",
+          guide_file,
+          guide_type,
+        };
       }
       return cust;
     })
