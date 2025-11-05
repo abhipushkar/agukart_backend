@@ -4867,33 +4867,33 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
             variant_attribute_id: req.body.variant_attribute_id,
             sku: req.body.sku,
             seller_sku: req.body.seller_sku,
-
+ 
         };
-
+       
         if (req.body.sub_category) {
             data.sub_category = req.body.sub_category;
         }
         const combinations = req.body.combinations || [];
-
-
+ 
+ 
         if (req.body._id === 'new') {
-
+ 
             const parent_product = await ParentProduct.create(data);
             const sku: any = [];
-
+ 
             for (const combData of combinations) {
                 const existingCombination = await CombinationProduct.findOne({ sku_code: combData.sku_code });
                 const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
-
+ 
                 if (checkExistProductCombination) {
                     return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
                 }
-
+ 
                 if (existingCombination) {
                     return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
                 }
             }
-
+ 
             for (const combData of combinations) {
                 const product = await Product.findOne({ sku_code: combData.sku_code });
                 const combinationProductData = {
@@ -4905,24 +4905,26 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                 };
                 await CombinationProduct.create(combinationProductData);
                 sku.push(combData.sku_code);
-
-                await Product.findByIdAndUpdate(combData.product_id, { price: combData.price, sale_price: combData.sale_price, qty: combData.qty, sale_start_date: combData.sale_start_date, sale_end_date: combData.sale_end_date, seller_sku: combData.seller_sku });
+ 
+                await Product.findByIdAndUpdate(combData.product_id,{ $set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku,},$addToSet: { variant_id: { $each: req.body.variant_id },variant_attribute_id: { $each: req.body.variant_attribute_id },},},{ new: true }
+             );
+ 
             }
             const query = { sku_code: { $in: sku } };
             const updateData = { $set: { parent_id: parent_product._id } };
             await Product.updateMany(query, updateData);
-
+ 
             return resp.status(200).json({ message: 'Parent Product created successfully.', parent_product, success: true });
         } else {
-
+ 
             for (const combData of combinations) {
                 const existingCombination = await CombinationProduct.findOne({ sku_code: combData.sku_code, product_id: { $ne: req.body._id } });
                 const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
-
+ 
                 if (checkExistProductCombination) {
                     return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
                 }
-
+ 
                 if (existingCombination) {
                     return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
                 }
@@ -4938,21 +4940,30 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                 };
                 await CombinationProduct.updateOne(query, { $set: updateData }, { upsert: true });
                 sku.push(combData.sku_code);
-
-                await Product.findByIdAndUpdate(combData.product_id, { price: combData.price, sale_price: combData.sale_price, qty: combData.qty, sale_start_date: combData.sale_start_date, sale_end_date: combData.sale_end_date });
-
+ 
+                await Product.findByIdAndUpdate(combData.product_id,{$set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku,},$addToSet: {variant_id: { $each: req.body.variant_id || [] },variant_attribute_id: { $each: req.body.variant_attribute_id || [] },},},{ new: true });
+ 
             }
-
+ 
             const query = { _id: req.body._id };
             const updateData = { $set: data };
             await ParentProduct.updateOne(query, updateData);
-
+ 
             const parent_product = await ParentProduct.findOne({ _id: req.body._id });
-
+            if (!parent_product) {
+            return resp.status(404).json({
+             message: "Parent product not found while updating.",
+            success: false,
+            });
+            }
             const query1 = { sku_code: { $in: sku } };
             const updateData1 = { $set: { parent_id: parent_product?._id } };
             await Product.updateMany(query1, updateData1);
-
+            await Product.updateMany(
+            { parent_id: parent_product._id, sku_code: { $nin: sku } },
+            { $set: { parent_id: null } }
+        );
+ 
             return resp.status(200).json({ message: 'Parent Product updated successfully.', parent_product, success: true });
         }
     } catch (err) {
@@ -6221,28 +6232,71 @@ export const changeVendorStatus = async (req: Request, resp: Response) => {
 }
 
 export const getProductBySku = async (req: Request, resp: Response) => {
-    try {
-        const sku_code = req.params.sku;
-        const product = await Product.findOne({ sku_code: sku_code });
-        if (!product) {
-            return resp.status(400).json({ message: 'Product not found.' });
-        }
+  try {
+    const sku_code = req.params.sku;
+    const product = await Product.findOne({ sku_code: sku_code });
 
-        const data = {
-            product_id: product._id,
-            price: product.price,
-            sale_price: product.sale_price,
-            sale_start_date: product.sale_start_date,
-            sale_end_date: product.sale_end_date,
-            qty: product.qty,
-        }
-
-        return resp.status(200).json({ message: "Fetched Product Data.", success: true, data: data });
-    } catch {
-
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!product) {
+      return resp.status(400).json({ message: 'Product not found.' });
     }
-}
+
+    const variantDetails: any[] = [];
+
+    if (Array.isArray(product.combinationData)) {
+      for (const combo of product.combinationData) {
+        if (combo?.variant_name && Array.isArray(combo.combinations)) {
+          const values = combo.combinations
+            .filter((item: any) => item?.value1)
+            .map((item: any) => item.value1);
+          if (values.length > 0) {
+            variantDetails.push({
+              source: "combinationData",
+              variant_name: combo.variant_name,
+              values,
+            });
+          }
+        }
+      }
+    }
+
+    if (product.customizationData?.customizations) {
+      for (const custom of product.customizationData.customizations) {
+        if (custom.isVariant === "true" && Array.isArray(custom.optionList)) {
+          const values = custom.optionList
+            .filter((opt: any) => opt?.optionName)
+            .map((opt: any) => opt.optionName);
+          if (values.length > 0) {
+            variantDetails.push({
+              source: "customizationData",
+              variant_name: custom.title,
+              values,
+            });
+          }
+        }
+      }
+    }
+
+    const data = {
+      product_id: product._id,
+      price: product.price,
+      sale_price: product.sale_price,
+      sale_start_date: product.sale_start_date,
+      sale_end_date: product.sale_end_date,
+      qty: product.qty,
+      variants_used: variantDetails,
+    };
+
+    return resp.status(200).json({
+      message: "Fetched Product Data.",
+      success: true,
+      data,
+    });
+  } catch (err) {
+    console.log("getProductBySku Error:", err);
+    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
 
 export const getAllActiveVendor = async (req: Request, resp: Response) => {
     try {
