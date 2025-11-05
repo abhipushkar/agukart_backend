@@ -2795,7 +2795,7 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
     );
 
     // Exclude sold-out qty unless explicitly requested
-    if (type !== "sold-out") {
+    if (type !== "sold-out" && type !== "all") {
       pipeline.push({
         $match: {
           $expr: {
@@ -2913,9 +2913,40 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
               },
             },
           },
+          
         },
-      }
-    );
+      },
+        // ✅ INSERT THIS NEW STAGE HERE
+  {
+    $addFields: {
+      allChildrenSoldOut: {
+        $eq: [
+          {
+            $sum: {
+              $map: {
+                input: "$productData",
+                as: "pd",
+                in: {
+                  $cond: [
+                    {
+                      $gt: [
+                        { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
+                        0,
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          0,
+        ],
+      },
+    },
+  }
+);
 
     if (type !== "all") {
       pipeline.push({
@@ -2927,6 +2958,12 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
       pipeline.push({ $match: { productData: { $ne: [] } } });
     }
 
+    // ✅ Only keep parents whose all children are sold out
+if (type === "sold-out") {
+  pipeline.push({
+    $match: { allChildrenSoldOut: true },
+  });
+}
     // ---------- Union with simple products ----------
     const productMatch: any = {
       parent_id: null,
@@ -2942,33 +2979,105 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
 
     // qty filter
     if (type !== "sold-out") {
-      productMatch.$expr = {
-        $gt: [
-          { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
-          0,
-        ],
-      };
+productMatch.$expr = {
+  $gt: [
+    {
+      $add: [
+        { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
+        {
+$sum: {
+  $map: {
+    input: {
+      $ifNull: [
+        {
+          $reduce: {
+            input: {
+              $map: {
+                input: { $ifNull: ["$combinationData", []] },
+                as: "cd",
+                in: "$$cd.combinations",
+              },
+            },
+            initialValue: [],
+            in: { $concatArrays: ["$$value", "$$this"] },
+          },
+        },
+        [],
+      ],
+    },
+    as: "comb",
+    in: {
+      $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
+    },
+  },
+},
+        },
+      ],
+    },
+    0,
+  ],
+};
     }
 
     const unionPipeline: any[] = [{ $match: productMatch }];
 
-    if (type === "sold-out") {
-      unionPipeline.push({
-        $match: {
-          $and: [
-            { status: true },
-            {
-              $expr: {
+if (type === "sold-out") {
+  unionPipeline.push({
+    $match: {
+      $and: [
+        { status: true },
+        {
+          $expr: {
+            $and: [
+              // main product qty = 0
+              {
                 $eq: [
                   { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
                   0,
                 ],
               },
+              // check all combinationData.combinations.qty are also 0 or empty
+              {
+                $eq: [
+                  {
+              $sum: {
+  $map: {
+    input: {
+      $ifNull: [
+        {
+          $reduce: {
+            input: {
+              $map: {
+                input: { $ifNull: ["$combinationData", []] },
+                as: "cd",
+                in: "$$cd.combinations",
+              },
             },
-          ],
+            initialValue: [],
+            in: { $concatArrays: ["$$value", "$$this"] },
+          },
         },
-      });
-    }
+        [],
+      ],
+    },
+    as: "comb",
+    in: {
+      $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
+    },
+  },
+},
+
+                  },
+                  0,
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+}
 
     unionPipeline.push(
       {
