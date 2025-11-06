@@ -2827,6 +2827,7 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
           description: { $first: "$description" },
           vendor_id: { $first: "$vendor_id" },
           productData: { $push: "$productData" },
+          childCountData: { $first: "$childCountData" },
         },
       },
 {
@@ -2909,53 +2910,59 @@ totalQty: {
 },
 productStatus: {
   $cond: [
+    { $eq: ["$$pd.status", false] }, // respect inactive flag
+    "inactive",
     {
-      $gt: [
+      $cond: [
+        { $eq: ["$$pd.isDeleted", true] },
+        "delete",
         {
-          $add: [
+          $cond: [
+            { $eq: ["$$pd.draft_status", true] },
+            "draft",
             {
-              $convert: {
-                input: "$$pd.qty",
-                to: "double",
-                onError: 0,
-                onNull: 0,
-              },
-            },
-            {
-              $sum: {
-                $map: {
-                  input: {
-                    $reduce: {
-                      input: {
-                        $map: {
-                          input: { $ifNull: ["$$pd.combinationData", []] },
-                          as: "cd",
-                          in: { $ifNull: ["$$cd.combinations", []] },
+              $cond: [
+                {
+                  $gt: [
+                    {
+                      $add: [
+                        { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
+                        {
+                          $sum: {
+                            $map: {
+                              input: {
+                                $reduce: {
+                                  input: {
+                                    $map: {
+                                      input: { $ifNull: ["$$pd.combinationData", []] },
+                                      as: "cd",
+                                      in: { $ifNull: ["$$cd.combinations", []] },
+                                    },
+                                  },
+                                  initialValue: [],
+                                  in: { $concatArrays: ["$$value", "$$this"] },
+                                },
+                              },
+                              as: "comb",
+                              in: {
+                                $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
+                              },
+                            },
+                          },
                         },
-                      },
-                      initialValue: [],
-                      in: { $concatArrays: ["$$value", "$$this"] },
+                      ],
                     },
-                  },
-                  as: "comb",
-                  in: {
-                    $convert: {
-                      input: "$$comb.qty",
-                      to: "double",
-                      onError: 0,
-                      onNull: 0,
-                    },
-                  },
+                    0,
+                  ],
                 },
-              },
+                "active",
+                "sold-out",
+              ],
             },
           ],
         },
-        0,
       ],
     },
-    "active",
-    "sold-out",
   ],
 },
 
@@ -2978,6 +2985,34 @@ productStatus: {
   },
 }
 );
+
+
+    // ✅ Lookup total children count (without any filter)
+pipeline.push({
+  $lookup: {
+    from: "products",
+    let: { parentId: "$_id" },
+    pipeline: [
+      {
+        $match: {
+          $expr: { $eq: ["$parent_id", "$$parentId"] },
+        },
+      },
+      {
+        $count: "count",
+      },
+    ],
+    as: "childCountData",
+  },
+});
+
+pipeline.push({
+  $addFields: {
+    totalChildCount: {
+      $ifNull: [{ $arrayElemAt: ["$childCountData.count", 0] }, 0],
+    },
+  },
+});
 
 // ✅ After productStatus is computed, filter only for correct active/sold-out logic
 if (type === "active") {
@@ -3079,12 +3114,58 @@ if (type === "sold-out") {
   });
 }
 
+// ✅ Filter by specific type (inactive / draft / delete)
+if (type === "inactive") {
+  pipeline.push({
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: {
+            $eq: ["$$pd.status", false]
+          },
+        },
+      },
+    },
+  });
+}
+
+if (type === "draft") {
+  pipeline.push({
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: { $eq: ["$$pd.draft_status", true] },
+        },
+      },
+    },
+  });
+}
+
+if (type === "delete") {
+  pipeline.push({
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: { $eq: ["$$pd.isDeleted", true] },
+        },
+      },
+    },
+  });
+}
+
 // ✅ Remove parents that have no child products left after filtering
-if (["active", "sold-out"].includes(type || "")) {
+if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) {
   pipeline.push({
     $match: { productData: { $ne: [] } },
   });
 }
+
 
     // ---------- Union with simple products ----------
     const productMatch: any = {
