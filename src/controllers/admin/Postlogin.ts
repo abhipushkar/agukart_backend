@@ -2794,21 +2794,21 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
       { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } }
     );
 
-    // Exclude sold-out qty unless explicitly requested
-    if (type !== "sold-out" && type !== "all") {
-      pipeline.push({
-        $match: {
-          $expr: {
-            $gt: [
-              {
-                $convert: { input: "$productData.qty", to: "double", onError: 0, onNull: 0 },
-              },
-              0,
-            ],
-          },
-        },
-      });
-    }
+    // // Exclude sold-out qty unless explicitly requested
+    // if (type !== "sold-out" && type !== "all") {
+    //   pipeline.push({
+    //     $match: {
+    //       $expr: {
+    //         $gt: [
+    //           {
+    //             $convert: { input: "$productData.qty", to: "double", onError: 0, onNull: 0 },
+    //           },
+    //           0,
+    //         ],
+    //       },
+    //     },
+    //   });
+    // }
 
     if (category) {
       pipeline.push({
@@ -2829,113 +2829,205 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
           productData: { $push: "$productData" },
         },
       },
-      {
-        $addFields: {
-          type: "variations",
-          image: {
-            $cond: {
-              if: { $ne: ["$image", null] },
-              then: { $concat: [parentBaseUrl, "$image"] },
-              else: null,
-            },
-          },
-          productData: {
-            $map: {
-              input: "$productData",
-              as: "pd",
-              in: {
-                $mergeObjects: [
-                  {
-                    $cond: {
-                      if: {
-                        $and: [
-                          { $eq: ["$$pd.draft_status", true] },
-                          { $ne: [type, "draft"] },
-                        ],
+{
+  $addFields: {
+    type: "variations",
+    image: {
+      $cond: {
+        if: { $ne: ["$image", null] },
+        then: { $concat: [parentBaseUrl, "$image"] },
+        else: null,
+      },
+    },
+    productData: {
+      $map: {
+        input: "$productData",
+        as: "pd",
+        in: {
+          $mergeObjects: [
+            {
+              $cond: {
+                if: {
+                  $and: [
+                    { $eq: ["$$pd.draft_status", true] },
+                    { $ne: [type, "draft"] },
+                  ],
+                },
+                then: {},
+                else: {
+                  $mergeObjects: [
+                    "$$pd",
+                    {
+                      image: {
+                        $map: {
+                          input: "$$pd.image",
+                          as: "img",
+                          in: { $concat: [baseUrl, "$$img"] },
+                        },
                       },
-                      then: {},
-                      else: {
-                        $mergeObjects: [
-                          "$$pd",
-                          {
-                            image: {
-                              $map: {
-                                input: "$$pd.image",
-                                as: "img",
-                                in: { $concat: [baseUrl, "$$img"] },
-                              },
-                            },
-                            parent_sku: "$seller_sku",
-                            productStatus: {
-                              $cond: {
-                                if: { $eq: ["$$pd.draft_status", true] },
-                                then: {
-                                  $cond: {
-                                    if: { $eq: [type, "draft"] },
-                                    then: "draft",
-                                    else: "$$REMOVE",
-                                  },
-                                },
-                                else: {
-                                  $switch: {
-                                    branches: [
-                                      { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
-                                      { case: { $eq: [type, "delete"] }, then: "delete" },
-                                      {
-                                        case: { $in: [type, ["active", "inactive", "all"]] },
-                                        then: {
-                                          $cond: {
-                                            if: { $eq: ["$$pd.status", true] },
-                                            then: "active",
-                                            else: "inactive"
-                                          },
-                                        },
-                                      },
-                                    ],
-                                    default: "unknown",
-                                  },
-                                },
-                              },
-                            },
-                            inactiveReason: {
-                              $cond: {
-                                 if: { $ne: ["$$pd.inactiveReason", ""] },
-                                 then: "$$pd.inactiveReason",
-                                 else: null
-                             }
-                           },
-                          },
-                        ],
-                      },
-                    },
-                  },
-                ],
+                      parent_sku: "$seller_sku",
+// ✅ Compute totalQty once and derive status simply
+totalQty: {
+  $add: [
+    {
+      $convert: {
+        input: "$$pd.qty",
+        to: "double",
+        onError: 0,
+        onNull: 0,
+      },
+    },
+    {
+      $sum: {
+        $map: {
+          input: {
+            $reduce: {
+              input: {
+                $map: {
+                  input: { $ifNull: ["$$pd.combinationData", []] },
+                  as: "cd",
+                  in: { $ifNull: ["$$cd.combinations", []] },
+                },
               },
+              initialValue: [],
+              in: { $concatArrays: ["$$value", "$$this"] },
             },
           },
-          
+          as: "comb",
+          in: {
+            $convert: {
+              input: "$$comb.qty",
+              to: "double",
+              onError: 0,
+              onNull: 0,
+            },
+          },
         },
       },
-        // ✅ INSERT THIS NEW STAGE HERE
-  {
-    $addFields: {
-      allChildrenSoldOut: {
-        $eq: [
+    },
+  ],
+},
+productStatus: {
+  $cond: [
+    {
+      $gt: [
+        {
+          $add: [
+            {
+              $convert: {
+                input: "$$pd.qty",
+                to: "double",
+                onError: 0,
+                onNull: 0,
+              },
+            },
+            {
+              $sum: {
+                $map: {
+                  input: {
+                    $reduce: {
+                      input: {
+                        $map: {
+                          input: { $ifNull: ["$$pd.combinationData", []] },
+                          as: "cd",
+                          in: { $ifNull: ["$$cd.combinations", []] },
+                        },
+                      },
+                      initialValue: [],
+                      in: { $concatArrays: ["$$value", "$$this"] },
+                    },
+                  },
+                  as: "comb",
+                  in: {
+                    $convert: {
+                      input: "$$comb.qty",
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        0,
+      ],
+    },
+    "active",
+    "sold-out",
+  ],
+},
+
+                      inactiveReason: {
+                        $cond: {
+                          if: { $ne: ["$$pd.inactiveReason", ""] },
+                          then: "$$pd.inactiveReason",
+                          else: null,
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  },
+}
+);
+
+// ✅ After productStatus is computed, filter only for correct active/sold-out logic
+if (type === "active") {
+  pipeline.push({
+    $match: {
+      $expr: {
+        $gt: [
           {
             $sum: {
               $map: {
                 input: "$productData",
                 as: "pd",
                 in: {
-                  $cond: [
+                  $add: [
                     {
-                      $gt: [
-                        { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
-                        0,
-                      ],
+                      $convert: {
+                        input: "$$pd.qty",
+                        to: "double",
+                        onError: 0,
+                        onNull: 0,
+                      },
                     },
-                    1,
-                    0,
+                    {
+                      $sum: {
+                        $map: {
+                          input: {
+                            $reduce: {
+                              input: {
+                                $map: {
+                                  input: { $ifNull: ["$$pd.combinationData", []] },
+                                  as: "cd",
+                                  in: { $ifNull: ["$$cd.combinations", []] },
+                                },
+                              },
+                              initialValue: [],
+                              in: { $concatArrays: ["$$value", "$$this"] },
+                            },
+                          },
+                          as: "comb",
+                          in: {
+                            $convert: {
+                              input: "$$comb.qty",
+                              to: "double",
+                              onError: 0,
+                              onNull: 0,
+                            },
+                          },
+                        },
+                      },
+                    },
                   ],
                 },
               },
@@ -2945,8 +3037,8 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
         ],
       },
     },
-  }
-);
+  });
+}
 
     if (type !== "all") {
       pipeline.push({
@@ -2958,12 +3050,42 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
       pipeline.push({ $match: { productData: { $ne: [] } } });
     }
 
-    // ✅ Only keep parents whose all children are sold out
-if (type === "sold-out") {
+   // ✅ Filter variants (child products) by their computed productStatus
+if (type === "active") {
   pipeline.push({
-    $match: { allChildrenSoldOut: true },
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: { $eq: ["$$pd.productStatus", "active"] },
+        },
+      },
+    },
   });
 }
+
+if (type === "sold-out") {
+  pipeline.push({
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: { $eq: ["$$pd.productStatus", "sold-out"] },
+        },
+      },
+    },
+  });
+}
+
+// ✅ Remove parents that have no child products left after filtering
+if (["active", "sold-out"].includes(type || "")) {
+  pipeline.push({
+    $match: { productData: { $ne: [] } },
+  });
+}
+
     // ---------- Union with simple products ----------
     const productMatch: any = {
       parent_id: null,
@@ -4992,11 +5114,11 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
  
             for (const combData of combinations) {
                 const existingCombination = await CombinationProduct.findOne({ sku_code: combData.sku_code });
-                const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
+                // const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
  
-                if (checkExistProductCombination) {
-                    return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
-                }
+                // if (checkExistProductCombination) {
+                //     return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
+                // }
  
                 if (existingCombination) {
                     return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
@@ -5028,11 +5150,11 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
  
             for (const combData of combinations) {
                 const existingCombination = await CombinationProduct.findOne({ sku_code: combData.sku_code, product_id: { $ne: req.body._id } });
-                const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
+                // const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
  
-                if (checkExistProductCombination) {
-                    return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
-                }
+                // if (checkExistProductCombination) {
+                //     return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
+                // }
  
                 if (existingCombination) {
                     return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
