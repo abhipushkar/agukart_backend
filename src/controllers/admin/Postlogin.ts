@@ -2762,12 +2762,20 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
     const baseUrl = process.env.ASSET_URL + "/uploads/product/";
     const parentBaseUrl = process.env.ASSET_URL + "/uploads/parent_product/";
     const category: any = req.query.category || null;
-    const type = (req.query.type as string) || null; // active | inactive | all | draft | delete | sold-out
+    const type = (req.query.type as string) || null; // active | inactive | all | draft | delete | sold-out | deleteByAdmin
     const designation_id = req.user?.designation_id;
     const user_id = req.user?._id;
 
     const pipeline: any[] = [];
 
+    if (type === "deleteByAdmin") {
+    pipeline.push({
+    $match: {
+      isDeleted: true,
+      deletedByAdmin: true,
+    },
+    });
+    }
     // ---------- Variations lookup ----------
     pipeline.push(
       {
@@ -2910,16 +2918,16 @@ totalQty: {
 },
 productStatus: {
   $cond: [
-    { $eq: ["$$pd.status", false] }, // respect inactive flag
-    "inactive",
+    { $eq: ["$$pd.isDeleted", true] }, // 🧠 check this FIRST
+    "delete",
     {
       $cond: [
-        { $eq: ["$$pd.isDeleted", true] },
-        "delete",
+        { $eq: ["$$pd.draft_status", true] },
+        "draft",
         {
           $cond: [
-            { $eq: ["$$pd.draft_status", true] },
-            "draft",
+            { $eq: ["$$pd.status", false] }, // only check inactive if not deleted or draft
+            "inactive",
             {
               $cond: [
                 {
@@ -2945,7 +2953,12 @@ productStatus: {
                               },
                               as: "comb",
                               in: {
-                                $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
+                                $convert: {
+                                  input: "$$comb.qty",
+                                  to: "double",
+                                  onError: 0,
+                                  onNull: 0,
+                                },
                               },
                             },
                           },
@@ -3114,7 +3127,7 @@ if (type === "sold-out") {
   });
 }
 
-// ✅ Filter by specific type (inactive / draft / delete)
+// Filter by specific type (inactive / draft / delete)
 if (type === "inactive") {
   pipeline.push({
     $addFields: {
@@ -3123,13 +3136,17 @@ if (type === "inactive") {
           input: "$productData",
           as: "pd",
           cond: {
-            $eq: ["$$pd.status", false]
+            $and: [
+              { $eq: ["$$pd.status", false] },
+              { $eq: ["$$pd.isDeleted", false] } 
+            ]
           },
         },
       },
     },
   });
 }
+
 
 if (type === "draft") {
   pipeline.push({
@@ -3159,8 +3176,28 @@ if (type === "delete") {
   });
 }
 
+if (type === "deleteByAdmin") {
+  pipeline.push({
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: {
+            $and: [
+              { $eq: ["$$pd.isDeleted", true] },
+              { $eq: ["$$pd.deletedByAdmin", true] }
+            ]
+          }
+        },
+      },
+    },
+  });
+}
+
+
 // ✅ Remove parents that have no child products left after filtering
-if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) {
+if (["active", "sold-out", "draft", "inactive", "delete", "deleteByAdmin"].includes(type || "")) {
   pipeline.push({
     $match: { productData: { $ne: [] } },
   });
@@ -3174,8 +3211,13 @@ if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) 
       ...(category && { category: new mongoose.Types.ObjectId(category) }),
     };
 
+    if (!["delete", "deleteByAdmin"].includes(type || "")) productMatch.isDeleted = false;
+
     // type-based conditions
     if (type === "delete") productMatch.isDeleted = true;
+    if (type === "deleteByAdmin") { productMatch.isDeleted = true;
+    productMatch.deletedByAdmin = true;
+    }
     if (type === "draft") productMatch.draft_status = true;
     if (type === "active") productMatch.status = true;
     if (type === "inactive") productMatch.status = false;
@@ -3365,6 +3407,17 @@ if (type === "sold-out") {
 
     pipeline.push({ $unionWith: { coll: "products", pipeline: unionPipeline } });
 
+    if (type === "deleteByAdmin") {
+    pipeline.push({
+    $match: {
+      $or: [
+        { "productData.deletedByAdmin": true },
+        { deletedByAdmin: true },
+      ],
+     },
+    });
+    }
+
     // Final sort
     pipeline.push({ $sort: { updatedAt: -1 } });
 
@@ -3497,7 +3550,7 @@ export const deleteProduct = async (req: Request, resp: Response) => {
   }
 };
 
-export const deletedByVendor = async (req: Request, resp: Response) => {
+export const deletedByAdmin = async (req: Request, resp: Response) => {
   try {
     const { id } = req.params;
 
@@ -3505,7 +3558,7 @@ export const deletedByVendor = async (req: Request, resp: Response) => {
     if (parent) {
       await ParentProduct.updateOne(
         { _id: id },
-        { $set: { deletedByVendor: true } }
+        { $set: { deletedByAdmin: true } }
       );
       return resp
         .status(200)
@@ -3516,7 +3569,7 @@ export const deletedByVendor = async (req: Request, resp: Response) => {
     if (product) {
       await Product.updateOne(
         { _id: id },
-        { $set: { deletedByVendor: true } }
+        { $set: { deletedByAdmin: true } }
       );
       return resp
         .status(200)

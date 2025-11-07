@@ -42,7 +42,7 @@ const parentProductSchema = new Schema(
             type: Boolean,
             default: false
         },
-        deletedByVendor: {
+        deletedByAdmin: {
         type: Boolean,
         default: false
         },
