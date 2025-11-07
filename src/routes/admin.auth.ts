@@ -234,7 +234,8 @@ import {
     getAttributeListById,
     updateAttributeList,
     deleteAttributeList,
-    getAttributeListByCategoryId
+    getAttributeListByCategoryId,
+    deletedByVendor
 } from "../controllers/admin/Postlogin";
 
 
@@ -335,6 +336,7 @@ routes.post('/change-product-sort-order', changeProductSortOrder)
 routes.post('/changeBestSellerProduct', changeBestSellerProduct);
 routes.post('/changePopularGiftProduct', changePopularGiftProduct);
 routes.get('/delete-product/:id', deleteProduct);
+routes.put('/deleted-by-vendor/:id', deletedByVendor);
 routes.get('/edit-product/:id', editProduct);
 routes.post('/copy-same-product', copySameProduct);
 routes.post('/getActivePolicy', getActivePolicy)

@@ -3461,32 +3461,76 @@ export const changePopularGiftProduct = async (req: CustomRequest, resp: Respons
 }
 
 
-export const deleteProduct = async (req: CustomRequest, resp: Response) => {
+export const deleteProduct = async (req: Request, resp: Response) => {
+  try {
+    const id = req.params.id;
 
-    try {
+    const parentProduct = await ParentProduct.findById(id);
 
-        const id = req.params.id;
+    if (parentProduct) {
+      await ParentProduct.updateOne({ _id: id }, { $set: { isDeleted: true } });
 
-        const product = await Product.findOne({ _id: id });
+      await Product.updateMany(
+        { parent_id: id },
+        { $set: { parent_id: null } }
+      );
 
-        if (product) {
+      return resp.status(200).json({
+        message: 'Parent product deleted successfully and all child products detached.',
+      });
+    }
+    const product = await Product.findById(id);
 
-            await Product.updateOne({ _id: id }, { isDeleted: true });
+    if (product) {
+      await Product.updateOne({ _id: id }, { $set: { isDeleted: true, parent_id: null } });
 
-            return resp.status(200).json({ message: 'Product deleted successfully.' });
-
-        } else {
-            return resp.status(40).json({ message: 'Product not found.' });
-
-        }
-
-    } catch (error) {
-
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-
+      return resp.status(200).json({
+        message: 'Product deleted successfully and detached from parent.',
+      });
     }
 
-}
+    return resp.status(404).json({ message: 'Product not found.' });
+
+  } catch (error) {
+    console.error('Delete error:', error);
+    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
+export const deletedByVendor = async (req: Request, resp: Response) => {
+  try {
+    const { id } = req.params;
+
+    const parent = await ParentProduct.findById(id);
+    if (parent) {
+      await ParentProduct.updateOne(
+        { _id: id },
+        { $set: { deletedByVendor: true } }
+      );
+      return resp
+        .status(200)
+        .json({ message: 'Parent product marked as deleted by vendor.' });
+    }
+
+    const product = await Product.findById(id);
+    if (product) {
+      await Product.updateOne(
+        { _id: id },
+        { $set: { deletedByVendor: true } }
+      );
+      return resp
+        .status(200)
+        .json({ message: 'Product marked as deleted by vendor.' });
+    }
+
+    return resp.status(404).json({ message: 'Product or parent not found.' });
+  } catch (error) {
+    console.error('Error marking deletedByVendor:', error);
+    return resp
+      .status(500)
+      .json({ message: 'Something went wrong. Please try again.' });
+  }
+};
 
 export const editProduct = async (req: CustomRequest, resp: Response) => {
   try {
