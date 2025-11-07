@@ -2762,12 +2762,20 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
     const baseUrl = process.env.ASSET_URL + "/uploads/product/";
     const parentBaseUrl = process.env.ASSET_URL + "/uploads/parent_product/";
     const category: any = req.query.category || null;
-    const type = (req.query.type as string) || null; // active | inactive | all | draft | delete | sold-out
+    const type = (req.query.type as string) || null; // active | inactive | all | draft | delete | sold-out | deleteByAdmin
     const designation_id = req.user?.designation_id;
     const user_id = req.user?._id;
 
     const pipeline: any[] = [];
 
+    if (type === "deleteByAdmin") {
+    pipeline.push({
+    $match: {
+      isDeleted: true,
+      deletedByAdmin: true,
+    },
+    });
+    }
     // ---------- Variations lookup ----------
     pipeline.push(
       {
@@ -2910,16 +2918,16 @@ totalQty: {
 },
 productStatus: {
   $cond: [
-    { $eq: ["$$pd.status", false] }, // respect inactive flag
-    "inactive",
+    { $eq: ["$$pd.isDeleted", true] }, // 🧠 check this FIRST
+    "delete",
     {
       $cond: [
-        { $eq: ["$$pd.isDeleted", true] },
-        "delete",
+        { $eq: ["$$pd.draft_status", true] },
+        "draft",
         {
           $cond: [
-            { $eq: ["$$pd.draft_status", true] },
-            "draft",
+            { $eq: ["$$pd.status", false] }, // only check inactive if not deleted or draft
+            "inactive",
             {
               $cond: [
                 {
@@ -2945,7 +2953,12 @@ productStatus: {
                               },
                               as: "comb",
                               in: {
-                                $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
+                                $convert: {
+                                  input: "$$comb.qty",
+                                  to: "double",
+                                  onError: 0,
+                                  onNull: 0,
+                                },
                               },
                             },
                           },
@@ -3114,7 +3127,7 @@ if (type === "sold-out") {
   });
 }
 
-// ✅ Filter by specific type (inactive / draft / delete)
+// Filter by specific type (inactive / draft / delete)
 if (type === "inactive") {
   pipeline.push({
     $addFields: {
@@ -3123,13 +3136,17 @@ if (type === "inactive") {
           input: "$productData",
           as: "pd",
           cond: {
-            $eq: ["$$pd.status", false]
+            $and: [
+              { $eq: ["$$pd.status", false] },
+              { $eq: ["$$pd.isDeleted", false] } 
+            ]
           },
         },
       },
     },
   });
 }
+
 
 if (type === "draft") {
   pipeline.push({
@@ -3159,8 +3176,28 @@ if (type === "delete") {
   });
 }
 
+if (type === "deleteByAdmin") {
+  pipeline.push({
+    $addFields: {
+      productData: {
+        $filter: {
+          input: "$productData",
+          as: "pd",
+          cond: {
+            $and: [
+              { $eq: ["$$pd.isDeleted", true] },
+              { $eq: ["$$pd.deletedByAdmin", true] }
+            ]
+          }
+        },
+      },
+    },
+  });
+}
+
+
 // ✅ Remove parents that have no child products left after filtering
-if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) {
+if (["active", "sold-out", "draft", "inactive", "delete", "deleteByAdmin"].includes(type || "")) {
   pipeline.push({
     $match: { productData: { $ne: [] } },
   });
@@ -3174,8 +3211,13 @@ if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) 
       ...(category && { category: new mongoose.Types.ObjectId(category) }),
     };
 
+    if (!["delete", "deleteByAdmin"].includes(type || "")) productMatch.isDeleted = false;
+
     // type-based conditions
     if (type === "delete") productMatch.isDeleted = true;
+    if (type === "deleteByAdmin") { productMatch.isDeleted = true;
+    productMatch.deletedByAdmin = true;
+    }
     if (type === "draft") productMatch.draft_status = true;
     if (type === "active") productMatch.status = true;
     if (type === "inactive") productMatch.status = false;
@@ -3365,6 +3407,17 @@ if (type === "sold-out") {
 
     pipeline.push({ $unionWith: { coll: "products", pipeline: unionPipeline } });
 
+    if (type === "deleteByAdmin") {
+    pipeline.push({
+    $match: {
+      $or: [
+        { "productData.deletedByAdmin": true },
+        { deletedByAdmin: true },
+      ],
+     },
+    });
+    }
+
     // Final sort
     pipeline.push({ $sort: { updatedAt: -1 } });
 
@@ -3461,32 +3514,76 @@ export const changePopularGiftProduct = async (req: CustomRequest, resp: Respons
 }
 
 
-export const deleteProduct = async (req: CustomRequest, resp: Response) => {
+export const deleteProduct = async (req: Request, resp: Response) => {
+  try {
+    const id = req.params.id;
 
-    try {
+    const parentProduct = await ParentProduct.findById(id);
 
-        const id = req.params.id;
+    if (parentProduct) {
+      await ParentProduct.updateOne({ _id: id }, { $set: { isDeleted: true } });
 
-        const product = await Product.findOne({ _id: id });
+      await Product.updateMany(
+        { parent_id: id },
+        { $set: { parent_id: null } }
+      );
 
-        if (product) {
+      return resp.status(200).json({
+        message: 'Parent product deleted successfully and all child products detached.',
+      });
+    }
+    const product = await Product.findById(id);
 
-            await Product.updateOne({ _id: id }, { isDeleted: true });
+    if (product) {
+      await Product.updateOne({ _id: id }, { $set: { isDeleted: true, parent_id: null } });
 
-            return resp.status(200).json({ message: 'Product deleted successfully.' });
-
-        } else {
-            return resp.status(40).json({ message: 'Product not found.' });
-
-        }
-
-    } catch (error) {
-
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-
+      return resp.status(200).json({
+        message: 'Product deleted successfully and detached from parent.',
+      });
     }
 
-}
+    return resp.status(404).json({ message: 'Product not found.' });
+
+  } catch (error) {
+    console.error('Delete error:', error);
+    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
+export const deletedByAdmin = async (req: Request, resp: Response) => {
+  try {
+    const { id } = req.params;
+
+    const parent = await ParentProduct.findById(id);
+    if (parent) {
+      await ParentProduct.updateOne(
+        { _id: id },
+        { $set: { deletedByAdmin: true } }
+      );
+      return resp
+        .status(200)
+        .json({ message: 'Parent product marked as deleted by vendor.' });
+    }
+
+    const product = await Product.findById(id);
+    if (product) {
+      await Product.updateOne(
+        { _id: id },
+        { $set: { deletedByAdmin: true } }
+      );
+      return resp
+        .status(200)
+        .json({ message: 'Product marked as deleted by vendor.' });
+    }
+
+    return resp.status(404).json({ message: 'Product or parent not found.' });
+  } catch (error) {
+    console.error('Error marking deletedByVendor:', error);
+    return resp
+      .status(500)
+      .json({ message: 'Something went wrong. Please try again.' });
+  }
+};
 
 export const editProduct = async (req: CustomRequest, resp: Response) => {
   try {

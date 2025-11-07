@@ -37,7 +37,15 @@ const parentProductSchema = new Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'VariantAttribute',
             required: true,
-        }]
+        }],
+        isDeleted: {
+            type: Boolean,
+            default: false
+        },
+        deletedByAdmin: {
+        type: Boolean,
+        default: false
+        },
     },
     {
         timestamps: true,

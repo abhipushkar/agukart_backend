@@ -359,6 +359,10 @@ const productSchema = new Schema(
       type: Boolean,
       default: false
     },
+    deletedByAdmin:{
+    type: Boolean,
+    default: false
+    },
     draft_status:{
       type: Boolean,
       default: true
