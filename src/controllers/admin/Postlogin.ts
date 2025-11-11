@@ -2765,42 +2765,55 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
     const type = (req.query.type as string) || null; // active | inactive | all | draft | delete | sold-out | deleteByAdmin
     const designation_id = req.user?.designation_id;
     const user_id = req.user?._id;
+    const featured = req.query.featured === "true";
 
     const pipeline: any[] = [];
 
-    if (type === "deleteByAdmin") {
-    pipeline.push({
-    $match: {
-      isDeleted: true,
-      deletedByAdmin: true,
-    },
-    });
-    }
+
     // ---------- Variations lookup ----------
-    pipeline.push(
-      {
-        $lookup: {
-          from: "products",
-          let: { parentId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$parent_id", "$$parentId"] },
-                    { $eq: ["$isDeleted", false] },
-                    ...(type !== "draft" ? [{ $eq: ["$draft_status", false] }] : []),
-                    ...(designation_id == 3 ? [{ $eq: ["$vendor_id", user_id] }] : []),
-                  ],
-                },
-              },
+pipeline.push(
+  {
+    $lookup: {
+      from: "products",
+      let: { parentId: "$_id" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ["$parent_id", "$$parentId"] },
+                ...(type === "deleteByAdmin"
+                  ? []
+                  : [{ $eq: ["$isDeleted", false] }]),
+                ...(type !== "draft" ? [{ $eq: ["$draft_status", false] }] : []),
+                ...(designation_id == 3 ? [{ $eq: ["$vendor_id", user_id] }] : []),
+                ...(featured ? [{ $eq: ["$featured", true] }] : []),
+              ],
             },
-          ],
-          as: "productData",
+          },
         },
-      },
-      { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } }
-    );
+        // ✅ NEW — lookup vendor info for each child variant
+        {
+          $lookup: {
+            from: "vendordetails",
+            localField: "vendor_id",
+            foreignField: "user_id",
+            as: "vendorInfo",
+          },
+        },
+        {
+          $addFields: {
+            shop_name: {
+              $ifNull: [{ $arrayElemAt: ["$vendorInfo.shop_name", 0] }, ""],
+            },
+          },
+        },
+      ],
+      as: "productData",
+    },
+  },
+  { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } }
+);
 
     // // Exclude sold-out qty unless explicitly requested
     // if (type !== "sold-out" && type !== "all") {
@@ -2818,10 +2831,23 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
     //   });
     // }
 
+    if (type !== "draft") {
+    pipeline.push({
+    $match: {
+      "productData.draft_status": false,
+    },
+    });
+    }
+
     if (category) {
-      pipeline.push({
-        $match: { "productData.category": new mongoose.Types.ObjectId(category) },
-      });
+    pipeline.push({
+    $match: {
+      $or: [
+        { "productData.category": new mongoose.Types.ObjectId(category) },
+        { category: new mongoose.Types.ObjectId(category) },
+      ],
+      },
+    });
     }
 
     pipeline.push(
@@ -2875,6 +2901,7 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
                         },
                       },
                       parent_sku: "$seller_sku",
+                      shop_name: { $ifNull: ["$$pd.shop_name", "$shop_name"] },
 // ✅ Compute totalQty once and derive status simply
 totalQty: {
   $add: [
@@ -3027,6 +3054,22 @@ pipeline.push({
   },
 });
 
+pipeline.push({
+  $lookup: {
+    from: "vendordetails", // your collection name (auto-pluralized by Mongoose)
+    localField: "vendor_id",
+    foreignField: "user_id",
+    as: "vendorInfo"
+  }
+});
+
+pipeline.push({
+  $addFields: {
+    shop_name: { $ifNull: [{ $arrayElemAt: ["$vendorInfo.shop_name", 0] }, ""] }
+  }
+});
+
+
 // ✅ After productStatus is computed, filter only for correct active/sold-out logic
 if (type === "active") {
   pipeline.push({
@@ -3169,7 +3212,10 @@ if (type === "delete") {
         $filter: {
           input: "$productData",
           as: "pd",
-          cond: { $eq: ["$$pd.isDeleted", true] },
+          cond: {             $and: [
+              { $eq: ["$$pd.isDeleted", true] },
+              { $eq: ["$$pd.deletedByAdmin", false] }
+            ]},
         },
       },
     },
@@ -3197,7 +3243,7 @@ if (type === "deleteByAdmin") {
 
 
 // ✅ Remove parents that have no child products left after filtering
-if (["active", "sold-out", "draft", "inactive", "delete", "deleteByAdmin"].includes(type || "")) {
+if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) {
   pipeline.push({
     $match: { productData: { $ne: [] } },
   });
@@ -3209,8 +3255,10 @@ if (["active", "sold-out", "draft", "inactive", "delete", "deleteByAdmin"].inclu
       parent_id: null,
       ...(designation_id == 3 && { vendor_id: user_id }),
       ...(category && { category: new mongoose.Types.ObjectId(category) }),
+      ...(featured && { featured: true }),
     };
 
+    if (type !== "draft") productMatch.draft_status = false;
     if (!["delete", "deleteByAdmin"].includes(type || "")) productMatch.isDeleted = false;
 
     // type-based conditions
@@ -3222,47 +3270,47 @@ if (["active", "sold-out", "draft", "inactive", "delete", "deleteByAdmin"].inclu
     if (type === "active") productMatch.status = true;
     if (type === "inactive") productMatch.status = false;
 
-    // qty filter
-    if (type !== "sold-out") {
-productMatch.$expr = {
-  $gt: [
-    {
-      $add: [
-        { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
-        {
-$sum: {
-  $map: {
-    input: {
-      $ifNull: [
-        {
-          $reduce: {
-            input: {
+
+if (!["sold-out", "delete", "deleteByAdmin"].includes(type || "")) {
+  productMatch.$expr = {
+    $gt: [
+      {
+        $add: [
+          { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
+          {
+            $sum: {
               $map: {
-                input: { $ifNull: ["$combinationData", []] },
-                as: "cd",
-                in: "$$cd.combinations",
+                input: {
+                  $ifNull: [
+                    {
+                      $reduce: {
+                        input: {
+                          $map: {
+                            input: { $ifNull: ["$combinationData", []] },
+                            as: "cd",
+                            in: "$$cd.combinations",
+                          },
+                        },
+                        initialValue: [],
+                        in: { $concatArrays: ["$$value", "$$this"] },
+                      },
+                    },
+                    [],
+                  ],
+                },
+                as: "comb",
+                in: {
+                  $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
+                },
               },
             },
-            initialValue: [],
-            in: { $concatArrays: ["$$value", "$$this"] },
           },
-        },
-        [],
-      ],
-    },
-    as: "comb",
-    in: {
-      $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
-    },
-  },
-},
-        },
-      ],
-    },
-    0,
-  ],
-};
-    }
+        ],
+      },
+      0,
+    ],
+  };
+}
 
     const unionPipeline: any[] = [{ $match: productMatch }];
 
@@ -3323,7 +3371,23 @@ if (type === "sold-out") {
     },
   });
 }
+    
+// ✅ Lookup vendor info in union pipeline (for single products)
+unionPipeline.push({
+  $lookup: {
+    from: "vendordetails",
+    localField: "vendor_id",
+    foreignField: "user_id",
+    as: "vendorInfo"
+  }
+});
+unionPipeline.push({
+  $addFields: {
+    shop_name: { $ifNull: [{ $arrayElemAt: ["$vendorInfo.shop_name", 0] }, ""] }
+  }
+});
 
+    
     unionPipeline.push(
       {
         $addFields: {
@@ -3341,6 +3405,7 @@ if (type === "sold-out") {
                 { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
                 { case: { $eq: [type, "delete"] }, then: "delete" },
                 { case: { $eq: [type, "draft"] }, then: "draft" },
+                { case: { $eq: [type, "deleteByAdmin"] }, then: "removed" },
                 {
                   case: { $in: [type, ["active", "inactive", "all"]] },
                   then: {
@@ -3368,6 +3433,7 @@ if (type === "sold-out") {
         $project: {
           _id: 1,
           product_title: 1,
+          shop_name: 1,
           zoom: 1,
           bestseller: 1,
           popular_gifts: 1,
@@ -3386,6 +3452,7 @@ if (type === "sold-out") {
           product_bedge: 1,
           updatedAt: 1,
           isDeleted: 1,
+          deletedByAdmin: 1,
           draft_status: 1,
           sort_order: 1,
           status: {
@@ -3407,19 +3474,46 @@ if (type === "sold-out") {
 
     pipeline.push({ $unionWith: { coll: "products", pipeline: unionPipeline } });
 
-    if (type === "deleteByAdmin") {
-    pipeline.push({
+if (type === "delete") {
+  pipeline.push({
+    $match: {
+      $and: [
+        { deletedByAdmin: { $ne: true } },
+        {
+          $or: [
+            { "productData.deletedByAdmin": { $ne: true } },
+            { productData: { $size: 0 } },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+if (type === "deleteByAdmin") {
+  pipeline.push({
     $match: {
       $or: [
         { "productData.deletedByAdmin": true },
         { deletedByAdmin: true },
       ],
-     },
-    });
+    },
+  });
+}
+
+    if (featured) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { featured: true },
+            { "productData.featured": true }
+          ]
+        }
+      });
     }
 
     // Final sort
-    pipeline.push({ $sort: { updatedAt: -1 } });
+    pipeline.push({ $sort: { createdAt: -1 } });
 
     const combinedData = await ParentProduct.aggregate(pipeline);
 
@@ -3562,7 +3656,7 @@ export const deletedByAdmin = async (req: Request, resp: Response) => {
       );
       return resp
         .status(200)
-        .json({ message: 'Parent product marked as deleted by vendor.' });
+        .json({ message: 'Parent product marked as deleted by Admin.' });
     }
 
     const product = await Product.findById(id);
@@ -3573,12 +3667,12 @@ export const deletedByAdmin = async (req: Request, resp: Response) => {
       );
       return resp
         .status(200)
-        .json({ message: 'Product marked as deleted by vendor.' });
+        .json({ message: 'Product marked as deleted by Admin.' });
     }
 
     return resp.status(404).json({ message: 'Product or parent not found.' });
   } catch (error) {
-    console.error('Error marking deletedByVendor:', error);
+    console.error('Error marking deletedByAdmin:', error);
     return resp
       .status(500)
       .json({ message: 'Something went wrong. Please try again.' });
