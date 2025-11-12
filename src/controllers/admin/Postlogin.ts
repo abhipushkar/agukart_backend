@@ -82,6 +82,7 @@ import ParentCartModel from "../../models/ParentCart";
 import AddressModel from "../../models/Address";
 import _ from 'lodash';
 import { main } from "ts-node/dist/bin";
+import { error } from "console";
 dayjs.extend(duration);
 
 interface CustomRequest extends Request {
@@ -1875,7 +1876,17 @@ export const createAttributeList = async (req: CustomRequest, resp: Response) =>
 
 export const getAttributeList = async (req: CustomRequest, resp: Response) => {
     try {
-        const attributes = await AttributesList.find({ isDeleted: false }).sort({createdAt: -1});
+        const { sort } = req.query;
+
+        let sortOption: any = { createdAt: -1 };
+        if(sort) {
+            try {
+                sortOption = JSON.parse(sort as string);
+            } catch {
+                console.warn("Invalid sort format received — using default sort.");
+            }
+        }
+        const attributes = await AttributesList.find({ isDeleted: false }).sort(sortOption);
         return resp.status(200).json({
             success: true,
             message: 'Attribute List retrieved successfully.',
@@ -2858,6 +2869,7 @@ pipeline.push(
           image: { $first: "$image" },
           seller_sku: { $first: "$seller_sku" },
           updatedAt: { $first: "$updatedAt" },
+          createdAt: { $first: "$createdAt"},
           description: { $first: "$description" },
           vendor_id: { $first: "$vendor_id" },
           productData: { $push: "$productData" },
@@ -3451,6 +3463,7 @@ unionPipeline.push({
           type: 1,
           product_bedge: 1,
           updatedAt: 1,
+          createdAt: 1,
           isDeleted: 1,
           deletedByAdmin: 1,
           draft_status: 1,
@@ -3512,8 +3525,81 @@ if (type === "deleteByAdmin") {
       });
     }
 
-    // Final sort
-    pipeline.push({ $sort: { createdAt: -1 } });
+    // -------------------- SEARCH FILTER --------------------
+if (req.query.search && String(req.query.search).trim() !== "") {
+  const search = String(req.query.search).trim();
+
+  const isObjectId = mongoose.Types.ObjectId.isValid(search);
+
+  const searchMatch: any = {
+    $or: [
+      ...(isObjectId
+        ? [
+            { _id: new mongoose.Types.ObjectId(search) }, // parent or product id
+            { "productData._id": new mongoose.Types.ObjectId(search) }, // variant id
+          ]
+        : []),
+      { sku_code: { $regex: search, $options: "i" } }, // simple product SKU
+      { "productData.sku_code": { $regex: search, $options: "i" } }, // variant SKU
+      { product_title: { $regex: search, $options: "i" } }, // parent title
+      { "productData.product_title": { $regex: search, $options: "i" } }, // variant title
+    ],
+  };
+
+  pipeline.push({ $match: searchMatch });
+}
+
+
+// -------------------- SORT FIX --------------------
+let sortObj: Record<string, number> = { createdAt: -1 };
+
+if (req.query.sort) {
+  try {
+    sortObj = JSON.parse(req.query.sort as string);
+  } catch (err) {
+    console.warn("Invalid sort JSON — using default sort.");
+  }
+}
+
+const key = Object.keys(sortObj)[0] || "createdAt";
+const direction = Object.values(sortObj)[0] || -1;
+
+if (["sku_code", "sku"].includes(key)) {
+  pipeline.push({
+    $addFields: {
+      sortField: {
+        $ifNull: [
+          { $arrayElemAt: ["$productData.sku_code", 0] }, // variant SKU
+          "$sku_code", // normal product SKU
+        ],
+      },
+    },
+  });
+} else if (["product_title", "title"].includes(key)) {
+  pipeline.push({
+    $addFields: {
+      sortField: { $ifNull: ["$product_title", ""] },
+    },
+  });
+} else if (["createdAt", "updatedAt"].includes(key)) {
+  pipeline.push({
+    $addFields: {
+      sortField: `$${key}`,
+    },
+  });
+} else {
+  pipeline.push({
+    $addFields: {
+      sortField: `$${key}`,
+    },
+  });
+}
+
+pipeline.push({
+  $sort: { sortField: direction },
+});
+
+
 
     const combinedData = await ParentProduct.aggregate(pipeline);
 
@@ -3938,7 +4024,7 @@ export const getActivePolicy = async (req: CustomRequest, resp: Response) => {
 
         const policies = await PolicyModel.find({ vendor_id: vendor_id, status: true }).sort({ _id: -1 });
 
-        return resp.status(200).json({ message: "Policy retrieved successfully.", policies });
+        return resp.status(200).json({ message: "Policy retrieved successfully.", policies});
 
     } catch (error) {
 
@@ -8878,7 +8964,11 @@ export const deleteShippingTemplate = async (req: CustomRequest, resp: Response)
 
 export const getAllShippingTemplate = async (req: CustomRequest, resp: Response) => {
     try {
-        const template = await ShippingModel.find();
+        const vendor_id = req.params.id;
+        if(!vendor_id) {
+            return resp.status(400).json({error: "Vendor ID is required in params."});
+        }
+        const template = await ShippingModel.find({vendor_id});
         return resp.status(200).json({ message: 'Shipping Template fetched successfully.', template });
     } catch (error) {
         console.error(error);
