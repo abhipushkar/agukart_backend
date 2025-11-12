@@ -485,7 +485,7 @@ routes.get('/getShippingTemplateById/:id', getShippingTemplateById)
 routes.post('/setDefaultTemplate', setDefaultTemplate)
 routes.post('/deleteShippingTemplate', deleteShippingTemplate)
 
-routes.get('/getAllShippingTemplate', getAllShippingTemplate)
+routes.get('/getAllShippingTemplate/:id', getAllShippingTemplate)
 
 // Subscribe Module
 routes.get('/getSubscribeData', getSubscribeData)
