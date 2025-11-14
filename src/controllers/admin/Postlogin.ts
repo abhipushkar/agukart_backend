@@ -80,6 +80,8 @@ import VoucherModel from "../../models/Voucher";
 import CartCouponModel from "../../models/CartCoupon";
 import ParentCartModel from "../../models/ParentCart";
 import AddressModel from "../../models/Address";
+import { paginateArray } from "../../utils/pagination";
+import { paginate } from "../../utils/pagination";
 import _ from 'lodash';
 import { main } from "ts-node/dist/bin";
 import { error } from "console";
@@ -542,11 +544,10 @@ export const categoryList = async (req: CustomRequest, resp: Response) => {
                     topRated: 1,
                     parent_id: 1,
                     parent_name: '$parent_data.title',
-                    parent_status: '$parent_data.status'
+                    parent_status: '$parent_data.status',
+                    createdAt: 1,
+                    updatedAt: 1
                 }
-            },
-            {
-                $sort: { title: 1 } // optional: sort by title initially
             }
         ];
 
@@ -590,18 +591,40 @@ export const categoryList = async (req: CustomRequest, resp: Response) => {
             })
         );
 
-        // ✅ Sort alphabetically based on dynamically computed `parent`
-        categories.sort((a, b) => {
-            if (!a.parent) return -1;
-            if (!b.parent) return 1;
-            return a.parent.localeCompare(b.parent);
-        });
+        let sort: any = req.query.sort ? JSON.parse(req.query.sort as string) : { parent: 1 };
+
+        if (sort.parent) {
+            categories.sort((a, b) =>
+                sort.parent === 1
+                    ? a.parent.localeCompare(b.parent)
+                    : b.parent.localeCompare(a.parent)
+            );
+        }
+
+        if (sort.createdAt) {
+            categories.sort((a, b) =>
+                sort.createdAt === 1
+                    ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                    : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+        }
+
+        if (sort.updatedAt) {
+            categories.sort((a, b) =>
+                sort.updatedAt === 1
+                    ? new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+                    : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            );
+        }
+
+        const paginatedResult = paginateArray(categories, req.query);
 
         return resp.status(200).json({
             message: 'Category retrieved successfully.',
             success: true,
-            categories
+            ...paginatedResult
         });
+
     } catch (err) {
         console.log(err);
         return resp.status(500).json({
@@ -1525,19 +1548,40 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
 export const variantList = async (req: CustomRequest, resp: Response) => {
     try {
-        const query: any = {
-            deletedAt: null
-        }
-        const checkUser: any = await User.findOne({ _id: req.user._id });
+        const query: any = { deletedAt: null };
 
-        const variant = await Variant.find(query).sort({ variant_name: 1 });
-        return resp.status(200).json({ message: 'Variant retrieved successfully.', success: true, variant });
+        let sort: any = { variant_name: 1 };
+
+        if (req.query.sort) {
+            try {
+                const incomingSort = JSON.parse(req.query.sort as string);
+                if (typeof incomingSort === "object") {
+                    sort = incomingSort;
+                }
+            } catch (e) {
+                console.log("Invalid sort JSON, using default");
+            }
+        }
+
+        const result = await paginate(Variant, {
+            page: Number(req.query.page || 1),
+            limit: Number(req.query.limit || 10),
+            sort,
+            filter: query
+        });
+
+        return resp.status(200).json({
+            message: "Variant retrieved successfully.",
+            success: true,
+            ...result
+        });
 
     } catch (err) {
-        console.log(err)
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+        console.log(err);
+        return resp.status(500).json({ message: "Something went wrong. Please try again." });
     }
-}
+};
+
 
 export const variantChangeStatus = async (req: CustomRequest, resp: Response) => {
 
@@ -1879,26 +1923,36 @@ export const getAttributeList = async (req: CustomRequest, resp: Response) => {
         const { sort } = req.query;
 
         let sortOption: any = { createdAt: -1 };
-        if(sort) {
+
+        if (sort) {
             try {
-                sortOption = JSON.parse(sort as string);
+                const parsed = JSON.parse(sort as string);
+                if (typeof parsed === "object") sortOption = parsed;
             } catch {
-                console.warn("Invalid sort format received — using default sort.");
+                console.log("Invalid sort format received — using default sort.");
             }
         }
-        const attributes = await AttributesList.find({ isDeleted: false }).sort(sortOption);
+
+        const result = await paginate(AttributesList, {
+            page: Number(req.query.page || 1),
+            limit: Number(req.query.limit || 10),
+            sort: sortOption,
+            filter: { isDeleted: false }
+        });
+
         return resp.status(200).json({
             success: true,
-            message: 'Attribute List retrieved successfully.',
-            data: attributes
+            message: "Attribute List retrieved successfully.",
+            ...result
         });
+
     } catch (error: any) {
         return resp.status(500).json({
             success: false,
-            message: error.message || 'Something went wrong. Please try again.'
-        })
+            message: error.message || "Something went wrong. Please try again."
+        });
     }
-}
+};
 
 export const getAttributeListById = async (req: CustomRequest, resp: Response) => {
     try {
@@ -6084,12 +6138,12 @@ export const adminCategoryList = async (req: CustomRequest, res: Response) => {
                     return {
                         _id: category._id,
                         tag: category.tag,
-                        parent: parent,
+                        parent,
                         parent_id: category.parent_id,
                         popular: category.popular,
                         special: category.special,
                         title: category.title,
-                        image: category.image ? baseurl + category.image : '',
+                        image: category.image ? baseurl + category.image : "",
                         status: category.status,
                         menuStatus: category.menuStatus,
                         createdAt: category.createdAt,
@@ -6102,21 +6156,47 @@ export const adminCategoryList = async (req: CustomRequest, res: Response) => {
             })
         );
 
-        const sortedData = data
-            .filter(Boolean)
-            .sort((a: any, b: any) => {
-                if (!a.parent) return -1;
-                if (!b.parent) return 1;
-                return a.parent.localeCompare(b.parent);
-            });
+        let categories = data.filter(Boolean);
+
+        let sort: any = req.query.sort ? JSON.parse(req.query.sort as string) : { parent: 1 };
+
+        if (sort.parent) {
+            categories.sort((a: any, b: any) =>
+                sort.parent === 1
+                    ? a.parent.localeCompare(b.parent)
+                    : b.parent.localeCompare(a.parent)
+            );
+        }
+
+        if (sort.createdAt) {
+            categories.sort((a: any, b: any) =>
+                sort.createdAt === 1
+                    ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                    : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+        }
+
+        if (sort.updatedAt) {
+            categories.sort((a: any, b: any) =>
+                sort.updatedAt === 1
+                    ? new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+                    : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            );
+        }
+
+        const paginatedResult = paginateArray(categories, req.query);
 
         return res.status(200).json({
             message: "Category list fetched successfully.",
-            data: sortedData
+            success: true,
+            ...paginatedResult
         });
+
     } catch (err) {
         console.error(err);
-        return res.status(500).json({ message: 'Something went wrong. Please try again.' });
+        return res.status(500).json({
+            message: "Something went wrong. Please try again."
+        });
     }
 };
 
