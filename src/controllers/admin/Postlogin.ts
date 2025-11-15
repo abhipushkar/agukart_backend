@@ -19,7 +19,7 @@ import ParentProduct from '../../models/ParentProduct';
 import CombinationProduct from '../../models/CombinationProduct';
 import Sales from '../../models/Sales';
 import AttributesList from "../../models/AttributesList";
-import { getAllCategoryTreeids, getAllParentCategory, convertToWebP, buildCategoryAdminPath, buildCategoryPath, getAllParents, getAllAdminParents, generateUniqueId, getAllChildCategory, buildAdminCategoryPath, buildAdminCategoryPathTitles, generateAffiliateCode, sendToEmail, buildCategoryPathTitles, generateUniqueGiftCode } from "../../helpers/common";
+import { getAllCategoryTreeids, getAllParentCategory, convertToWebP, buildCategoryAdminPath, buildCategoryPath, getAllParents, getAllAdminParents, generateUniqueId, getAllChildCategory, buildAdminCategoryPath, buildAdminCategoryPathTitles, generateAffiliateCode, sendToEmail, buildCategoryPathTitles, generateUniqueGiftCode, buildCategoryTree } from "../../helpers/common";
 import mongoose, { Types, PipelineStage, ObjectId, AnyArray } from "mongoose";
 import SalesDetailsModel from "../../models/Sales_detail";
 import Slider from "../../models/Slider";
@@ -2758,6 +2758,34 @@ export const getAllActiveCategory = async (req: CustomRequest, resp: Response) =
 
 
 }
+
+export const getCategoryFullDetails = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { categoryIds } = req.body;
+
+        if (!categoryIds || !Array.isArray(categoryIds) || categoryIds.length === 0) {
+            return resp.status(400).json({
+                success: false,
+                message: "categoryIds[] is required."
+            });
+        }
+
+        const results = await Promise.all(
+            categoryIds.map(id => buildCategoryTree(id))
+        );
+
+        return resp.status(200).json({
+            success: true,
+            message: "Categories details retrieved successfully.",
+            data: results.filter(r => r !== null)  
+        });
+
+    } catch (err) {
+        console.log(err);
+        return resp.status(500).json({ success: false, message: "Something went wrong." });
+    }
+};
+
 
 export const getParentCategory = async (req: CustomRequest, resp: Response) => {
     try {

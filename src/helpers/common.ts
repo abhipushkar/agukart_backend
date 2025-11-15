@@ -11,6 +11,29 @@ import path from 'path'
 import PurchaseGiftCardModel from "../models/PurchaseGiftCard";
 import ActivityModel from "../models/Activity";
 import productActivityModel from "../models/ProductActivity";
+import VariantAttributeModel from "../models/Variant_attribute";
+
+
+export interface CategoryTree {
+    id: Types.ObjectId;
+    title: string;
+    variants: {
+        id: Types.ObjectId;
+        name: string;
+        attributes: {
+            id: Types.ObjectId;
+            value: string;
+            sort_order: number | null;
+        }[];
+    }[];
+    attributeList: {
+        id: Types.ObjectId;
+        name: string;
+        values: string[] | any[];
+    }[];
+    subs: CategoryTree[];
+}
+
 export const getOfferProductPrice = (salePrice: any, discountType: any, discountAmount: any) => {
     let discount_price = 0;
 
@@ -84,6 +107,63 @@ export const getAllParentCategory = async (id: any, userId: any) => {
     }
     return parent;
 }
+
+export const buildCategoryTree = async (categoryId: string): Promise<CategoryTree | null> => {
+
+    const category = await Category.findById(categoryId)
+        .populate("variant_id")
+        .populate("attributeList_id")
+        .lean();
+
+    if (!category) return null;
+
+    const variantsWithAttributes = await Promise.all(
+        (category.variant_id || []).map(async (variant: any) => {
+            const attrs = await VariantAttributeModel.find({
+                variant: variant._id,
+                deleted_status: false,
+                deletedAt: null
+            }).select("attribute_value sort_order");
+
+            return {
+                id: variant._id as Types.ObjectId,
+                name: variant.variant_name,
+                attributes: attrs.map(a => ({
+                    id: a._id as Types.ObjectId,
+                    value: a.attribute_value,
+                    sort_order: a.sort_order
+                }))
+            };
+        })
+    );
+
+    const fullAttributeList = await Promise.all(
+        (category.attributeList_id || []).map(async (attr: any) => ({
+            id: attr._id as Types.ObjectId,
+            name: attr.title,
+            values: attr.values || []
+        }))
+    );
+
+    const subs = await Category.find({
+        parent_id: category._id,
+        status: true
+    }).lean();
+
+    const subTrees: CategoryTree[] = await Promise.all(
+        subs.map(async sub => (await buildCategoryTree(sub._id.toString())) as CategoryTree)
+    );
+
+    return {
+        id: category._id as Types.ObjectId,
+        title: category.title,
+        variants: variantsWithAttributes,
+        attributeList: fullAttributeList,
+        subs: subTrees.filter(s => s !== null)
+    };
+};
+
+
 
 
 export const getCategoryTree = async (id: any) => {
