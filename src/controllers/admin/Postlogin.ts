@@ -553,7 +553,7 @@ export const categoryList = async (req: CustomRequest, resp: Response) => {
 
         const data = await Category.aggregate(pipeline);
 
-        const categories = await Promise.all(
+        let categories = await Promise.all(
             data.map(async (category) => {
                 const getChildCategory = await getAllChildCategory(category._id);
                 const categoryIds = getChildCategory.map((item: any) => item._id);
@@ -590,6 +590,14 @@ export const categoryList = async (req: CustomRequest, resp: Response) => {
                 };
             })
         );
+
+        if (req.query.search) {
+        const search = String(req.query.search).trim().toLowerCase();
+
+        categories = categories.filter((cat: any) =>
+        cat.parent && cat.parent.toLowerCase().includes(search)
+        );
+    }
 
         let sort: any = req.query.sort ? JSON.parse(req.query.sort as string) : { parent: 1 };
 
@@ -1550,6 +1558,14 @@ export const variantList = async (req: CustomRequest, resp: Response) => {
     try {
         const query: any = { deletedAt: null };
 
+        if (req.query.search) {
+            const search = String(req.query.search).trim();
+
+            query.$or = [
+                { variant_name: { $regex: search, $options: "i" } },
+            ];
+        }
+
         let sort: any = { variant_name: 1 };
 
         if (req.query.sort) {
@@ -1563,17 +1579,44 @@ export const variantList = async (req: CustomRequest, resp: Response) => {
             }
         }
 
-        const result = await paginate(Variant, {
-            page: Number(req.query.page || 1),
-            limit: Number(req.query.limit || 10),
-            sort,
-            filter: query
-        });
+        const page = Number(req.query.page || 1);
+        const limit = Number(req.query.limit || 10);
+
+        const skip = (page - 1) * limit;
+
+        const variants = await Variant.aggregate([
+            { $match: query },
+
+            { $sort: sort },
+
+            { $skip: skip },
+
+            { $limit: limit },
+
+            {
+                $lookup: {
+                    from: "variantattributes",
+                    localField: "_id",
+                    foreignField: "variant",
+                    pipeline: [
+                        { $match: { deleted_status: false, deletedAt: null } },
+                        { $sort: { sort_order: 1 } }
+                    ],
+                    as: "attributes"
+                }
+            }
+        ]);
+
+        const total = await Variant.countDocuments(query);
 
         return resp.status(200).json({
             message: "Variant retrieved successfully.",
             success: true,
-            ...result
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            data: variants
         });
 
     } catch (err) {
@@ -1581,6 +1624,7 @@ export const variantList = async (req: CustomRequest, resp: Response) => {
         return resp.status(500).json({ message: "Something went wrong. Please try again." });
     }
 };
+
 
 
 export const variantChangeStatus = async (req: CustomRequest, resp: Response) => {
@@ -1933,11 +1977,21 @@ export const getAttributeList = async (req: CustomRequest, resp: Response) => {
             }
         }
 
+        let filter: any = { isDeleted: false };
+
+        if(req.query.search) {
+            const search = String(req.query.search).trim();
+
+            filter.$or = [
+                { name: { $regex: search, $options: "i" } },
+            ]
+        };
+
         const result = await paginate(AttributesList, {
             page: Number(req.query.page || 1),
             limit: Number(req.query.limit || 10),
             sort: sortOption,
-            filter: { isDeleted: false }
+            filter
         });
 
         return resp.status(200).json({
@@ -6157,6 +6211,15 @@ export const adminCategoryList = async (req: CustomRequest, res: Response) => {
         );
 
         let categories = data.filter(Boolean);
+
+        if (req.query.search) {
+        const search = String(req.query.search).trim().toLowerCase();
+
+        categories = categories.filter((cat: any) =>
+        (cat.title && cat.title.toLowerCase().includes(search)) ||
+        (cat.parent && cat.parent.toLowerCase().includes(search))
+        );
+    }
 
         let sort: any = req.query.sort ? JSON.parse(req.query.sort as string) : { parent: 1 };
 

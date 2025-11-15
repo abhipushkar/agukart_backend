@@ -28,6 +28,10 @@ const parentProductSchema = new Schema(
             type: Array,
             default: []
         },
+        zoom: {
+            type: Object,
+            default: {}
+        },
         variant_id: [{
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Variant',
