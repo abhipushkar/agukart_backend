@@ -235,7 +235,8 @@ import {
     updateAttributeList,
     deleteAttributeList,
     getAttributeListByCategoryId,
-    deletedByAdmin
+    deletedByAdmin,
+    getCategoryFullDetails
 } from "../controllers/admin/Postlogin";
 
 
@@ -303,7 +304,8 @@ routes.delete('/delete-variant-attribute/:id', deleteVariantAttribute);
 routes.get('/edit-variant-attribute/:id', getVariantAttribute);
 
 // Variant Attribute API's
-routes.get('/get-all-active-category', getAllActiveCategory)
+routes.get('/get-all-active-category', getAllActiveCategory);
+routes.post('/category-full-detail', getCategoryFullDetails);
 routes.get('/get-parent-category', getParentCategory)
 routes.get('/get-admin-parent-category', getAdminParentcategory)
 routes.get('/get-child-category', getChildCategory)
