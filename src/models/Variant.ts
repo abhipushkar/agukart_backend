@@ -10,17 +10,17 @@ const variantSchema = new Schema(
     status: {
       type: Boolean,
       required: true,
-      default:false
+      default:true
     },
     category_status: {
       type: Boolean,
       required: true,
-      default:false
+      default:true
     },
     product_status: {
       type: Boolean,
       required: true,
-      default:false
+      default:true
     },
     guide_name: {
     type: String,
