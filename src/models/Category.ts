@@ -87,7 +87,30 @@ const categorySchema = new Schema(
         type: String,
         default: []
       }
-    ]
+    ],
+    conditions: {
+      type: Array,
+      default: []
+    },
+    conditionType: {
+      type: String,
+      enum: ['all', 'any'],
+      default: 'all'
+    },
+    isAutomatic: {
+      type: Boolean,
+      default: false
+    },
+    categoryScope: {
+      type: String,
+      enum: ['all', 'specific'],
+      default: 'all'
+    },
+    selectedCategories: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      default: []
+    }]
   },
   {
     timestamps: true,

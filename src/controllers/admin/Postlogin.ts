@@ -431,7 +431,12 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
                 productsMatch,
                 equalTo,
                 value,
-                restricted_keywords
+                restricted_keywords,
+                conditions: req.body.conditions || [],
+                conditionType: req.body.conditionType || 'all',
+                isAutomatic: req.body.isAutomatic || false,
+                categoryScope: req.body.categoryScope || 'all',
+                selectedCategories: req.body.selectedCategories || []
             });
 
             return resp.status(200).json({ message: 'Category created successfully.', success: true, data });
@@ -453,7 +458,12 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
                     meta_description,
                     meta_keywords,
                     meta_title,
-                    restricted_keywords
+                    restricted_keywords,
+                    conditions: req.body.conditions || [],
+                    conditionType: req.body.conditionType || 'all',
+                    isAutomatic: req.body.isAutomatic ?? false,
+                    categoryScope: req.body.categoryScope || 'all',
+                    selectedCategories: req.body.selectedCategories || []
                 },
             };
 
@@ -791,7 +801,12 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
           variant_data: 1,
           attributeList_id: 1,
           attributeList_data: 1,
-          restricted_keywords: 1
+          restricted_keywords: 1,
+          conditions: 1,
+          conditionType: 1,
+          isAutomatic: 1,
+          categoryScope: 1,
+          selectedCategories: 1
         }
       }
     ];
@@ -825,7 +840,12 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
       productsMatch: category.productsMatch,
       equalTo: category.equalTo,
       value: category.value,
-      restricted_keywords: category.restricted_keywords
+      restricted_keywords: category.restricted_keywords,
+      conditions: category.conditions,
+      conditionType: category.conditionType,
+      isAutomatic: category.isAutomatic,
+      categoryScope: category.categoryScope,
+      selectedCategories: category.selectedCategories
     };
 
     if (category.parent_id != null) {
@@ -1556,6 +1576,8 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
 export const variantList = async (req: CustomRequest, resp: Response) => {
     try {
+        const { fulldata } = req.query;
+
         const query: any = { deletedAt: null };
 
         if (req.query.search) {
@@ -1577,6 +1599,30 @@ export const variantList = async (req: CustomRequest, resp: Response) => {
             } catch (e) {
                 console.log("Invalid sort JSON, using default");
             }
+        }
+
+        if(fulldata === "true") {
+            const variants = await Variant.aggregate([
+                { $match: query },
+                { $sort: sort },
+                {
+                    $lookup: {
+                        from: "variantattributes",
+                        localField: "_id",
+                        foreignField: "variant",
+                        pipeline: [
+                            { $match: { deleted_status: false, deletedAt: null} },
+                            { $sort: { sort_order: 1 } }
+                        ],
+                        as: "attributes"
+                    }
+                }
+            ]);
+            return resp.status(200).json({
+                success: true,
+                message: "Full Variant List retrieved successfully.",
+                data: variants
+            });
         }
 
         const page = Number(req.query.page || 1);
@@ -1964,7 +2010,7 @@ export const createAttributeList = async (req: CustomRequest, resp: Response) =>
 
 export const getAttributeList = async (req: CustomRequest, resp: Response) => {
     try {
-        const { sort } = req.query;
+        const { sort, fulldata } = req.query;
 
         let sortOption: any = { createdAt: -1 };
 
@@ -1986,6 +2032,16 @@ export const getAttributeList = async (req: CustomRequest, resp: Response) => {
                 { name: { $regex: search, $options: "i" } },
             ]
         };
+
+        if(fulldata === "true"){
+            const data = await AttributesList.find(filter).sort(sortOption);
+
+            return resp.status(200).json({
+                success: true,
+                message: "Full Attribute List retrieved successfully.",
+                data
+            });
+        }
 
         const result = await paginate(AttributesList, {
             page: Number(req.query.page || 1),
