@@ -45,6 +45,30 @@ export const categoryValid = Joi.object({
     equalTo: Joi.string().optional().allow(''),
     value: Joi.string().optional().allow(''),
     restricted_keywords: Joi.array().optional().allow(''),
+        conditions: Joi.array().items(
+        Joi.object({
+            field: Joi.string().required(),       
+            operator: Joi.string().required(),      
+            value: Joi.any().required()              
+        })
+    ).optional().default([]),
+
+    conditionType: Joi.string()
+        .valid('all', 'any')
+        .optional()
+        .default('all'),
+
+    isAutomatic: Joi.boolean().optional().default(false),
+
+    categoryScope: Joi.string()
+        .valid('all', 'specific')
+        .optional()
+        .default('all'),
+
+    selectedCategories: Joi.array()
+        .items(objectId)
+        .optional()
+        .default([]),
 });
 
 export const statusValid = Joi.object({
