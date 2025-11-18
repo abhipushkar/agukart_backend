@@ -62,7 +62,30 @@ const adminCategorySchema = new Schema(
                 type: String,
                 default: []
             }
-        ]
+        ],
+        isAutomatic: {
+            type: Boolean,
+            default: false
+        },
+        categoryScope: {
+            type: String,
+            enum: ['all', 'specific'],
+            default: 'all'
+        },
+        selectedCategories: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Category',
+            default: []
+        }],
+        conditionType: {
+            type: String,
+            enum: ['all', 'any'],
+            default: 'all'
+        },
+        conditions: {
+            type: Array,
+            default: []
+        }
     },
     {
         timestamps: true,

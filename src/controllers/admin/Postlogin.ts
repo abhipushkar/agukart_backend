@@ -5648,6 +5648,7 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
             variant_attribute_id: req.body.variant_attribute_id,
             sku: req.body.sku,
             seller_sku: req.body.seller_sku,
+            zoom: req.body.zoom
  
         };
        
@@ -6183,7 +6184,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
             if (existingAdminCategory) {
                 return res.status(400).json({ message: 'Category already exists.' });
             }
-            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords });
+            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] });
 
             const slug = slugify(`${title}`, {
                 lower: true,
@@ -6202,7 +6203,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
 
             adminCategory = await AdminCategoryModel.findByIdAndUpdate(
                 _id,
-                { title: title, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value },
+                { title: title, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
                 { new: true, runValidators: true }
             );
             if (!adminCategory) {
@@ -6422,7 +6423,12 @@ export const getAdminCategory = async (req: CustomRequest, res: Response) => {
             value: adminCategory.value,
             createdAt: adminCategory.updatedAt,
             updatedAt: adminCategory.updatedAt,
-            restricted_keywords: adminCategory.restricted_keywords
+            restricted_keywords: adminCategory.restricted_keywords,
+            isAutomatic: adminCategory.isAutomatic,
+            categoryScope: adminCategory.categoryScope,
+            selectedCategories: adminCategory.selectedCategories,
+            conditionType: adminCategory.conditionType,
+            conditions: adminCategory.conditions
         };
 
         return res.status(200).json({ message: "Category fetched successfully.", data });
