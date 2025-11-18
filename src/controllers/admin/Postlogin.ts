@@ -3064,6 +3064,7 @@ pipeline.push(
           createdAt: { $first: "$createdAt"},
           description: { $first: "$description" },
           vendor_id: { $first: "$vendor_id" },
+          zoom: { $first: "$zoom" },
           productData: { $push: "$productData" },
           childCountData: { $first: "$childCountData" },
         },
