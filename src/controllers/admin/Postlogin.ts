@@ -2988,7 +2988,9 @@ pipeline.push(
                 ...(type === "deleteByAdmin"
                   ? []
                   : [{ $eq: ["$isDeleted", false] }]),
-                ...(type !== "draft" ? [{ $eq: ["$draft_status", false] }] : []),
+                ...( ["active", "inactive", "sold-out"].includes(type || "")
+                   ? [{ $eq: ["$draft_status", false] }]
+                   : [] ),
                 ...(designation_id == 3 ? [{ $eq: ["$vendor_id", user_id] }] : []),
                 ...(featured ? [{ $eq: ["$featured", true] }] : []),
               ],
@@ -3018,6 +3020,24 @@ pipeline.push(
   { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } }
 );
 
+if (type === "delete") {
+  pipeline.push({
+    $match: {
+      isDeleted: true,
+      deletedByAdmin: { $ne: true }
+    }
+  });
+}
+
+
+if (type === "deleteByAdmin") {
+  pipeline.push({
+    $match: {
+      deletedByAdmin: true
+    }
+  });
+}
+
     // // Exclude sold-out qty unless explicitly requested
     // if (type !== "sold-out" && type !== "all") {
     //   pipeline.push({
@@ -3034,13 +3054,14 @@ pipeline.push(
     //   });
     // }
 
-    if (type !== "draft") {
-    pipeline.push({
+if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
+  pipeline.push({
     $match: {
       "productData.draft_status": false,
     },
-    });
-    }
+  });
+}
+
 
     if (category) {
     pipeline.push({
@@ -3336,11 +3357,6 @@ if (type === "active") {
   });
 }
 
-    if (type !== "all") {
-      pipeline.push({
-        $match: { $or: [{ productData: { $ne: [] } }, { type: "product" }] },
-      });
-    }
 
     if (designation_id == 3) {
       pipeline.push({ $match: { productData: { $ne: [] } } });
@@ -3410,22 +3426,7 @@ if (type === "draft") {
   });
 }
 
-if (type === "delete") {
-  pipeline.push({
-    $addFields: {
-      productData: {
-        $filter: {
-          input: "$productData",
-          as: "pd",
-          cond: {             $and: [
-              { $eq: ["$$pd.isDeleted", true] },
-              { $eq: ["$$pd.deletedByAdmin", false] }
-            ]},
-        },
-      },
-    },
-  });
-}
+
 
 if (type === "deleteByAdmin") {
   pipeline.push({
@@ -3448,7 +3449,7 @@ if (type === "deleteByAdmin") {
 
 
 // ✅ Remove parents that have no child products left after filtering
-if (["active", "sold-out", "draft", "inactive", "delete"].includes(type || "")) {
+if (["active", "sold-out", "draft", "inactive"].includes(type || "")) {
   pipeline.push({
     $match: { productData: { $ne: [] } },
   });
@@ -3688,7 +3689,8 @@ if (type === "delete") {
         {
           $or: [
             { "productData.deletedByAdmin": { $ne: true } },
-            { productData: { $size: 0 } },
+            { "productData": [ null ] },
+            { "productData": { $eq: [null] } }
           ],
         },
       ],
@@ -3696,16 +3698,6 @@ if (type === "delete") {
   });
 }
 
-if (type === "deleteByAdmin") {
-  pipeline.push({
-    $match: {
-      $or: [
-        { "productData.deletedByAdmin": true },
-        { deletedByAdmin: true },
-      ],
-    },
-  });
-}
 
     if (featured) {
       pipeline.push({
