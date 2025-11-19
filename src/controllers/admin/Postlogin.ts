@@ -5642,6 +5642,19 @@ export const getOccasion = async (req: CustomRequest, res: Response) => {
 
 export const addParentProduct = async (req: CustomRequest, resp: Response) => {
     try {
+
+        let vendorId = null;
+        if(req.user.designation_id === 3) {
+            vendorId = req.user._id;
+        } else {
+            if(!req.body.vendor_id) {
+                return resp.status(400).json({
+                message: "vendor_id is required when admin adds a parent product",
+                success: false
+                });
+            }
+            vendorId = req.body.vendor_id;
+        }
         const data: any = {
             product_title: req.body.product_title,
             description: req.body.description,
@@ -5649,9 +5662,13 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
             variant_attribute_id: req.body.variant_attribute_id,
             sku: req.body.sku,
             seller_sku: req.body.seller_sku,
-            zoom: req.body.zoom
+            zoom: req.body.zoom,
  
         };
+
+        if (req.body._id === 'new') {
+        data.vendor_id = vendorId;
+        }
        
         if (req.body.sub_category) {
             data.sub_category = req.body.sub_category;
@@ -7101,6 +7118,7 @@ export const getProductBySku = async (req: Request, resp: Response) => {
 
     const data = {
       product_id: product._id,
+      vendor_id: product.vendor_id,
       price: product.price,
       sale_price: product.sale_price,
       sale_start_date: product.sale_start_date,
