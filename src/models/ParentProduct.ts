@@ -7,6 +7,11 @@ const parentProductSchema = new Schema(
             type: String,
             default: '',
         },
+        vendor_id: {
+            type: mongoose.Schema.Types.ObjectId,
+            default: null,
+            ref: 'User'
+        },
         description: {
             type: String,
             default: '',
