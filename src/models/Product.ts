@@ -334,6 +334,10 @@ const productSchema = new Schema(
         type: Schema.Types.Mixed,  // Use Mixed type if you need to store full documents
       }
     ],
+    product_variants: {
+      type: Array,
+      default: []
+    },
     variations_data: [
       {
         type: Schema.Types.Mixed

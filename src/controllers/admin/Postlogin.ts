@@ -2360,113 +2360,81 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
   );
 }
 
+//   PROCESS product_variants
 
-    // 🔹 Process nested combinationData images
-    if (Array.isArray(data.combinationData)) {
-      data.combinationData = await Promise.all(
-        data.combinationData.map(async (variant: any, vIdx: number) => {
-          let combinations = variant.combinations;
-          if (!Array.isArray(combinations)) {
-            combinations = combinations ? [combinations] : [];
+let productVariants = [];
+
+if (req.body.product_variants) {
+  try {
+    productVariants = JSON.parse(req.body.product_variants);
+  } catch {
+    productVariants = req.body.product_variants;
+  }
+}
+
+if (Array.isArray(productVariants)) {
+  productVariants = await Promise.all(
+    productVariants.map(async (pv: any, pvIdx: number) => {
+
+      if (!pv.variant_attributes) return pv;
+
+      pv.variant_attributes = await Promise.all(
+        pv.variant_attributes.map(async (attr: any, aIdx: number) => {
+
+          const thumb = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][thumbnail]`);
+          const preview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][preview_image]`);
+          const mainKey = `product_variants[${pvIdx}][variant_attributes][${aIdx}][main_images]`;
+          const mainImgs = files.filter((f) => f.fieldname === mainKey || f.fieldname === `${mainKey}[]` || f.fieldname.startsWith(`${mainKey}[`));
+          const editMain = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_main_image]`);
+          const editPreview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_preview_image]`);
+
+          // Parse crop data
+          if (attr.edit_main_image_data && typeof attr.edit_main_image_data === "string") {
+            try { attr.edit_main_image_data = JSON.parse(attr.edit_main_image_data); } catch {}
           }
-                // 🔹 Handle guide data for each variant (if sent)
-      let guide = [];
+          if (attr.edit_preview_image_data && typeof attr.edit_preview_image_data === "string") {
+            try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
+          }
 
-      if (Array.isArray(variant.guide)) {
-        guide = await Promise.all(
-          variant.guide.map(async (g: any, gIdx: number) => {
-            const guideFile = findFile(`combinationData[${vIdx}][guide][${gIdx}][guide_file]`);
-            let guide_file = g.guide_file || "";
-            let guide_type = g.guide_type || "";
+          return {
+            ...attr,
 
-            if (guideFile) {
-              guide_file = await saveProductFile(
-                guideFile,
-                `guide-${Date.now()}-${vIdx}-${gIdx}`
-              );
-              // Detect type dynamically
-              if (guideFile.mimetype.includes("pdf")) {
-                guide_type = "pdf";
-              } else if (guideFile.mimetype.includes("image")) {
-                guide_type = "image";
-              } else {
-                guide_type = "document";
-              }
-            }
+            thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : attr.thumbnail || "",
+            preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : attr.preview_image || "",
 
-            return {
-              guide_name: g.guide_name || "",
-              guide_description: g.guide_description || "",
-              guide_file,
-              guide_type,
-            };
-          })
-        );
-      }
+            main_images: mainImgs.length
+              ? await Promise.all(mainImgs.map((f,i)=> saveProductFile(f, `pv-main-${Date.now()}-${i}`)))
+              : attr.main_images || [],
 
-      // Attach guide to variant
-      variant.guide = guide;
-
-            combinations = await Promise.all(
-              combinations.map(async (comb: any, cIdx: number) => {
-                const combThumb = findFile(
-                  `combinationData[${vIdx}][combinations][${cIdx}][thumbnail]`
-                );
-                const combPreview = findFile(
-                  `combinationData[${vIdx}][combinations][${cIdx}][preview_image]`
-                );
-                const combMains = findFiles(
-                  `combinationData[${vIdx}][combinations][${cIdx}][main_images][]`
-                );
-                            const combEditMain = findFile(
-              `combinationData[${vIdx}][combinations][${cIdx}][edit_main_image]`
-            );
-            const combEditPreview = findFile(
-              `combinationData[${vIdx}][combinations][${cIdx}][edit_preview_image]`
-            );
-
-                return {
-                  ...comb,
-                  combIds: comb.combIds || [],
-                  thumbnail: combThumb
-                    ? await saveProductFile(
-                        combThumb,
-                        `comb-thumb-${Date.now()}`
-                      )
-                    : comb.thumbnail ?? undefined,
-
-                  preview_image: combPreview
-                    ? await saveProductFile(
-                        combPreview,
-                        `comb-preview-${Date.now()}`
-                      )
-                    : comb.preview_image ?? undefined,
-
-                  main_images:
-                    combMains.length > 0
-                      ? await Promise.all(
-                          combMains.map((f, i) =>
-                            saveProductFile(f, `comb-main-${Date.now()}-${i}`)
-                          )
-                        )
-                      : comb.main_images ?? undefined,
-                                edit_main_image: combEditMain
-                ? await saveProductFile(combEditMain, `edit-main-${Date.now()}`)
-                : (typeof comb.edit_main_image === "string" ? comb.edit_main_image : ""),
-
-              edit_preview_image: combEditPreview
-                ? await saveProductFile(combEditPreview, `edit-preview-${Date.now()}`)
-                : (typeof comb.edit_preview_image === "string" ? comb.edit_preview_image : ""),
-                };
-              })
-            );
-          
-          return{ ...variant,
-            combinations, guide 
+            edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
+            edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
           };
         })
       );
-    }
+
+      return pv;
+    })
+  );
+}
+
+data.product_variants = productVariants;
+
+
+
+    // 🔹 Process nested combinationData images
+if (Array.isArray(data.combinationData)) {
+  data.combinationData = data.combinationData.map((variant: any) => {
+    return {
+      ...variant,
+      combinations: Array.isArray(variant.combinations)
+        ? variant.combinations.map((comb: any) => ({
+            ...comb
+          }))
+        : []
+    };
+  });
+}
+
 
     // 🔹 variations_data
     if (req.body.variations_data !== undefined) {
