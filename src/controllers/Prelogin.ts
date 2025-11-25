@@ -1926,7 +1926,8 @@ export const getProductById = async (req: Request, resp: Response) => {
 
     const allData = {
       ...data.toObject(),
-      combinationData: data.isCombination === true ? data.combinationData : combinationData,
+      combinationData: data.isCombination === true ? data.combinationData : [],
+      parentCombinationData: combinationData,
       vendor_details: vendorDetailsData,
       vendor_base_url: `${base_url}/uploads/vendor/`,
       promotionData,
