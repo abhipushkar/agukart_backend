@@ -1767,11 +1767,6 @@ export const getProductById = async (req: Request, resp: Response) => {
   }
 
   try {
-    const base_url = process.env.ASSET_URL || '';
-
-    // --------------------------------------------
-    // PRODUCT QUERY (same populate logic, optimized with lean)
-    // --------------------------------------------
     const data = await ProductModel.findOne({
       _id: productId,
       status: true,
@@ -1791,8 +1786,7 @@ export const getProductById = async (req: Request, resp: Response) => {
           { path: 'variant_id', match: { status: true } },
           { path: 'variant_attribute_id', match: { status: true } }
         ]
-      })
-      .lean(); // 🔥 faster + safe
+      });
 
     if (!data) {
       return resp.status(404).json({
@@ -1801,109 +1795,92 @@ export const getProductById = async (req: Request, resp: Response) => {
       });
     }
 
-    // --------------------------------------------
-    // DECODE BASE64 (same logic)
-    // --------------------------------------------
-    data.description = Buffer.from(data.description || '', 'base64').toString('utf-8');
-    data.bullet_points = Buffer.from(data.bullet_points || '', 'base64').toString('utf-8');
+    const decodedBulletPoints = Buffer.from(data.bullet_points || '', 'base64').toString('utf-8');
+    const decodedDescription = Buffer.from(data.description || '', 'base64').toString('utf-8');
+    data.description = decodedDescription;
+    data.bullet_points = decodedBulletPoints;
 
-    // --------------------------------------------
-    // CATEGORY CHAIN (optimized, no logic change)
-    // --------------------------------------------
     const category_chain: any[] = [];
-    if (data.category && data.category._id) {
-      let currentCategory: any = data.category;
-
+    if (data?.category && typeof data.category === 'object' && data.category._id) {
+      let currentCategory = data.category as any;
       while (currentCategory) {
         category_chain.unshift({
           _id: currentCategory._id,
           title: currentCategory.title,
           slug: currentCategory.slug
         });
-
         if (!currentCategory.parent_id) break;
-
         currentCategory = await Category.findOne({
           _id: currentCategory.parent_id,
           status: true
-        }).lean();
+        });
       }
     }
 
-    // --------------------------------------------
-    // PARALLEL QUERIES (same logic, much faster)
-    // --------------------------------------------
-    const [combinationData, vendorDetails, promotionData, cartEntry, rating] =
-      await Promise.all([
-        CombinationProductModel.find({ product_id: data.parent_id }).lean(),
+    const combinationData = await CombinationProductModel.find({ product_id: data.parent_id });
 
-        VendorModel.findOne({ user_id: data.vendor_id?._id }).lean(),
+    const base_url = process.env.ASSET_URL || '';
 
-        PromotionalOfferModel.find({
-          product_id: productId,
-          vendor_id: data.vendor_id?._id,
-          status: true,
-          expiry_status: 'active'
-        }).lean(),
-
-        CartModel.findOne({ product_id: productId }).lean(),
-
-        RatingModel.aggregate([
-          { $match: { product_id: new mongoose.Types.ObjectId(productId), status: 'approved' } },
-          {
-            $lookup: {
-              from: 'users',
-              localField: 'user_id',
-              foreignField: '_id',
-              as: 'user'
-            }
-          },
-          { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-          { $sort: { createdAt: -1 } },
-          {
-            $group: {
-              _id: '$user_id',
-              latestRating: { $first: '$$ROOT' }
-            }
-          },
-          { $replaceRoot: { newRoot: '$latestRating' } },
-          {
-            $project: {
-              delivery_rating: 1,
-              user_id: 1,
-              product_id: 1,
-              item_rating: 1,
-              additional_comment: 1,
-              recommended: 1,
-              status: 1,
-              createdAt: 1,
-              user_name: '$user.name',
-              user_image: {
+    const rating = await RatingModel.aggregate([
+      { '$match': { product_id: new mongoose.Types.ObjectId(productId), status: 'approved' } },
+      {
+        '$lookup': {
+          from: 'users',
+          localField: 'user_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { '$unwind': { path: '$user', preserveNullAndEmptyArrays: true } },
+      { '$sort': { createdAt: -1 } },
+      {
+        '$group': {
+          _id: '$user_id',
+          latestRating: { $first: '$$ROOT' }
+        }
+      },
+      { '$replaceRoot': { newRoot: '$latestRating' } },
+      {
+        '$project': {
+          delivery_rating: 1,
+          user_id: 1,
+          product_id: 1,
+          item_rating: 1,
+          additional_comment: 1,
+          recommended: 1,
+          status: 1,
+          createdAt: 1,
+          user_name: '$user.name',
+          user_image: {
+            $cond: {
+              if: { $and: [{ $ne: ['$user.image', null] }, { $regexMatch: { input: '$user.image', regex: '^https' } }] },
+              then: '$user.image',
+              else: {
                 $cond: {
-                  if: {
-                    $and: [
-                      { $ne: ['$user.image', null] },
-                      { $regexMatch: { input: '$user.image', regex: '^https' } }
-                    ]
-                  },
-                  then: '$user.image',
-                  else: {
-                    $cond: {
-                      if: { $ne: ['$user.image', null] },
-                      then: { $concat: [base_url, '/uploads/profileImage/', '$user.image'] },
-                      else: ''
-                    }
-                  }
+                  if: { $ne: ['$user.image', null] },
+                  then: { $concat: [base_url, '/uploads/profileImage/', '$user.image'] },
+                  else: ''
                 }
               }
             }
           }
-        ])
-      ]);
+        }
+      }
+    ]);
 
-    // --------------------------------------------
-    // SAME ORIGINAL PRICE LOGIC (unchanged)
-    // --------------------------------------------
+    const vendorDetails = await VendorModel.findOne({ user_id: data.vendor_id?._id });
+    const vendorDetailsData = {
+      ...vendorDetails?.toObject(),
+      vendor_shop_icon_url: `${base_url}/uploads/shop-icon/`
+    };
+
+    const promotionData = await PromotionalOfferModel.find({
+      product_id: productId,
+      vendor_id: data.vendor_id?._id,
+      status: true,
+      expiry_status: 'active'
+    });
+
     let finalPrice = +data.sale_price;
     let originalPrice = +data.sale_price;
     let promotion: any = null;
@@ -1911,15 +1888,15 @@ export const getProductById = async (req: Request, resp: Response) => {
     if (Array.isArray(promotionData) && promotionData.length > 0) {
       promotion = promotionData.reduce((best: any, promo: any) => {
         if (!promo?.qty && promo?.qty !== 0) return best;
-        if (!best || (!best?.qty && best?.qty !== 0) || promo.qty < best.qty) return promo;
+        if (!best || (!best?.qty && best?.qty !== 0) || promo.qty < best.qty) {
+          return promo;
+        }
         return best;
       }, null);
     }
 
     if (data.isCombination) {
-      const mergedCombinations =
-        data.combinationData?.flatMap((i: any) => i.combinations) || [];
-
+      const mergedCombinations = data.combinationData?.map((i: any) => i.combinations).flat() || [];
       const minComboPrice = mergedCombinations
         .filter((obj: any) => +obj.price > 0)
         .reduce((min: any, obj: any) => Math.min(min, +obj.price), Infinity);
@@ -1927,7 +1904,7 @@ export const getProductById = async (req: Request, resp: Response) => {
       originalPrice = minComboPrice === Infinity ? +data.sale_price : minComboPrice;
       finalPrice = originalPrice;
 
-      if (promotion && promotion.qty <= 1) {
+      if (promotion && typeof promotion.qty === 'number' && promotion.qty <= 1) {
         finalPrice = calculatePriceAfterDiscount(
           promotion.offer_type,
           +promotion.discount_amount,
@@ -1935,7 +1912,7 @@ export const getProductById = async (req: Request, resp: Response) => {
         );
       }
     } else {
-      if (promotion && promotion.qty <= 1) {
+      if (promotion && typeof promotion.qty === 'number' && promotion.qty <= 1) {
         finalPrice = calculatePriceAfterDiscount(
           promotion.offer_type,
           +promotion.discount_amount,
@@ -1944,30 +1921,25 @@ export const getProductById = async (req: Request, resp: Response) => {
       }
     }
 
-    const vendorDetailsData = vendorDetails
-      ? {
-          ...vendorDetails,
-          vendor_shop_icon_url: `${base_url}/uploads/shop-icon/`
-        }
-      : null;
+    const cartEntry = await CartModel.findOne({ product_id: productId });
+    const cartProductCount = cartEntry?.qty || 0;
 
-    // --------------------------------------------
-    // FINAL RESPONSE (same structure, no changes)
-    // --------------------------------------------
+    const allData = {
+      ...data.toObject(),
+      combinationData: data.isCombination === true ? data.combinationData : [],
+      parentCombinationData: combinationData,
+      vendor_details: vendorDetailsData,
+      vendor_base_url: `${base_url}/uploads/vendor/`,
+      promotionData,
+      finalPrice,
+      originalPrice,
+      cartProductCount,
+      categories: category_chain
+    };
+
     return resp.status(200).json({
       message: 'Product fetched successfully.',
-      data: {
-        ...data,
-        combinationData: data.isCombination ? data.combinationData : [],
-        parentCombinationData: combinationData,
-        vendor_details: vendorDetailsData,
-        vendor_base_url: `${base_url}/uploads/vendor/`,
-        promotionData,
-        finalPrice,
-        originalPrice,
-        cartProductCount: cartEntry?.qty || 0,
-        categories: category_chain
-      },
+      data: allData,
       base_url,
       video_url: `${base_url}/uploads/video/`,
       image_url: `${base_url}/uploads/product/`,
@@ -1982,7 +1954,6 @@ export const getProductById = async (req: Request, resp: Response) => {
     });
   }
 };
-
 
 export const getSimilarProduct = async (req: Request, resp: Response) => {
   const productId = req.query.productId as string;
