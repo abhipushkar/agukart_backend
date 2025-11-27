@@ -55,6 +55,10 @@ const parentProductSchema = new Schema(
         type: Boolean,
         default: false
         },
+        product_variants: {
+        type: Array,
+        default: []
+        },
     },
     {
         timestamps: true,

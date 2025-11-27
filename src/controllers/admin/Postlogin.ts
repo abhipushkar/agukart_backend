@@ -90,6 +90,7 @@ dayjs.extend(duration);
 interface CustomRequest extends Request {
     user?: any;
     files?: any;
+    filepath?: string;
 }
 
 // helper to safely parse JSON from form-data
@@ -212,6 +213,71 @@ const saveProductFile = async (file: any, cleanedName: string) => {
     return "";
   }
 };
+
+const extractVariantImages = async (req: CustomRequest) => {
+    let product_variants = req.body.product_variation || [];
+
+    if (!req.files || req.files.length === 0) return product_variants;
+
+    for (const file of req.files) {
+        const field = file.fieldname;
+
+        // 1️⃣ Handle Variant Attribute Images
+        let match = field.match(
+            /product_variation\[(\d+)\]\[variant_attributes\]\[(\d+)\]\[(.*?)\]/
+        );
+
+        if (match) {
+            const variantIndex = Number(match[1]);
+            const attributeIndex = Number(match[2]);
+            const imageKey = match[3];
+
+            const savedUrl = await saveFile(
+                file,
+                `${imageKey}-${Date.now()}`,
+                req.filepath || "parentVariant"
+            );
+
+            if (
+                product_variants[variantIndex] &&
+                product_variants[variantIndex].variant_attributes &&
+                product_variants[variantIndex].variant_attributes[attributeIndex]
+            ) {
+                product_variants[variantIndex]
+                    .variant_attributes[attributeIndex][imageKey] = savedUrl;
+            }
+
+            continue; 
+        }
+        match = field.match(
+            /product_variation\[(\d+)\]\[guide\]\[(.*?)\]/
+        );
+
+        if (match) {
+            const variantIndex = Number(match[1]);
+            const guideKey = match[2]; // "guide_file"
+
+            const savedUrl = await saveFile(
+                file,
+                `${guideKey}-${Date.now()}`,
+                req.filepath || "parentVariant"
+            );
+
+            if (product_variants[variantIndex]) {
+                if (!product_variants[variantIndex].guide)
+                    product_variants[variantIndex].guide = {};
+
+                product_variants[variantIndex].guide[guideKey] = savedUrl;
+            }
+
+            continue;
+        }
+    }
+
+    return product_variants;
+};
+
+
 
 function processTabs(tabs: any[]) {
   return tabs.map((tab, idx) => {
@@ -5602,6 +5668,13 @@ export const getOccasion = async (req: CustomRequest, res: Response) => {
 
 export const addParentProduct = async (req: CustomRequest, resp: Response) => {
     try {
+        req.body.product_variation = parseJSON(req.body.product_variation, []);
+        req.body.product_variation = parseJSON(req.body.product_variation, []);
+        req.body.variant_id = parseJSON(req.body.variant_id, []);
+        req.body.variant_attribute_id = parseJSON(req.body.variant_attribute_id, []);
+        req.body.sku = parseJSON(req.body.sku, []);
+        req.body.zoom = parseJSON(req.body.zoom, {});
+        const finalVariants = await extractVariantImages(req);
 
         let vendorId = null;
         if(req.user.designation_id === 3) {
@@ -5623,17 +5696,16 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
             sku: req.body.sku,
             seller_sku: req.body.seller_sku,
             zoom: req.body.zoom,
- 
+            product_variants: finalVariants,
         };
 
-        if (req.body._id === 'new') {
         data.vendor_id = vendorId;
-        }
+        
        
         if (req.body.sub_category) {
             data.sub_category = req.body.sub_category;
         }
-        const combinations = req.body.combinations || [];
+        const combinations = parseJSON(req.body.combinations, []);
  
  
         if (req.body._id === 'new') {

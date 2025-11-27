@@ -375,7 +375,10 @@ routes.get('/get-occassion-by-id/:id', getOccasion);
 
 
 // Add Parent Product
-routes.post('/add-parent-product', addParentProduct)
+routes.post('/add-parent-product',   (req, res, next) => {
+    (req as any).filepath = 'parentVariant';
+    next();
+  },  upload.any(), addParentProduct);
 routes.get('/fetch-parent-product/:id', fetchParentProduct)
 routes.post('/add-parent-product-image', multer().single('file'), addParentProductImage)
 
