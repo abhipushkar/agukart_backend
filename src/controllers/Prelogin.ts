@@ -1817,7 +1817,11 @@ export const getProductById = async (req: Request, resp: Response) => {
       }
     }
 
-    const combinationData = await CombinationProductModel.find({ product_id: data.parent_id });
+    const combinationData = await CombinationProductModel.find({ product_id: data.parent_id }).populate({
+      path: "sku_product_id",
+      match: { isDeleted: false, status: true },
+      select: "image"
+    })
 
     const base_url = process.env.ASSET_URL || '';
 
@@ -1924,10 +1928,29 @@ export const getProductById = async (req: Request, resp: Response) => {
     const cartEntry = await CartModel.findOne({ product_id: productId });
     const cartProductCount = cartEntry?.qty || 0;
 
+    const parentCombinationData = combinationData.map((item: any) => {
+    const sku = item.sku_product_id;
+
+    const firstImage = sku?.image?.length > 0
+    ? `${base_url}/uploads/product/${sku.image[0]}`
+    : "";
+
+    const obj = item.toObject();
+
+    const skuId = sku?._id || item.sku_product_id;
+
+    delete obj.sku_product_id;
+    return {
+    ...obj,
+    sku_product_id: skuId,   
+    sku_first_image: firstImage
+    };
+  });
+
     const allData = {
       ...data.toObject(),
       combinationData: data.isCombination === true ? data.combinationData : [],
-      parentCombinationData: combinationData,
+      parentCombinationData,
       vendor_details: vendorDetailsData,
       vendor_base_url: `${base_url}/uploads/vendor/`,
       promotionData,

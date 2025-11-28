@@ -158,26 +158,34 @@ export const saveFile = async (file: any, cleanedName: string, folder: string = 
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  const ext = path.extname(file.originalname).toLowerCase();
   const isImage = file.mimetype.startsWith("image/");
-  const isPDF = file.mimetype === "application/pdf";
-
-  const finalExt = isImage ? ".webp" : ext;
-  const fullPath = path.join(uploadDir, cleanedName.replace(path.extname(cleanedName), finalExt));
+  const timestamp = Date.now();
+  const fileName = `${cleanedName}-${timestamp}${isImage ? ".webp" : path.extname(file.originalname)}`;
+  const fullPath = path.join(uploadDir, fileName);
 
   try {
     if (isImage) {
-      await sharp(file.path).toFormat("webp").toFile(fullPath);
+      // IMPORTANT: use buffer for memoryStorage AND path when exists
+      if (file.buffer) {
+        await sharp(file.buffer).toFormat("webp").toFile(fullPath);
+      } else if (file.path) {
+        await sharp(file.path).toFormat("webp").toFile(fullPath);
+      }
     } else {
-      await fs.promises.copyFile(file.path, fullPath);
+      // non-image files (PDF, DOC)
+      if (file.buffer) {
+        await fs.promises.writeFile(fullPath, file.buffer);
+      } else if (file.path) {
+        await fs.promises.copyFile(file.path, fullPath);
+      }
     }
   } catch (e) {
     console.error("File save failed:", e);
-    await fs.promises.copyFile(file.path, fullPath);
   }
 
-  return process.env.ASSET_URL + `/uploads/${folder}/` + path.basename(fullPath);
+  return `${process.env.ASSET_URL}/uploads/${folder}/${fileName}`;
 };
+
 
 
 const saveProductFile = async (file: any, cleanedName: string) => {
