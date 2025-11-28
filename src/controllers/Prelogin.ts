@@ -1755,6 +1755,30 @@ export const getProductList = async (req: Request, resp: Response) => {
   }
 };
 
+export function checkSoldOut(productQty: any, combinationData: any[]) {
+  const qtyNumber = Number(productQty || 0);
+
+  if (qtyNumber > 0) return false;
+
+  let combinationHasStock = false;
+
+  if (Array.isArray(combinationData)) {
+    combinationData.forEach(variant => {
+      if (variant?.combinations && Array.isArray(variant.combinations)) {
+        variant.combinations.forEach((comb: any) => {
+          const combQty = Number(comb?.qty || 0);
+          if (combQty > 0) combinationHasStock = true;
+        });
+      }
+    });
+  }
+
+  if (combinationHasStock) return false;
+
+  return true;
+}
+
+
 
 export const getProductById = async (req: Request, resp: Response) => {
   const productId = req.query.productId as string;
@@ -1820,7 +1844,7 @@ export const getProductById = async (req: Request, resp: Response) => {
     const combinationData = await CombinationProductModel.find({ product_id: data.parent_id }).populate({
       path: "sku_product_id",
       match: { isDeleted: false, status: true },
-      select: "image"
+      select: "image qty combinationData"
     })
 
     const base_url = process.env.ASSET_URL || '';
@@ -1938,12 +1962,16 @@ export const getProductById = async (req: Request, resp: Response) => {
     const obj = item.toObject();
 
     const skuId = sku?._id || item.sku_product_id;
+    const productQty = sku?.qty || 0;
+    const combinationDataList = sku?.combinationData || [];
+    const sold_out = checkSoldOut(productQty, combinationDataList);
 
     delete obj.sku_product_id;
     return {
     ...obj,
     sku_product_id: skuId,   
-    sku_first_image: firstImage
+    sku_first_image: firstImage,
+    sold_out
     };
   });
 
