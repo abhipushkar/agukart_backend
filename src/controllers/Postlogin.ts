@@ -60,6 +60,7 @@ interface CustomRequest extends Request {
 
 export const addToCart = async (req: CustomRequest, resp: Response) => {
     try {
+        const customVariants = Array.isArray(req.body.variants) ? req.body.variants : [];
         const cart = await Cart.findOne({ user_id: req.user._id, product_id: req.body.product_id, isCombination: req.body.isCombination, variant_id: req.body.variant_id, variant_attribute_id: req.body.variant_attribute_id });
         let affiliateId: any = null;
 
@@ -78,7 +79,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
                 isCombination: req.body.isCombination,
                 variant_id: req.body.variant_id,
                 variant_attribute_id: req.body.variant_attribute_id,
-            }, { $set: { qty: req.body.qty, affiliate_id: affiliateId, customizationData: req.body.customizationData, price: req.body.price, original_price: req.body.original_price, note: req.body.note } });
+            }, { $set: { qty: req.body.qty, affiliate_id: affiliateId, customizationData: req.body.customizationData, price: req.body.price, original_price: req.body.original_price, note: req.body.note, variants: customVariants } });
 
 
             if (req.body.isCombination && cart.variant_id.length === 0 && cart.variant_attribute_id.length === 0) {
@@ -130,6 +131,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
                     cart.price = req.body.price;
                     cart.original_price = req.body.original_price;
                     cart.note = req.body.note;
+                    cart.variants = customVariants;
                     await cart.save();
                     const productData = await Product.findOne({ _id: cart.product_id });
                     await activity(
@@ -165,7 +167,8 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
                 customize: req.body.customize,
                 customizationData: req.body.customizationData,
                 shippingName: req.body.shippingName,
-                shipping_id: req.body.shipping_id
+                shipping_id: req.body.shipping_id,
+                variants: customVariants 
             }
             await Cart.create(cart);
             const productData = await Product.findOne({ _id: cart.product_id });
