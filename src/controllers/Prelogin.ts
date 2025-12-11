@@ -776,398 +776,289 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     const sortBy = req.query.sortBy as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const q = ((req.query.q as string) || "").trim();
+    const vendor_id = req.query.vendor_id as string;
 
     const base_url = process.env.ASSET_URL + "/uploads/product/";
     const video_base_url = process.env.ASSET_URL + "/uploads/video/";
 
-    // ------------------------------------------
-    // 1. LOAD ADMIN CATEGORY
-    // ------------------------------------------
+    // 1. Load admin category (rules)
     const adminCategory = await AdminCategoryModel.findOne({ slug }).lean();
-    if (!adminCategory) {
-      return resp.status(404).json({ message: "Category not found" });
-    }
+    if (!adminCategory) return resp.status(404).json({ message: "Category not found" });
 
-    // ------------------------------------------
-    // 2. Extract all IDs needed for lookups
-    // ------------------------------------------
-    const condAttributeIds: any[] = [];
-    const condValueIds: any[] = [];
-    const condSubAttrIds: any[] = [];
-    const condVariantIds: any[] = [];
-    const condVariantAttributeIds: any[] = [];
+    // 2. Collect condition-related IDs
+    const condAttributeIds: mongoose.Types.ObjectId[] = [];
+    const condVariantAttributeIds: mongoose.Types.ObjectId[] = [];
+    const condVariantIds: mongoose.Types.ObjectId[] = [];
 
     (adminCategory.conditions || []).forEach((c: any) => {
-      if (c.field === "Attributes Tag") {
-        if (c.value?.attributeId)
-          condAttributeIds.push(new mongoose.Types.ObjectId(c.value.attributeId));
-
-        if (Array.isArray(c.value?.valueIds)) {
-          c.value.valueIds.forEach((id: any) =>
-            condValueIds.push(new mongoose.Types.ObjectId(id))
-          );
-        }
-
-        if (c.value?.subAttributeId)
-          condSubAttrIds.push(new mongoose.Types.ObjectId(c.value.subAttributeId));
+      if (c.field === "Attributes Tag" && c.value?.attributeId) {
+        condAttributeIds.push(new mongoose.Types.ObjectId(c.value.attributeId));
       }
-
       if (c.field === "Variant Tag") {
-        if (c.value?.variantId)
-          condVariantIds.push(new mongoose.Types.ObjectId(c.value.variantId));
-
         if (Array.isArray(c.value?.attributeIds)) {
-          c.value.attributeIds.forEach((id: any) =>
-            condVariantAttributeIds.push(new mongoose.Types.ObjectId(id))
-          );
+          c.value.attributeIds.forEach((id: string) => condVariantAttributeIds.push(new mongoose.Types.ObjectId(id)));
+        }
+        if (c.value?.variantId) {
+          condVariantIds.push(new mongoose.Types.ObjectId(c.value.variantId));
         }
       }
     });
 
-    // ------------------------------------------
-    // 3. AGGREGATION LOOKUPS USING ONLY CONDITION IDS
-    // ------------------------------------------
-    const lookupAgg = await AdminCategoryModel.aggregate([
-      { $match: { slug } },
+    // 3. Directly fetch attribute/variant docs (more robust than aggregation-lookups with let)
+    const AttributeListModel = mongoose.model("AttributeList");
+    const VariantAttributeModel = mongoose.model("VariantAttribute");
+    const VariantModel = mongoose.model("Variant");
 
-      // Attribute Lists lookup
-      {
-        $lookup: {
-          from: "attributelists",
-          let: { ids: condAttributeIds },
-          pipeline: [
-            { $match: { $expr: { $in: ["$_id", "$$ids"] } } },
-            { $project: { name: 1, values: 1, subAttributes: 1 } }
-          ],
-          as: "attributeData"
-        }
-      },
+    const attributeData = condAttributeIds.length
+      ? await AttributeListModel.find({ _id: { $in: condAttributeIds } }).lean()
+      : [];
 
-      // Variant Attribute Values lookup
-      {
-        $lookup: {
-          from: "variantattributes",
-          let: { ids: condVariantAttributeIds },
-          pipeline: [
-            { $match: { $expr: { $in: ["$_id", "$$ids"] } } },
-            { $project: { attribute_value: 1 } }
-          ],
-          as: "variantAttributesData"
-        }
-      },
+    const variantAttributesData = condVariantAttributeIds.length
+      ? await VariantAttributeModel.find({ _id: { $in: condVariantAttributeIds } }).lean()
+      : [];
 
-      // Variant Name lookup
-      {
-        $lookup: {
-          from: "variants",
-          let: { ids: condVariantIds },
-          pipeline: [
-            { $match: { $expr: { $in: ["$_id", "$$ids"] } } },
-            { $project: { variant_name: 1 } }
-          ],
-          as: "variantData"
-        }
-      },
+    const variantData = condVariantIds.length
+      ? await VariantModel.find({ _id: { $in: condVariantIds } }).lean()
+      : [];
 
-      { $limit: 1 }
-    ]);
+    const lookup = {
+      attributeData,
+      variantAttributesData,
+      variantData
+    };
 
-    const cat = lookupAgg[0] || {};
+    console.log("ATTRIBUTE DATA:", attributeData.map((a: any) => ({ id: a._id, name: a.name, values: (a.values || []).length })));
+    console.log("VARIANT ATTR VALUES:", variantAttributesData.map((v: any) => ({ id: v._id, value: v.attribute_value })));
+    console.log("VARIANTS:", variantData.map((v: any) => ({ id: v._id, name: v.variant_name })));
 
-    // ------------------------------------------
-    // DEBUG LOGS (kept for parity)
-    // ------------------------------------------
-    console.log("ATTRIBUTE DATA:", cat.attributeData);
-    console.log("VARIANT ATTR VALUES:", cat.variantAttributesData);
-    console.log("VARIANT DATA:", cat.variantData);
-
-    // ------------------------------------------
-    // 4. Helper utilities (from getProductList)
-    // ------------------------------------------
+    // ----------------------
+    // Helpers (regex + strip)
+    // ----------------------
     const escapeForRegex = (s: string) => {
       if (typeof s !== "string") return "";
-      return s.replace(/[.*+?()|[\]\\]/g, "\\$&");
+      return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     };
 
-    type Operator = "starts with" | "ends with" | "is equal to" | "is not equal to";
-
-    const makePattern = (raw: string, operator: Operator) => {
-      const esc = escapeForRegex(raw);
-      switch (operator) {
-        case "starts with": return "^" + esc;
-        case "ends with": return esc + "$";
-        case "is equal to": return "^" + esc + "$";
-        case "is not equal to": return "^" + esc + "$";
-        default: return esc;
+    const buildRegex = (value: string, operator: string) => {
+      const escaped = escapeForRegex(value.trim());
+      if (!escaped) return null;
+      if (operator === "is equal to") {
+        return new RegExp(`\\b${escaped}\\b`, "i");
       }
+      if (operator === "is not equal to") {
+        return new RegExp(`${escaped}`, "i");
+      }
+      if (operator === "starts with") {
+        return new RegExp(`\\b${escaped}`, "i");
+      }
+      if (operator === "ends with") {
+        return new RegExp(`${escaped}\\b`, "i");
+      }
+      return new RegExp(escaped, "i");
     };
 
-    // Flexible HTML-stripper for product_title matching
     const stripHtml = (html?: string) => {
       if (!html) return "";
       return html.replace(/<\/?[^>]+(>|$)/g, "").replace(/\s+/g, " ").trim();
     };
 
-    // ------------------------------------------
-    // 5. Build the main filter object
-    // ------------------------------------------
-    const filter: any = {
-      status: true,
-      draft_status: false,
-      isDeleted: { $ne: true },
-      $and: []
-    };
-
-    // CATEGORY ALWAYS FIRST (respecting categoryScope)
-    if (adminCategory.categoryScope === "specific") {
-      filter.$and.push({
-        category: {
-          $in: adminCategory.selectedCategories.map(
-            (c: any) => new mongoose.Types.ObjectId(c)
-          )
-        }
-      });
-    }
-
-    // ------------------------------------------
-    // 6. Build condition engine (same as getProductList)
-    // ------------------------------------------
-    const conditions = adminCategory.conditions || [];
-    const autoFilters: any[] = [];
-
-    const buildCond = (cond: any, categoryLookup: any) => {
-      if (!cond || !cond.field || !cond.operator) return {};
-
+    // buildCond copied/adapted from getProductList (defensive returns null if can't build)
+    const buildCond = (cond: any, lookupObj: any) => {
+      if (!cond || !cond.field || !cond.operator) return null;
       const field = cond.field;
-      const operator = cond.operator as Operator;
+      const operator = cond.operator;
       const value = cond.value;
 
-      // Product Title (flexible HTML spacing)
-      if (field === "Product Title") {
+      // Product Title / Product Tag
+      if (field === "Product Title" || field === "Product Tag") {
         const raw = typeof value === "string" ? value : value?.value;
-        if (!raw || !raw.toString().trim()) return {};
-
-        const clean = escapeForRegex(raw.toString().trim());
-        const flexiblePattern = clean.split("").map(ch => `${ch}(?:<[^>]*>)*`).join("");
-        let finalRegex = flexiblePattern;
-
-        if (operator === "starts with") finalRegex = "^" + finalRegex;
-        if (operator === "ends with") finalRegex = finalRegex + "$";
-        if (operator === "is equal to") finalRegex = "^" + flexiblePattern + "$";
-        if (operator === "is not equal to") {
-          return { product_title: { $not: { $regex: finalRegex, $options: "i" } } };
-        }
-
-        return { product_title: { $regex: finalRegex, $options: "i" } };
-      }
-
-      // Product Tag
-      if (field === "Product Tag") {
-        const raw = typeof value === "string" ? value : value?.value;
-        if (!raw) return {};
-
-        const lookup = raw.toString().toLowerCase();
-        const pattern = makePattern(raw, operator);
-
-        if (operator === "is equal to") {
-          return {
-            $expr: {
-              $in: [
-                lookup,
-                {
-                  $map: {
-                    input: { $ifNull: ["$search_terms", []] },
-                    as: "st",
-                    in: { $toLower: "$$st" }
-                  }
-                }
-              ]
-            }
-          };
-        }
-
-        if (operator === "is not equal to") {
-          return {
-            $expr: {
-              $not: {
-                $in: [
-                  lookup,
-                  {
-                    $map: {
-                      input: { $ifNull: ["$search_terms", []] },
-                      as: "st",
-                      in: { $toLower: "$$st" }
-                    }
-                  }
-                ]
-              }
-            }
-          };
-        }
-
-        if (operator === "starts with" || operator === "ends with") {
-          return {
-            search_terms: { $elemMatch: { $regex: pattern, $options: "i" } }
-          };
-        }
+        if (!raw || !String(raw).trim()) return null;
+        const r = buildRegex(raw.toString(), operator);
+        if (!r) return null;
+        if (field === "Product Title") return { product_title: { $regex: r } };
+        return { search_terms: { $elemMatch: { $regex: r } } };
       }
 
       // Variant Tag
       if (field === "Variant Tag") {
-        if (!value?.attributeIds) return {};
-
-        const ids = value.attributeIds.map((id: any) => id.toString());
-        const matched = (categoryLookup.variantAttributesData || []).filter((va: any) =>
-          ids.includes(va._id.toString())
-        );
-
+        const ids = Array.isArray(value?.attributeIds) ? value.attributeIds : [];
+        if (!ids.length) return null;
+        const matched = (lookupObj.variantAttributesData || []).filter((va: any) => ids.includes(String(va._id)));
         const names = matched.map((m: any) => m.attribute_value).filter(Boolean);
-        if (!names.length) return {};
-
-        const correctField = "attribute";
-
-        const orArray = names.map((name: string) => ({
-          product_variants: {
-            $elemMatch: {
-              variant_attributes: {
-                $elemMatch: { [correctField]: { $regex: makePattern(name, operator), $options: "i" } }
+        if (!names.length) return null;
+        const orArray = names.map((nm: string) => {
+          const r = buildRegex(nm, operator);
+          if (!r) return null;
+          return {
+            product_variants: {
+              $elemMatch: {
+                variant_attributes: {
+                  $elemMatch: { attribute: { $regex: r } }
+                }
               }
             }
-          }
-        }));
-
-        if (operator === "is not equal to") return { $nor: orArray };
-
+          };
+        }).filter(Boolean);
+        if (!orArray.length) return null;
         return orArray.length === 1 ? orArray[0] : { $or: orArray };
       }
 
       // Attributes Tag
       if (field === "Attributes Tag") {
         const attrId = value?.attributeId;
-        const valueIds = (value?.valueIds || []).map((id: any) => id.toString());
-        if (!attrId || !valueIds.length) return {};
+        const valueIds: string[] = Array.isArray(value?.valueIds) ? value.valueIds : [];
+        if (!attrId || !valueIds.length) return null;
+        const attrDoc = (lookupObj.attributeData || []).find((a: any) => String(a._id) === String(attrId));
+        if (!attrDoc) return null;
 
-        const attrDoc = (categoryLookup.attributeData || []).find(
-          (a: any) => a._id.toString() === attrId
-        );
-
-        if (!attrDoc) return {};
-
-        const allowedValues: string[] = [];
-
-        (attrDoc.values || []).forEach((v: any) => {
-          if (valueIds.includes(v._id.toString())) allowedValues.push(v.value);
-        });
-
+        const finalValues: string[] = [];
+        (attrDoc.values || []).forEach((v: any) => { if (valueIds.includes(String(v._id))) finalValues.push(v.value); });
         (attrDoc.subAttributes || []).forEach((sub: any) => {
-          (sub.values || []).forEach((v: any) => {
-            if (valueIds.includes(v._id.toString())) allowedValues.push(v.value);
-          });
+          (sub.values || []).forEach((sv: any) => { if (valueIds.includes(String(sv._id))) finalValues.push(sv.value); });
         });
 
-        const cleanValues = allowedValues.filter(Boolean);
-        if (!cleanValues.length) return {};
-
-        const attrName = attrDoc.name.replace(/\./g, "\\");
-
-        const orArray = cleanValues.map((v: string) => {
-          const p = makePattern(v, operator);
+        if (!finalValues.length) return null;
+        const attrName = attrDoc.name;
+        const orArray = finalValues.map((val: string) => {
+          const r = buildRegex(val, operator);
+          if (!r) return null;
           return {
             $or: [
-              { [`dynamicFields.${attrName}`]: { $regex: p, $options: "i" } },
-              { [`dynamicFields.${attrName}`]: { $elemMatch: { $regex: p, $options: "i" } } }
+              { [`dynamicFields.${attrName}`]: { $regex: r } },
+              { [`dynamicFields.${attrName}`]: { $elemMatch: { $regex: r } } }
             ]
           };
-        });
+        }).filter(Boolean);
+        if (!orArray.length) return null;
 
+        // For "is not equal to" you previously wanted substring match behavior (i.e. include products containing substring)
+        // We keep the same behavior: the regex is substring; we do not invert here
         if (operator === "is not equal to") {
-          const norArray = cleanValues.map((v) => {
-            const p = makePattern(v, "is equal to");
-            return {
-              $or: [
-                { [`dynamicFields.${attrName}`]: { $regex: p, $options: "i" } },
-                { [`dynamicFields.${attrName}`]: { $elemMatch: { $regex: p, $options: "i" } } }
-              ]
-            };
-          });
-
-          return { $nor: norArray };
+          // Your previous implementation used $nor for attributes. If you specifically want inclusion (not exclusion),
+          // keep as OR. This implementation will include matches (substring) — as you requested earlier.
+          return orArray.length === 1 ? orArray[0] : { $or: orArray };
         }
 
         return orArray.length === 1 ? orArray[0] : { $or: orArray };
       }
 
-      return {};
+      return null;
     };
 
-    // Apply category conditions (only if isAutomatic true)
-    if (cat?.isAutomatic && adminCategory.conditions?.length > 0) {
-      for (const cond of adminCategory.conditions) {
-        const f = buildCond(cond, cat);
-        if (Object.keys(f).length > 0) autoFilters.push(f);
-      }
+    // Build autoFilters
+    const autoFilters: any[] = [];
+    for (const cond of (adminCategory.conditions || [])) {
+      const f = buildCond(cond, lookup);
+      if (f) autoFilters.push(f);
+    }
 
-      if (autoFilters.length > 0) {
+    // If no autoFilters and not automatic, we still attempt compatibility (same as getProductList)
+    // But since you asked to apply the getProductList logic, we'll behave the same
+    // If adminCategory.isAutomatic is false, we still attempt to use conditions (compat)
+    // so keep autoFilters as built above.
+
+    // Build product filter according to categoryScope
+    const baseFilter: any = {
+      isDeleted: false,
+      draft_status: false,
+      status: true
+    };
+
+    // If vendor filter provided
+    if (vendor_id) baseFilter.vendor_id = vendor_id;
+
+    let condFilter: any = { ...baseFilter };
+
+    if (autoFilters.length > 0) {
+      if (adminCategory.categoryScope === "specific") {
+        // Build selectedCategories + children
+        let selectedCats: mongoose.Types.ObjectId[] = [];
+        for (const sc of (adminCategory.selectedCategories || [])) {
+          selectedCats.push(new mongoose.Types.ObjectId(sc));
+          const subCats = await getCategoryTreeNew(sc);
+          selectedCats.push(...subCats.map((c: any) => new mongoose.Types.ObjectId(c.id)));
+        }
+        // dedupe
+        selectedCats = [...new Set(selectedCats.map((id) => id.toString()))].map((s) => new mongoose.Types.ObjectId(s));
+
+        if (selectedCats.length === 0) {
+          // nothing to search
+          return resp.status(200).json({
+            message: "Products fetched successfully.",
+            products: [],
+            base_url,
+            video_base_url,
+            pagination: { currentPage: page, totalPages: 0, totalItems: 0 }
+          });
+        }
+
+        condFilter.category = { $in: selectedCats };
+
         if (adminCategory.conditionType === "all") {
-          autoFilters.forEach((f) => filter.$and.push(f));
+          condFilter.$and = autoFilters;
         } else {
-          filter.$and.push({ $or: autoFilters });
+          condFilter.$and = [{ $or: autoFilters }];
+        }
+
+        // search q
+        if (q) {
+          const r = new RegExp(escapeForRegex(q), "i");
+          condFilter.$and = condFilter.$and || [];
+          condFilter.$and.push({ $or: [{ product_title: r }, { search_terms: r }] });
+        }
+      } else {
+        // categoryScope === 'all' => do not filter by category, apply conditions to entire products collection
+        if (adminCategory.conditionType === "all") {
+          condFilter.$and = autoFilters;
+        } else {
+          condFilter.$and = [{ $or: autoFilters }];
+        }
+
+        if (q) {
+          const r = new RegExp(escapeForRegex(q), "i");
+          condFilter.$and = condFilter.$and || [];
+          condFilter.$and.push({ $or: [{ product_title: r }, { search_terms: r }] });
         }
       }
     } else {
-      // Fallback: if not automatic, still attempt to build filters from conditions (compat)
-      const compatFilters: any[] = [];
-      for (const cond of adminCategory.conditions) {
-        const f = buildCond(cond, cat);
-        if (Object.keys(f).length > 0) compatFilters.push(f);
-      }
-      if (compatFilters.length > 0) {
-        if (adminCategory.conditionType === "all") {
-          compatFilters.forEach((f) => filter.$and.push(f));
-        } else {
-          filter.$and.push({ $or: compatFilters });
-        }
-      }
+      // No autoFilters built — return empty result or fallback? We'll return empty result (consistent)
+      return resp.status(200).json({
+        message: "Products fetched successfully.",
+        products: [],
+        base_url,
+        video_base_url,
+        pagination: { currentPage: page, totalPages: 0, totalItems: 0 }
+      });
     }
 
-    // ------------------------------------------
-    // 7. CLEANUP FILTER AND SEARCH / PAGINATION
-    // ------------------------------------------
-    // If no $and conditions present, remove array
-    if (filter.$and.length === 0) delete filter.$and;
-
-    // Convert single $and containing single $or into top-level $or for cleaner matching
-    if (filter.$and && filter.$and.length === 1 && filter.$and[0].$or) {
-      filter.$or = filter.$and[0].$or;
-      delete filter.$and;
+    // Clean up condFilter (same normalization as your getProductBySlug)
+    if (condFilter.$and && condFilter.$and.length === 0) delete condFilter.$and;
+    if (condFilter.$and && condFilter.$and.length === 1 && condFilter.$and[0].$or) {
+      condFilter.$or = condFilter.$and[0].$or;
+      delete condFilter.$and;
     }
 
-    console.log("FINAL FILTER ======>", JSON.stringify(filter, null, 2));
+    console.log("FINAL CONDITION FILTER =>", JSON.stringify(condFilter, null, 2));
 
-    const skipVal = (page - 1) * limit;
-
-    let products = await Product.find(filter)
-      .select("_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_variants dynamicFields")
+    // Query products by condFilter
+    let products = await ProductModel.find(condFilter)
+      .select("_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_variants dynamicFields search_terms")
       .sort(
         sortBy === "asc"
           ? { sale_price: 1 }
           : sortBy === "desc"
           ? { sale_price: -1 }
           : { createdAt: -1 }
-      )
-      .skip(skipVal)
-      .limit(limit)
-      .lean();
+      ).lean();
 
-    // STRICT PRODUCT TITLE POST FILTER (keep as in your original)
+    // Strict Product Title post-filter (HTML strip) — you asked to keep this
     const titleConds = (adminCategory.conditions || []).filter((c: any) => c.field === "Product Title");
-
     if (titleConds.length) {
-      products = products.filter((p) => {
+      products = products.filter((p: any) => {
         const clean = stripHtml(p.product_title).toLowerCase();
         for (let tc of titleConds) {
-          const v = stripHtml(tc.value).toLowerCase();
-
+          const v = stripHtml(typeof tc.value === "string" ? tc.value : tc.value?.value).toLowerCase();
           if (tc.operator === "starts with" && !clean.startsWith(v)) return false;
           if (tc.operator === "ends with" && !clean.endsWith(v)) return false;
           if (tc.operator === "is equal to" && clean !== v) return false;
@@ -1177,9 +1068,16 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       });
     }
 
-    // ------------------------------------------
-    // 8. PROMOTIONS (same enrichment logic)
-    // ------------------------------------------
+    // AFTER STRICT FILTER → APPLY PAGINATION HERE
+        const totalItems = products.length;
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const start = (page - 1) * limit;
+        const end = start + limit;
+
+        products = products.slice(start, end);
+
+    // Promotions enrichment (same as getProductList)
     const productIds = products.map((p) => p._id);
     const vendorIds = products.map((p) => p.vendor_id);
 
@@ -1204,7 +1102,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       let finalPrice = originalPrice;
 
       if (p.isCombination) {
-        const combos = p.combinationData.flatMap((c: any) => c.combinations || []);
+        const combos = (p.combinationData || []).flatMap((c: any) => c.combinations || []);
         const minCombo = combos
           .filter((c: any) => c.price && +c.price > 0)
           .reduce((min: number, c: any) => Math.min(min, +c.price), Infinity);
@@ -1214,20 +1112,13 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       }
 
       const promo = promoMap.get(p._id.toString()) || [];
-
       if (promo.length > 0) {
-        const bestPromo = promo.reduce(
-          (best: any, current: any) =>
-            !best || current.qty < best.qty ? current : best,
-          null
-        );
+        const bestPromo = promo.reduce((best: any, current: any) =>
+          !best || current.qty < best.qty ? current : best
+        , null);
 
         if (bestPromo && bestPromo.qty <= 1) {
-          finalPrice = calculatePriceAfterDiscount(
-            bestPromo.offer_type,
-            +bestPromo.discount_amount,
-            originalPrice
-          );
+          finalPrice = calculatePriceAfterDiscount(bestPromo.offer_type, +bestPromo.discount_amount, originalPrice);
         }
       }
 
@@ -1239,8 +1130,6 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       };
     });
 
-    const totalItems = await Product.countDocuments(filter);
-
     return resp.status(200).json({
       message: "Products fetched successfully.",
       products: enrichedProducts,
@@ -1248,18 +1137,17 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       video_base_url,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalItems / limit),
+        totalPages,
         totalItems
       }
     });
+
   } catch (error: any) {
-    console.error("Error fetching category list:", error);
-    return resp.status(500).json({
-      message: "Something went wrong.",
-      error: error.message
-    });
+    console.error("getProductBySlug error:", error);
+    return resp.status(500).json({ message: "Error fetching products", error: error.message });
   }
 };
+
 
 
 export const getPopularGiftProducts = async (req: Request, resp: Response) => {
@@ -2017,7 +1905,6 @@ export const getProductList = async (req: Request, resp: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const q = ((req.query.q as string) || "").trim();
-
     // base filter used for both categoryProducts and conditionProducts
     const baseFilter: any = {
       isDeleted: false,
