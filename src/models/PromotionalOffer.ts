@@ -50,8 +50,11 @@ const PromotionalOfferSchema = new Schema(
       required: true,
     },
     promotion_type: {
-      type: 'String',
-      enum: ['qty', 'amount'],
+      type: String,
+      enum: [
+        'qty_per_product',   // quantity based on each product
+        'qty_total_shop',    // quantity based on total products in shop
+         'amount', ],
       required: true,
     },
     discount_amount: {

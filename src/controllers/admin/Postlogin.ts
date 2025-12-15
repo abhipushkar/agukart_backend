@@ -7667,6 +7667,7 @@ export const addCoupon = async (req: CustomRequest, resp: Response) => {
         no_of_times,
         vendor_id,
         purchased_items,
+        isSynced,
     } = req.body;
 
     let productIds: any = [];
@@ -7725,6 +7726,7 @@ export const addCoupon = async (req: CustomRequest, resp: Response) => {
         max_discount,
         no_of_times,
         purchased_items,
+        isSynced,
         removed_product_id: removed_product_id,
     };
 

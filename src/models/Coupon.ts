@@ -40,6 +40,10 @@ const couponSchema = new Schema(
       enum: ['all', 'new user', 'old user'],
       default: 'all',
     },
+    isSynced: {
+      type: Boolean,
+      default: false
+    },
     start_date: {
       type: Date,
       required: true,
