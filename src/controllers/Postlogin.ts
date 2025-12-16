@@ -530,10 +530,16 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                     }, 0);
                 }
 
-
+                let couponData: any = null;
                 if (item.vendorCoupon?.vendor_id) {
-                    const couponData = await CouponModel.findOne({
-                        vendor_id: item.vendorCoupon.vendor_id
+                    couponData = await CouponModel.findOne(
+                        { vendor_id: item.vendorCoupon.vendor_id },
+                    {
+                          coupon_code: 1,
+                          discount_amount: 1,
+                          discount_type: 1,
+                          product_id: 1,
+                          isSynced: 1  
                     });
 
                     if (couponData?.discount_type && couponData?.discount_amount) {
@@ -564,7 +570,16 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                     matchedShippingOptions,
                     shop_icon: item.vendorIcon,
                     shop_name: item.vendorShop,
-                    vendor_coupon: item.vendorCoupon,
+                    vendor_coupon: item.vendorCoupon
+                      ? {
+                          ...item.vendorCoupon,
+                          coupon_data: {
+                              coupon_code: couponData?.coupon_code,
+                              discount_amount: discountAmount,
+                              isSynced: couponData?.isSynced ?? false
+                          }
+                        }
+                     : null,
                     coupon_status: !!item.vendorCoupon,
                     totalAmount,
                     discountAmount,

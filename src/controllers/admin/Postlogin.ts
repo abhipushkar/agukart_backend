@@ -7896,7 +7896,8 @@ export const getCoupon = async (req: Request, resp: Response) => {
             product_id: product_id,
             no_of_times: couponData.no_of_times,
             total_uses: couponData.total_uses,
-            valid_for: couponData.valid_for
+            valid_for: couponData.valid_for,
+            isSynced: couponData.isSynced,
         }
         return resp.status(200).json({
             message: 'Coupon fetched successfully',
