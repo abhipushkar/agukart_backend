@@ -202,6 +202,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
         const user_id = req.user._id;
         const addressId = req.query.address_id;
         const userObjectId = new mongoose.Types.ObjectId(user_id);
+        const queryCountry = (req.query.country || "").toString().trim();
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
         const pipeline: any = [
@@ -485,7 +486,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
         const formattedResult = await Promise.all(
             cartResult.map(async (item) => {
                 const shippingData = item.shippingData?.flat() || [];
-                const userCountry = item.addressData?.country;
+                const userCountry = item.addressData?.country?.trim() || queryCountry;
                 const shippingTypes = ["standardShipping", "expedited", "twoDays", "oneDay"];
                 const combinedShipping: Record<string, any[]> = {
                     standardShipping: [],

@@ -2265,6 +2265,21 @@ export const deleteAttributeList = async (req: CustomRequest, resp: Response) =>
     }
 }
 
+const stripHtml = (text: string = ""): string => {
+  return text
+    .replace(/<[^>]*>?/gm, "")   
+    .replace(/\s+/g, " ")        
+    .trim();
+};
+
+const decodeBase64 = (text = "") =>
+  Buffer.from(text, "base64").toString("utf-8");
+
+const buildMetaDescription = (text = "", max = 160) => {
+  const clean = stripHtml(text);
+  return clean.length > max ? clean.slice(0, max).trim() : clean;
+};
+
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
 
@@ -2272,6 +2287,7 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
+    const cleanTitle = stripHtml(req.body.product_title || "");
 
     const data: any = {
       category: req.body.category,
@@ -2280,6 +2296,7 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
       popular_gifts: req.body.popular_gifts,
       variant_attribute_id: req.body.variant_attribute_id,
       product_title: req.body.product_title,
+      meta_title: cleanTitle,
       product_type: req.body.product_type,
       tax_ratio: req.body.tax_ratio,
       bullet_points: req.body.bullet_points
@@ -2344,7 +2361,15 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
       zoom: parseJSON(req.body.zoom, {}),
       dynamicFields: parseJSON(req.body.dynamicFields, {}),
     };
-     
+
+    if (req.body.description) {
+       const decodedDesc = req.body.description;
+    data.meta_description = buildMetaDescription(decodedDesc);
+    }
+    
+    if (Array.isArray(req.body.search_terms)) {
+       data.meta_keywords = req.body.search_terms.map((k: string) => k.trim()).filter(Boolean);
+    }
      // if (req.body.sale_price > req.body.price) {
         //     return resp.status(400).json({ message: 'Sale price cannot be greater than price.', success: false });
         // }
@@ -2641,6 +2666,20 @@ if (Array.isArray(data.combinationData)) {
 
       const existingProduct = await Product.findById(req.body._id);
 
+      if (!req.body.meta_title && req.body.product_title) {
+         data.meta_title = stripHtml(req.body.product_title);
+      } else if(!req.body.meta_title) {
+        data.meta_title = existingProduct?.meta_title;
+      }
+      if (req.body.description) {
+        const decodedDesc = req.body.description;
+        data.meta_description = buildMetaDescription(decodedDesc);
+      }
+
+      if (Array.isArray(req.body.search_terms)) {
+        data.meta_keywords = req.body.search_terms.map((k: string) => k.trim()).filter(Boolean);
+      }
+
       // 🔹 Merge customizationData
 if (req.body.customizationData !== undefined) {
   const newCustomData = data.customizationData || {};
@@ -2766,8 +2805,6 @@ if (newCust.guide && oldCust.guide) {
       .json({ message: "Something went wrong. Please try again." });
   }
 };
-
-
 
 export const uploadProductVideo = async (req: Request, resp: Response) => {
     upload(req, resp, async function (err: any) {
@@ -6258,10 +6295,15 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
             if (existingCombination) {
                 return res.status(400).json({ message: 'Category already exists.', success: false });
             }
+            
+            const slug = slugify(`${title}`, {
+                lower: true,
+                remove: /[*+~.()'"!:@]/g,
+            });
 
             adminCategory = await AdminCategoryModel.findByIdAndUpdate(
                 _id,
-                { title: title, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
+                { title: title, slug: slug, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
                 { new: true, runValidators: true }
             );
             if (!adminCategory) {
@@ -10854,6 +10896,7 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
+    const cleanTitle = stripHtml(req.body.product_title || "");
 
     const parseJSON = (val: any, fallback: any) => {
       try {
@@ -10870,6 +10913,7 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
       popular_gifts: req.body.popular_gifts,
       variant_attribute_id: req.body.variant_attribute_id,
       product_title: req.body.product_title,
+      meta_title: cleanTitle,
       product_type: req.body.product_type,
       tax_ratio: req.body.tax_ratio,
       bullet_points: req.body.bullet_points
@@ -10934,6 +10978,15 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
       zoom: parseJSON(req.body.zoom, {}),
       dynamicFields: parseJSON(req.body.dynamicFields, {}),
     };
+
+    if (req.body.description) {
+       const decodedDesc = req.body.description;
+    data.meta_description = buildMetaDescription(decodedDesc);
+    }
+    
+    if (Array.isArray(req.body.search_terms)) {
+       data.meta_keywords = req.body.search_terms.map((k: string) => k.trim()).filter(Boolean);
+    }
 
     let parsedVariations = parseJSON(req.body.variations_data, []);
     data.variations_data = parsedVariations.map((v: any) => {

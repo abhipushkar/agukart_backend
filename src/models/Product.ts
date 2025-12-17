@@ -295,10 +295,10 @@ const productSchema = new Schema(
       type: String,
       default: null,
     },
-    meta_keywords: {
+    meta_keywords: [{
       type: String,
-      default: null,
-    },
+      default: [],
+    }],
     meta_description: {
       type: String,
       default: null,
