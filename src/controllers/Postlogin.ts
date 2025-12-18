@@ -59,141 +59,135 @@ interface CustomRequest extends Request {
 }
 
 export const addToCart = async (req: CustomRequest, resp: Response) => {
-    try {
-        const customVariants = Array.isArray(req.body.variants) ? req.body.variants : [];
-        const cart = await Cart.findOne({ user_id: req.user._id, product_id: req.body.product_id, isCombination: req.body.isCombination, variant_id: req.body.variant_id, variant_attribute_id: req.body.variant_attribute_id });
-        let affiliateId: any = null;
+  try {
+    const userId = req.user._id;
 
-        if (req.body.affiliate_id) {
-            const affiliateData = await User.findOne({ affiliate_code: req.body.affiliate_id });
-            if (affiliateData) {
-                affiliateId = affiliateData._id
-            }
-        }
+    const {
+      product_id,
+      vendor_id,
+      qty,
+      price,
+      original_price,
+      isCombination,
+      variant_id = [],
+      variant_attribute_id = [],
+      variants = [],
+      customizationData = [],
+      customize,
+      shippingName,
+      shipping_id,
+      affiliate_id,
+      note
+    } = req.body;
 
-        if (cart) {
-            await Cart.updateOne({
-                user_id: req.user._id,
-                product_id: req.body.product_id,
-                vendor_id: req.body.vendor_id,
-                isCombination: req.body.isCombination,
-                variant_id: req.body.variant_id,
-                variant_attribute_id: req.body.variant_attribute_id,
-            }, { $set: { qty: req.body.qty, affiliate_id: affiliateId, customizationData: req.body.customizationData, price: req.body.price, original_price: req.body.original_price, note: req.body.note, variants: customVariants } });
+    const customVariants = Array.isArray(variants) ? variants : [];
+    const customization = Array.isArray(customizationData)
+      ? customizationData
+      : [];
 
-
-            if (req.body.isCombination && cart.variant_id.length === 0 && cart.variant_attribute_id.length === 0) {
-                cart.variant_id = req.body.variant_id;
-                cart.variant_attribute_id = req.body.variant_attribute_id;
-            }
-
-            let productData = await Product.findOne({ _id: cart.product_id });
-
-            await activity(
-                req.user._id,
-                req.body.product_id,
-                req.body.vendor_id,
-                'update-cart',
-                `${productData?.product_title} updated cart.`,
-            );
-
-            await vandorAndProductActivity(
-                req.user._id,
-                req.body.product_id,
-                req.body.vendor_id,
-                "product",
-                "update-cart",
-                `${productData?.product_title} updated cart.`,
-            )
-
-            await cart.save();
-            return resp.status(200).json({ message: 'Cart updated successfully.' });
-        }
-        else {
-            const existingCart = await Cart.find({
-                user_id: req.user._id,
-                product_id: req.body.product_id,
-                vendor_id: req.body.vendor_id,
-                isCombination: req.body.isCombination,
-            });
-
-            for (const cart of existingCart) {
-                if (
-                    cart?.isCombination === true &&
-                    cart?.variant_id.length === 0 &&
-                    cart?.variant_attribute_id.length === 0
-                ) {
-                    cart.qty = req.body.qty;
-                    cart.variant_id = req.body.variant_id;
-                    cart.variant_attribute_id = req.body.variant_attribute_id;
-                    cart.customizationData = req.body.customizationData;
-                    cart.affiliate_id = affiliateId;
-                    cart.price = req.body.price;
-                    cart.original_price = req.body.original_price;
-                    cart.note = req.body.note;
-                    cart.variants = customVariants;
-                    await cart.save();
-                    const productData = await Product.findOne({ _id: cart.product_id });
-                    await activity(
-                        req.user._id,
-                        req.body.product_id,
-                        cart.vendor_id,
-                        'product-update-cart',
-                        `${productData?.product_title} updated cart.`,
-                    );
-                    await vandorAndProductActivity(
-                        req.user._id,
-                        cart.product_id,
-                        null,
-                        "product",
-                        "update-cart",
-                        `${productData?.product_title} updated cart.`,
-                    )
-                    return resp.status(200).json({ message: 'Cart updated successfully.' });
-                }
-            }
-
-            const cart: any = {
-                user_id: req.user._id,
-                vendor_id: req.body.vendor_id,
-                product_id: req.body.product_id,
-                qty: req.body.qty,
-                isCombination: req.body.isCombination,
-                variant_id: req.body.variant_id,
-                variant_attribute_id: req.body.variant_attribute_id,
-                price: req.body.price,
-                original_price: req.body.original_price,
-                affiliate_id: affiliateId,
-                customize: req.body.customize,
-                customizationData: req.body.customizationData,
-                shippingName: req.body.shippingName,
-                shipping_id: req.body.shipping_id,
-                variants: customVariants 
-            }
-            await Cart.create(cart);
-            const productData = await Product.findOne({ _id: cart.product_id });
-            await activity(
-                req.user._id,
-                req.body.product_id,
-                req.body.vendor_id,
-                'add-cart',
-                `${productData?.product_title} added cart.`,
-            );
-            await vandorAndProductActivity(
-                req.user._id,
-                req.body.product_id,
-                req.body.vendor_id,
-                "product",
-                "add-to-cart",
-                `${productData?.product_title} added to cart.`,
-            )
-            return resp.status(200).json({ message: 'Product successfully added into cart.' })
-        }
-    } catch (err) {
-        console.error(err);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    // -------------------------
+    // Affiliate handling
+    // -------------------------
+    let affiliateId: any = null;
+    if (affiliate_id) {
+      const affiliateUser = await User.findOne(
+        { affiliate_code: affiliate_id },
+        { _id: 1 }
+      );
+      if (affiliateUser) affiliateId = affiliateUser._id;
     }
+
+    // -------------------------
+    // Find exact matching cart
+    // -------------------------
+    const existingCart = await Cart.findOne({
+      user_id: userId,
+      product_id,
+      vendor_id,
+      isCombination,
+
+      // Variant ID match (order-independent)
+      variant_id: {
+        $all: variant_id,
+        $size: variant_id.length
+      },
+
+      // Variant Attribute ID match (order-independent)
+      variant_attribute_id: {
+        $all: variant_attribute_id,
+        $size: variant_attribute_id.length
+      },
+
+      // Human-readable variants match
+      variants: {
+        $all: customVariants.map(v => ({
+          $elemMatch: {
+            variantName: v.variantName,
+            attributeName: v.attributeName
+          }
+        }))
+      },
+
+      // Ensure no extra variants stored
+      $expr: {
+        $eq: [{ $size: "$variants" }, customVariants.length]
+      },
+
+      // Customization must be EXACT same
+      customizationData: customization
+    });
+
+    // -------------------------
+    // CASE 1: SAME product + SAME variant + SAME customization
+    // → Merge (increase qty)
+    // -------------------------
+    if (existingCart) {
+      existingCart.qty += qty;
+
+      // Price may change → update it
+      existingCart.price = price;
+      existingCart.original_price = original_price;
+
+      existingCart.affiliate_id = affiliateId;
+      existingCart.note = note ?? existingCart.note;
+
+      await existingCart.save();
+
+      return resp.status(200).json({
+        message: 'Cart quantity updated successfully.'
+      });
+    }
+
+    await Cart.create({
+      user_id: userId,
+      vendor_id,
+      product_id,
+      qty,
+      isCombination,
+      variant_id,
+      variant_attribute_id,
+      variants: customVariants,
+      customizationData: customization,
+      price,
+      original_price,
+      affiliate_id: affiliateId,
+      customize,
+      shippingName,
+      shipping_id,
+      note
+    });
+
+    return resp.status(200).json({
+      message: 'Product added to cart successfully.'
+    });
+  } catch (err) {
+    console.error(err);
+    return resp.status(500).json({
+      message: 'Something went wrong. Please try again.'
+    });
+  }
 };
+
 
 export const listofCart = async (req: CustomRequest, resp: Response) => {
     const base_url = process.env.ASSET_URL + '/uploads/shop-icon/';

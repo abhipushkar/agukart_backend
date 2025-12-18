@@ -6939,6 +6939,141 @@ export const addVendorProfile = async (req: CustomRequest, resp: Response) => {
     }
 };
 
+export const addShopBanner = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { user_id, index, scale, x, y } = req.body;
+
+    if (!user_id) {
+      return resp.status(400).json({ message: 'User id is required' });
+    }
+
+    if (!req.files || !req.files.image || !req.files.editedImage) {
+      return resp.status(400).json({ message: 'Both image and editedImage are required' });
+    }
+
+    const vendor = await VendorModel.findOne({ user_id });
+
+    if (!vendor) {
+      return resp.status(404).json({ message: 'Vendor not found' });
+    }
+
+    if (!index && vendor.shop_banner.length >= 5) {
+      return resp.status(400).json({ message: 'Maximum 5 banners allowed' });
+    }
+
+    const uploadDir = path.join('uploads', 'shop-banner');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const imageFile = (req.files as any).image[0];
+    const imageName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.webp`;
+    await convertToWebP(imageFile.buffer, path.join(uploadDir, imageName));
+
+    const editedFile = (req.files as any).editedImage[0];
+    const editedName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-edited.webp`;
+    await convertToWebP(editedFile.buffer, path.join(uploadDir, editedName));
+
+    const bannerObj = {
+      image: imageName,
+      editedImage: editedName,
+      metaData: {
+        scale: Number(scale) || 1,
+        x: Number(x) || 0,
+        y: Number(y) || 0,
+      },
+    };
+
+    if (index !== undefined && vendor.shop_banner[index]) {
+      vendor.shop_banner[index] = bannerObj;
+    } else {
+      vendor.shop_banner.push(bannerObj);
+    }
+
+    await vendor.save();
+
+    return resp.status(200).json({ message: 'Shop banner saved successfully' });
+
+  } catch (error) {
+    console.error('addShopBanner error:', error);
+    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
+export const getShopBanner = async (req: CustomRequest, resp: Response) => {
+  try {
+    const user = req.user;
+
+    if (!user || !user._id) {
+      return resp.status(401).json({ message: 'Unauthorized access.' });
+    }
+
+    if (user.designation_id !== 3) {
+      return resp.status(403).json({ message: 'Access denied. Vendor only.' });
+    }
+
+    const vendorDetails = await VendorModel.findOne(
+      { user_id: user._id },
+      { shop_banner: 1 }
+    ).lean();
+
+    if (!vendorDetails) {
+      return resp.status(404).json({ message: 'Vendor not found.' });
+    }
+
+    const banner_url = process.env.ASSET_URL + '/uploads/shop-banner/';
+
+    const banners = (vendorDetails.shop_banner || []).map((banner: any) => ({
+      image: banner.image ? banner_url + banner.image : '',
+      editedImage: banner.editedImage ? banner_url + banner.editedImage : '',
+      metaData: banner.metaData || { scale: 1, x: 0, y: 0 }
+    }));
+
+    return resp.status(200).json({
+      message: 'Shop banners fetched successfully.',
+      user_id: user._id, 
+      data: banners
+    });
+
+  } catch (error) {
+    console.error('getShopBanner error:', error);
+    return resp.status(500).json({
+      message: 'Something went wrong. Please try again.'
+    });
+  }
+};
+
+export const deleteShopBanner = async (req: Request, resp: Response) => {
+  try {
+    const { user_id, index } = req.body;
+
+    if (!user_id || index === undefined) {
+      return resp.status(400).json({ message: 'User id and index are required' });
+    }
+
+    const vendor = await VendorModel.findOne({ user_id });
+
+    if (!vendor || !vendor.shop_banner[index]) {
+      return resp.status(404).json({ message: 'Banner not found' });
+    }
+
+    const banner = vendor.shop_banner[index];
+
+    const dir = path.join('uploads', 'shop-banner');
+    if (banner.image) fs.existsSync(path.join(dir, banner.image)) && fs.unlinkSync(path.join(dir, banner.image));
+    if (banner.editedImage) fs.existsSync(path.join(dir, banner.editedImage)) && fs.unlinkSync(path.join(dir, banner.editedImage));
+
+    vendor.shop_banner.splice(index, 1);
+    await vendor.save();
+
+    return resp.status(200).json({ message: 'Shop banner deleted successfully' });
+
+  } catch (error) {
+    console.error('deleteShopBanner error:', error);
+    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
 
 export const addShopIcon = async (req: CustomRequest, resp: Response) => {
     try {

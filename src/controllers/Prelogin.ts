@@ -2931,6 +2931,13 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
     const base_icon = process.env.ASSET_URL + '/uploads/shop-icon/';
     const video_url = process.env.ASSET_URL + '/uploads/shop-video/';
     const member_image_url = process.env.ASSET_URL + '/uploads/shop-photos/';
+    const banner_url = process.env.ASSET_URL + '/uploads/shop-banner/';
+
+    const shopBanners = (vendorDetails.shop_banner || []).map((banner: any) =>({
+      image: banner.image ? banner_url + banner.image : '',
+      editedImage: banner.editedImage ? banner_url + banner.editedImage : '',
+      metaData: banner.metaData || { scale: 1, x: 0, y: 0 }
+    }));
 
     const country = await CountryModel.findOne({ _id: vendor.country_id });
     const state = await StateModel.findOne({ _id: vendor.state_id });
@@ -2958,6 +2965,7 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
       story_headline: vendorDetails.story_headline,
       shop_video: video_url + vendorDetails.shop_video,
       shop_photos: vendorDetails.shop_photos,
+      shop_banner: shopBanners,
       description: vendorDetails.description,
       shop_policy: vendorDetails.shop_policy,
       shop_address: vendorDetails.shop_address,

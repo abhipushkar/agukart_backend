@@ -31,6 +31,15 @@ const vendorSchema = new Schema(
         type: String,
         default: '',
     },
+    shop_banner: [{
+        image: { type: String},
+        editedImage: {type: String},
+        metaData: {
+            scale: {type: Number, default: 0.0 },
+            x : { type: Number, default: 0.0 },
+            y : { type: Number, default: 0.0 } 
+        }
+    }],
     members: {
         type: JSON,
         default: [],

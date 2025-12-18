@@ -236,7 +236,10 @@ import {
     deleteAttributeList,
     getAttributeListByCategoryId,
     deletedByAdmin,
-    getCategoryFullDetails
+    getCategoryFullDetails,
+    deleteShopBanner,
+    addShopBanner,
+    getShopBanner
 } from "../controllers/admin/Postlogin";
 
 
@@ -425,6 +428,14 @@ routes.post('/add-vendor-profile', multer().single('file'), addVendorProfile)
 routes.post('/add-shop-icon', multer().single('file'), addShopIcon)
 routes.post('/add-shop-video', uploadShopVideo);
 routes.post('/add-shop-photos',multer().single('file'), addShopPhotos);
+routes.post('/add-shop-banner', multer().fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'editedImage', maxCount: 1 }
+]),
+addShopBanner
+);
+routes.get('/get-shop-banner', getShopBanner);
+routes.post('/delete-shop-banner', deleteShopBanner);
 routes.get('/get-vendor',getVendor)
 routes.get('/get-vendor-by-id/:id', getVendorById)
 routes.post('/change-vendor-status', changeVendorStatus)
