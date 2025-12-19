@@ -498,7 +498,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
         const formattedResult = await Promise.all(
             cartResult.map(async (item) => {
                 const shippingData = item.shippingData?.flat() || [];
-                const userCountry = item.addressData?.country?.trim() || queryCountry;
+                const userCountry = queryCountry || item.addressData?.country?.trim();
                 const shippingTypes = ["standardShipping", "expedited", "twoDays", "oneDay"];
                 const combinedShipping: Record<string, any[]> = {
                     standardShipping: [],
@@ -3408,20 +3408,30 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
 
         const cartCoupons = await couponCart.find({ user_id: req.user._id });
 
-        let addressData = { country: "India" };
-        if (req.query.address_id && mongoose.Types.ObjectId.isValid(req.query.address_id.toString())) {
-            const addressQuery = await Address.findOne({ _id: new mongoose.Types.ObjectId(req.query.address_id.toString()) });
-            if (addressQuery) {
-                addressData = addressQuery;
-            }
-        }
+let addressData: any = null;
+let country: string | null = null;
+let isAddressProvided = false;
 
-        if (!addressData?.country) {
-            return resp.status(400).json({
-                status: false,
-                message: "User selected address country not found.",
-            });
-        }
+if (req.query.address_id && mongoose.Types.ObjectId.isValid(req.query.address_id.toString())) {
+    const addressQuery = await Address.findById(req.query.address_id);
+    if (addressQuery?.country) {
+        addressData = addressQuery;
+        country = addressQuery.country;
+        isAddressProvided = true;
+    }
+}
+
+if (!country && typeof req.query.country === "string" && req.query.country.trim()) {
+    country = req.query.country.trim();
+}
+
+if (!country) {
+    return resp.status(400).json({
+        status: false,
+        message: "Either address or country is required to calculate delivery.",
+    });
+}
+
 
         await Promise.all(cartResult.map(async (item) => {
             const offerPrice = getOfferProductPrice(item.sale_price, item.discount_type, item.discount_amount);
@@ -3442,9 +3452,10 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
 
             const selectedShipping = shippingOptions[shippingName as keyof typeof shippingOptions] || [];
             let perOrderFee = 0;
-
+            let regionMatched = false;
             for (const option of selectedShipping) {
-                if (option?.region?.includes(addressData?.country)) {
+                if (option?.region?.includes(country)) {
+                    regionMatched = true;
                     delivery += (option?.shippingFee?.perItem || 0) * item.qty;
                     perOrderFee = option?.shippingFee?.perOrder || 0;
                     break;
@@ -3453,20 +3464,27 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
 
             const parentCartVendorData = item.parentCartData;
             if (parentCartVendorData?.vendor_data?.[0]) {
+                parentCartVendorData.vendor_data[0].regionMatched = regionMatched;
                 parentCartVendorData.vendor_data[0].perOrder = parseFloat(perOrderFee.toString());
                 parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
             }
         }));
 
-        for (const vendorId in parentCartData) {
-            const data = parentCartData[vendorId];
+       for (const vendorId in parentCartData) {
+    const data = parentCartData[vendorId];
 
-            if (data.vendor_data[0]?.perOrder <= 0) {
-                errorMessage = `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`;
-            }
+    if (
+        isAddressProvided &&
+        data.vendor_data[0]?.regionMatched === false
+    ) {
+        errorMessage =
+            `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow delivery to ${country}`;
+        break;
+    }
 
-            delivery += data.vendor_data[0]?.perOrder;
-        }
+    delivery += data.vendor_data[0]?.perOrder || 0;
+}
+
 
         // ✅ Apply accurate coupon discount logic
         if (cartCoupons?.length > 0) {
