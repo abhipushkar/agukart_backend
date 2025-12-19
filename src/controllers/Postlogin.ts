@@ -85,9 +85,18 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       ? customizationData
       : [];
 
-    // -------------------------
-    // Affiliate handling
-    // -------------------------
+    const hasExternalVariants =
+      variant_id.length > 0 || variant_attribute_id.length > 0;
+
+    const hasInternalVariants =
+      customVariants.length > 0;
+
+    const normalizeIds = (arr: any[]) =>
+      arr.map(id => new mongoose.Types.ObjectId(id));
+
+    const extVariantIds = normalizeIds(variant_id);
+    const extAttrIds = normalizeIds(variant_attribute_id);
+
     let affiliateId: any = null;
     if (affiliate_id) {
       const affiliateUser = await User.findOne(
@@ -97,64 +106,73 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       if (affiliateUser) affiliateId = affiliateUser._id;
     }
 
-    // -------------------------
-    // Find exact matching cart
-    // -------------------------
-    const existingCart = await Cart.findOne({
+    const query: any = {
       user_id: userId,
       product_id,
       vendor_id,
       isCombination,
+      customizationData: customization
+    };
 
-      // Variant ID match (order-independent)
-      variant_id: {
-        $all: variant_id,
-        $size: variant_id.length
-      },
+    query.$expr = { $and: [] };
 
-      // Variant Attribute ID match (order-independent)
-      variant_attribute_id: {
-        $all: variant_attribute_id,
-        $size: variant_attribute_id.length
-      },
+    if (hasExternalVariants) {
+      query.$expr.$and.push(
+        {
+          $and: [
+            { $eq: [{ $size: "$variant_id" }, extVariantIds.length] },
+            { $setEquals: ["$variant_id", extVariantIds] }
+          ]
+        },
+        {
+          $and: [
+            { $eq: [{ $size: "$variant_attribute_id" }, extAttrIds.length] },
+            { $setEquals: ["$variant_attribute_id", extAttrIds] }
+          ]
+        }
+      );
+    }
 
-      // Human-readable variants match
-      variants: {
+    if (hasInternalVariants) {
+      query.variants = {
         $all: customVariants.map(v => ({
           $elemMatch: {
             variantName: v.variantName,
             attributeName: v.attributeName
           }
         }))
-      },
+      };
 
-      // Ensure no extra variants stored
-      $expr: {
-        $eq: [{ $size: "$variants" }, customVariants.length]
-      },
+      query.$expr.$and.push(
+        { $eq: [{ $size: "$variants" }, customVariants.length] }
+      );
+    }
 
-      // Customization must be EXACT same
-      customizationData: customization
-    });
+    if (query.$expr.$and.length === 0) {
+      delete query.$expr;
+    }
 
-    // -------------------------
-    // CASE 1: SAME product + SAME variant + SAME customization
-    // → Merge (increase qty)
-    // -------------------------
-    if (existingCart) {
-      existingCart.qty += qty;
+    const cartItem = await Cart.findOne(query);
 
-      // Price may change → update it
-      existingCart.price = price;
-      existingCart.original_price = original_price;
+    if (cartItem) {
+      cartItem.qty += qty;
 
-      existingCart.affiliate_id = affiliateId;
-      existingCart.note = note ?? existingCart.note;
+      if (cartItem.qty <= 0) {
+        await cartItem.deleteOne();
+        return resp.status(200).json({
+          message: "Item removed from cart."
+        });
+      }
 
-      await existingCart.save();
+      cartItem.price = price;
+      cartItem.original_price = original_price;
+      cartItem.affiliate_id = affiliateId;
+      cartItem.note = note ?? cartItem.note;
+
+      await cartItem.save();
 
       return resp.status(200).json({
-        message: 'Cart quantity updated successfully.'
+        message: "Cart quantity updated successfully."
       });
     }
 
@@ -164,8 +182,8 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       product_id,
       qty,
       isCombination,
-      variant_id,
-      variant_attribute_id,
+      variant_id: extVariantIds,
+      variant_attribute_id: extAttrIds,
       variants: customVariants,
       customizationData: customization,
       price,
@@ -178,16 +196,16 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     });
 
     return resp.status(200).json({
-      message: 'Product added to cart successfully.'
+      message: "Product added to cart successfully."
     });
+
   } catch (err) {
     console.error(err);
     return resp.status(500).json({
-      message: 'Something went wrong. Please try again.'
+      message: "Something went wrong. Please try again."
     });
   }
 };
-
 
 export const listofCart = async (req: CustomRequest, resp: Response) => {
     const base_url = process.env.ASSET_URL + '/uploads/shop-icon/';
