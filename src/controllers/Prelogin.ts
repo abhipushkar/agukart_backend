@@ -867,7 +867,8 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       const filter: any = {
         isDeleted: false,
         draft_status: false,
-        status: true
+        status: true,
+        deletedByAdmin: false
       };
 
       if (vendor_id) filter.vendor_id = vendor_id;
@@ -897,7 +898,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       }
 
       const products = await ProductModel.find(filter)
-        .select("_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_variants dynamicFields search_terms")
+        .select("_id product_title ratingAvg sale_price qty isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_variants dynamicFields search_terms")
         .lean();
 
       products.forEach(p => productMap.set(String(p._id), p));
@@ -905,6 +906,11 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
 
     // 6️⃣ Merge + sort
     let products = Array.from(productMap.values());
+    products = products.filter((product: any) =>{
+      const productQty = product?.qty;
+      const combinationData = product?.combinationData || [];
+      return !checkSoldOut(productQty, combinationData);
+    })
 
     products.sort((a, b) => {
       if (sortBy === "asc") return a.sale_price - b.sale_price;
@@ -939,13 +945,22 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
 
 export const getPopularGiftProducts = async (req: Request, resp: Response) => {
   try {
-    const data = await Product.find({ popular_gifts: "Yes" }).populate('category')
+    const data = await Product.find({ popular_gifts: "Yes",
+      isDeleted: false,
+      draft_status: false,
+      status: true,
+      deletedByAdmin: false
+     }).populate('category')
       .populate('brand_id')
       .populate('variant_id')
       .populate('variant_attribute_id');
     let base_url = process.env.ASSET_URL + '/uploads/product/';
 
-    const products = await Promise.all(data.map(async (item: any) => {
+    const products = await Promise.all(data.filter((item: any) =>{
+      const productQty = item?.qty;
+      const combinationData = item?.combinationData || [];
+      return !checkSoldOut(productQty, combinationData);
+    }).map(async (item: any) => {
       const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true, vendor_id: item.vendor_id, expiry_status: { $ne: 'expired' } })
       return {
         ...item.toObject(),
@@ -959,15 +974,25 @@ export const getPopularGiftProducts = async (req: Request, resp: Response) => {
     resp.status(500).json({ message: 'Something went wrong. Please try again.' });
   }
 };
+
 export const bigDiscountProducts = async (req: Request, resp: Response) => {
   try {
-    const data = await Product.find({ discount: { $gte: 20 } }).populate('category')
+    const data = await Product.find({ discount: { $gte: 20 },
+      isDeleted: false,
+      draft_status: false,
+      status: true,
+      deletedByAdmin: false
+    }).populate('category')
       .populate('brand_id')
       .populate('variant_id')
       .populate('variant_attribute_id');
     let base_url = process.env.ASSET_URL + '/uploads/product/';
 
-    const products = await Promise.all(data.map(async (item: any) => {
+    const products = await Promise.all(data.filter((item: any) =>{
+      const productQty = item?.qty;
+      const combinationData = item?.combinationData || [];
+      return !checkSoldOut(productQty, combinationData);
+    }).map(async (item: any) => {
       const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true })
       return {
         ...item.toObject(),
@@ -1697,7 +1722,8 @@ export const getProductList = async (req: Request, resp: Response) => {
     const baseFilter: any = {
       isDeleted: false,
       draft_status: false,
-      status: true
+      status: true,
+      deletedByAdmin: false
     };
 
     if (!categoryId) {
@@ -1735,7 +1761,9 @@ export const getProductList = async (req: Request, resp: Response) => {
       vendor_id: 1,
       search_terms: 1,
       createdAt: 1,
-      category: 1
+      category: 1,
+      qty: 1,
+      combinationData: 1
     };
 
     // ---------------------------
@@ -1899,8 +1927,14 @@ export const getProductList = async (req: Request, resp: Response) => {
     // run aggregate
     const aggRes = await ProductModel.aggregate(agg).allowDiskUse(true);
 
-    const data = (aggRes[0] && aggRes[0].data) || [];
-    const totalCount = (aggRes[0] && aggRes[0].total && aggRes[0].total[0] && aggRes[0].total[0].count) || 0;
+    const rawData = (aggRes[0] && aggRes[0].data) || [];
+    const filteredData = rawData.filter((product: any) => {
+      const productQty = product?.qty;
+      const combinationData = product?.combinationData || [];
+      return !checkSoldOut(productQty, combinationData);
+    });
+
+    const totalCount = filteredData.length
     const totalPages = Math.ceil(totalCount / limit);
 
     const base_url = process.env.ASSET_URL + "/uploads/product/";
@@ -1908,7 +1942,7 @@ export const getProductList = async (req: Request, resp: Response) => {
 
     return resp.status(200).json({
       message: "Products fetched successfully (pipeline).",
-      data,
+      data: filteredData,
       base_url,
       video_base_url,
       pagination: {
@@ -2726,7 +2760,7 @@ export const bestsellerCategory = async (req: Request, res: Response) => {
 };
 export const bestRatedProduct = async (req: Request, res: Response) => {
   try {
-    const data = await Product.find({ ratingAvg: 5, status: true, draft_status: false, isDeleted: false }).sort({ _id: -1 }).limit(10).populate('vendor_id')
+    const data = await Product.find({ ratingAvg: 5, status: true, draft_status: false, isDeleted: false, deletedByAdmin: false }).sort({ _id: -1 }).limit(10).populate('vendor_id')
       .populate('category')
       .populate('brand_id')
       .populate('variant_id')
@@ -2734,7 +2768,11 @@ export const bestRatedProduct = async (req: Request, res: Response) => {
 
     let base_url = process.env.ASSET_URL + '/uploads/product/'
 
-    const product = await Promise.all(data.map(async (item: any) => {
+    const product = await Promise.all(data.filter((item: any) =>{
+      const productQty = item?.qty;
+      const combinationData = item?.combinationData || [];
+      return !checkSoldOut(productQty, combinationData);
+    }).map(async (item: any) => {
       const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true, expiry_status: 'active', vendor_id: item.vendor_id._id })
       return {
         ...item.toObject(),

@@ -2495,15 +2495,30 @@ if (Array.isArray(productVariants)) {
             try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
           }
 
+
+const existingMainImages = Array.isArray(attr.main_images)
+  ? attr.main_images
+  : [];
+
+let newMainImages: string[] = [];
+if (mainImgs.length > 0) {
+  newMainImages = await Promise.all(
+    mainImgs.map((f, i) =>
+      saveProductFile(f, `pv-main-${Date.now()}-${pvIdx}-${aIdx}-${i}`)
+    )
+  );
+}
+
+const mergedMainImages = [...existingMainImages, ...newMainImages];
+
+
           return {
             ...attr,
 
             thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : attr.thumbnail || "",
             preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : attr.preview_image || "",
 
-            main_images: mainImgs.length
-              ? await Promise.all(mainImgs.map((f,i)=> saveProductFile(f, `pv-main-${Date.now()}-${i}`)))
-              : attr.main_images || [],
+            main_images: mergedMainImages,
 
             edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
             edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
