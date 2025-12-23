@@ -2284,10 +2284,6 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
 
     req.body = qs.parse(req.body, { allowDots: true, depth: 20, arrayLimit: 100 });
-    const existingProduct =
-  req.body._id && req.body._id !== "new"
-    ? await Product.findById(req.body._id)
-    : null;
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
@@ -2499,12 +2495,13 @@ if (Array.isArray(productVariants)) {
             try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
           }
 
-const dbMainImages =
-  existingProduct?.product_variants?.[pvIdx]
-    ?.variant_attributes?.[aIdx]
-    ?.main_images || [];
+const finalMainImages: (string | null)[] = [];
 
-const finalMainImages = [...dbMainImages];
+if (Array.isArray(attr.main_images)) {
+  attr.main_images.forEach((img: string, idx: number) => {
+    finalMainImages[idx] = img || null;
+  });
+}
 
 for (const file of mainImgs) {
   const match = file.fieldname.match(/\[main_images\]\[(\d+)\]$/);
@@ -2520,6 +2517,10 @@ for (const file of mainImgs) {
   finalMainImages[index] = savedPath;
 }
 
+const cleanedMainImages = finalMainImages.filter(
+  (img) => typeof img === "string" && img.length > 0
+);
+
 
           return {
             ...attr,
@@ -2527,7 +2528,7 @@ for (const file of mainImgs) {
             thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : attr.thumbnail || "",
             preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : attr.preview_image || "",
 
-            main_images: finalMainImages,
+            main_images: cleanedMainImages,
 
             edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
             edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
