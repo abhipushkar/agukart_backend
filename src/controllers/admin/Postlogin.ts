@@ -2495,32 +2495,30 @@ if (Array.isArray(productVariants)) {
             try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
           }
 
-const finalMainImages: (string | null)[] = [];
+          // 🔹 Normalize old main_images (URLs)
+let existingMainImages: string[] = [];
 
 if (Array.isArray(attr.main_images)) {
-  attr.main_images.forEach((img: string, idx: number) => {
-    finalMainImages[idx] = img || null;
-  });
+  existingMainImages = attr.main_images;
+} else if (typeof attr.main_images === "string" && attr.main_images) {
+  existingMainImages = [attr.main_images];
 }
 
-for (const file of mainImgs) {
-  const match = file.fieldname.match(/\[main_images\]\[(\d+)\]$/);
-  if (!match) continue;
+// 🔹 Save newly uploaded images
+const uploadedMainImages =
+  mainImgs.length > 0
+    ? await Promise.all(
+        mainImgs.map((f, i) =>
+          saveProductFile(f, `pv-main-${Date.now()}-${aIdx}-${i}`)
+        )
+      )
+    : [];
 
-  const index = Number(match[1]);
-
-  const savedPath = await saveProductFile(
-    file,
-    `pv-main-${Date.now()}-${pvIdx}-${aIdx}-${index}`
-  );
-
-  finalMainImages[index] = savedPath;
-}
-
-const cleanedMainImages = finalMainImages.filter(
-  (img) => typeof img === "string" && img.length > 0
-);
-
+// 🔹 Merge (OLD + NEW)
+const mergedMainImages = [
+  ...existingMainImages,
+  ...uploadedMainImages,
+];
 
           return {
             ...attr,
@@ -2528,7 +2526,7 @@ const cleanedMainImages = finalMainImages.filter(
             thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : attr.thumbnail || "",
             preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : attr.preview_image || "",
 
-            main_images: cleanedMainImages,
+            main_images: mergedMainImages,
 
             edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
             edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
@@ -2558,7 +2556,6 @@ if (Array.isArray(data.combinationData)) {
     };
   });
 }
-
 
     // 🔹 variations_data
     if (req.body.variations_data !== undefined) {
