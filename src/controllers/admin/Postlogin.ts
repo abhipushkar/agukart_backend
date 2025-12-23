@@ -2496,31 +2496,29 @@ if (Array.isArray(productVariants)) {
           }
 
           // 🔹 Normalize old main_images (URLs)
-let mergedMainImages: string[] = [];
+let existingMainImages: string[] = [];
 
 if (Array.isArray(attr.main_images)) {
-  mergedMainImages = [...attr.main_images];
+  existingMainImages = attr.main_images;
 } else if (typeof attr.main_images === "string" && attr.main_images) {
-  mergedMainImages = [attr.main_images];
+  existingMainImages = [attr.main_images];
 }
 
-for (const file of mainImgs) {
-  // Extract index from fieldname: main_images[2]
-  const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
+// 🔹 Save newly uploaded images
+const uploadedMainImages =
+  mainImgs.length > 0
+    ? await Promise.all(
+        mainImgs.map((f, i) =>
+          saveProductFile(f, `pv-main-${Date.now()}-${aIdx}-${i}`)
+        )
+      )
+    : [];
 
-  if (!match) continue;
-
-  const index = Number(match[1]);
-  if (Number.isNaN(index)) continue;
-
-  const uploadedUrl = await saveProductFile(
-    file,
-    `pv-main-${Date.now()}-${aIdx}-${index}`
-  );
-
-  mergedMainImages[index] = uploadedUrl;
-}
-
+// 🔹 Merge (OLD + NEW)
+const mergedMainImages = [
+  ...existingMainImages,
+  ...uploadedMainImages,
+];
 
           return {
             ...attr,
