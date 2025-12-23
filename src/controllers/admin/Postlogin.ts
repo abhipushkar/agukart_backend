@@ -2284,6 +2284,10 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
 
     req.body = qs.parse(req.body, { allowDots: true, depth: 20, arrayLimit: 100 });
+    const existingProduct =
+  req.body._id && req.body._id !== "new"
+    ? await Product.findById(req.body._id)
+    : null;
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
@@ -2495,9 +2499,12 @@ if (Array.isArray(productVariants)) {
             try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
           }
 
-const finalMainImages: string[] = Array.isArray(attr.main_images)
-  ? [...attr.main_images]
-  : [];
+const dbMainImages =
+  existingProduct?.product_variants?.[pvIdx]
+    ?.variant_attributes?.[aIdx]
+    ?.main_images || [];
+
+const finalMainImages = [...dbMainImages];
 
 for (const file of mainImgs) {
   const match = file.fieldname.match(/\[main_images\]\[(\d+)\]$/);
@@ -2512,6 +2519,7 @@ for (const file of mainImgs) {
 
   finalMainImages[index] = savedPath;
 }
+
 
           return {
             ...attr,
