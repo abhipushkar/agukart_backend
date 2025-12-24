@@ -2280,6 +2280,27 @@ const buildMetaDescription = (text = "", max = 160) => {
   return clean.length > max ? clean.slice(0, max).trim() : clean;
 };
 
+const getMainImageUrlsFromBody = (
+  body: any,
+  pvIdx: number,
+  aIdx: number
+): string[] => {
+  const result: string[] = [];
+  const path =
+    body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images;
+
+  if (Array.isArray(path)) {
+    path.forEach((val: any, idx: number) => {
+      if (typeof val === "string" && val.trim() !== "") {
+        result[idx] = val;
+      }
+    });
+  }
+
+  return result;
+};
+
+
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
 
@@ -2496,29 +2517,34 @@ if (Array.isArray(productVariants)) {
           }
 
           // 🔹 Normalize old main_images (URLs)
-let existingMainImages: string[] = [];
+let mergedMainImages =
+  getMainImageUrlsFromBody(req.body, pvIdx, aIdx);
 
-if (Array.isArray(attr.main_images)) {
-  existingMainImages = attr.main_images;
-} else if (typeof attr.main_images === "string" && attr.main_images) {
-  existingMainImages = [attr.main_images];
+const bodyMainImages =
+  req.body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images;
+
+if (Array.isArray(bodyMainImages)) {
+  bodyMainImages.forEach((val: any, idx: number) => {
+    if (val === "") {
+      mergedMainImages[idx] = null as any;
+    }
+  });
 }
 
-// 🔹 Save newly uploaded images
-const uploadedMainImages =
-  mainImgs.length > 0
-    ? await Promise.all(
-        mainImgs.map((f, i) =>
-          saveProductFile(f, `pv-main-${Date.now()}-${aIdx}-${i}`)
-        )
-      )
-    : [];
+for (const file of mainImgs) {
+  const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
+  if (!match) continue;
 
-// 🔹 Merge (OLD + NEW)
-const mergedMainImages = [
-  ...existingMainImages,
-  ...uploadedMainImages,
-];
+  const index = Number(match[1]);
+  if (Number.isNaN(index)) continue;
+
+  const uploadedUrl = await saveProductFile(
+    file,
+    `pv-main-${Date.now()}-${aIdx}-${index}`
+  );
+
+  mergedMainImages[index] = uploadedUrl;
+}
 
           return {
             ...attr,
@@ -3884,8 +3910,6 @@ if (["sku_code", "sku"].includes(key)) {
 pipeline.push({
   $sort: { sortField: direction },
 });
-
-
 
     const combinedData = await ParentProduct.aggregate(pipeline);
 
