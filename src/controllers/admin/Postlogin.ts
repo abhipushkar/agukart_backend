@@ -2280,26 +2280,6 @@ const buildMetaDescription = (text = "", max = 160) => {
   return clean.length > max ? clean.slice(0, max).trim() : clean;
 };
 
-const getMainImageUrlsFromBody = (
-  body: any,
-  pvIdx: number,
-  aIdx: number
-): string[] => {
-  const result: string[] = [];
-  const path =
-    body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images;
-
-  if (Array.isArray(path)) {
-    path.forEach((val: any, idx: number) => {
-      if (typeof val === "string" && val.trim() !== "") {
-        result[idx] = val;
-      }
-    });
-  }
-
-  return result;
-};
-
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
@@ -2309,6 +2289,14 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
     const cleanTitle = stripHtml(req.body.product_title || "");
+    const isUpdate =
+  req.body._id &&
+  req.body._id !== "new" &&
+  mongoose.Types.ObjectId.isValid(req.body._id);
+
+const existingProducts = isUpdate
+  ? await Product.findById(req.body._id)
+  : null;
 
     const data: any = {
       category: req.body.category,
@@ -2517,26 +2505,35 @@ if (Array.isArray(productVariants)) {
           }
 
           // 🔹 Normalize old main_images (URLs)
-let mergedMainImages =
-  getMainImageUrlsFromBody(req.body, pvIdx, aIdx);
+// 1️⃣ Base from DB (CRITICAL)
+const oldMainImages =
+  isUpdate
+    ? existingProducts?.product_variants?.[pvIdx]
+        ?.variant_attributes?.[aIdx]?.main_images || []
+    : [];
 
+// clone so we don’t mutate DB object
+const mergedMainImages: (string | null)[] = [...oldMainImages];
+
+// 2️⃣ Apply body deletions
 const bodyMainImages =
-  req.body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images;
+  req.body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images || {};
 
-if (Array.isArray(bodyMainImages)) {
-  bodyMainImages.forEach((val: any, idx: number) => {
-    if (val === "") {
-      mergedMainImages[idx] = null as any;
-    }
-  });
-}
+Object.keys(bodyMainImages).forEach((key) => {
+  const idx = Number(key);
+  if (Number.isNaN(idx)) return;
 
+  if (bodyMainImages[key] === "") {
+    mergedMainImages[idx] = null;
+  }
+});
+
+// 3️⃣ Apply uploaded files (replace)
 for (const file of mainImgs) {
   const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
   if (!match) continue;
 
   const index = Number(match[1]);
-  if (Number.isNaN(index)) continue;
 
   const uploadedUrl = await saveProductFile(
     file,
@@ -2642,17 +2639,44 @@ if (Array.isArray(data.combinationData)) {
     }
 
     // 🔹 Multiple images
-    if (findFiles("main_images").length > 0) {
-      data.main_images = await Promise.all(
-        findFiles("main_images").map((f, idx) =>
-          saveProductFile(f, `main-${Date.now()}-${idx}`)
-        )
-      );
-    } else if (req.body.main_images !== undefined) {
-      data.main_images = Array.isArray(req.body.main_images)
-        ? req.body.main_images
-        : [req.body.main_images];
-    }
+const productMainImages = files.filter(
+  (f) => f.fieldname === "main_images" || f.fieldname.startsWith("main_images[")
+);
+
+const oldProductMainImages =
+  isUpdate
+    ? (existingProducts as any)?.main_images || []
+    : [];
+
+
+const mergedProductMainImages: (string | null)[] = [...oldProductMainImages];
+
+// deletions from body
+const bodyProductImages = req.body?.main_images || {};
+Object.keys(bodyProductImages).forEach((key) => {
+  const idx = Number(key);
+  if (Number.isNaN(idx)) return;
+
+  if (bodyProductImages[key] === "") {
+    mergedProductMainImages[idx] = null;
+  }
+});
+
+// replacements from files
+for (const file of productMainImages) {
+  const match = file.fieldname.match(/\[(\d+)\]/);
+  const index = match ? Number(match[1]) : mergedProductMainImages.length;
+
+  const url = await saveProductFile(
+    file,
+    `main-${Date.now()}-${index}`
+  );
+
+  mergedProductMainImages[index] = url;
+}
+
+data.main_images = mergedProductMainImages;
+
 
     if (findFile("edit_main_image")) {
       data.edit_main_image = await saveProductFile(
