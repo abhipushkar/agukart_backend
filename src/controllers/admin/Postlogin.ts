@@ -2437,9 +2437,13 @@ Object.keys(bodyMainImages).forEach((key) => {
   const idx = Number(key);
   if (Number.isNaN(idx)) return;
 
-  if (bodyMainImages[key] === "") {
-    mergedMainImages[idx] = null;
-  }
+if (
+  bodyMainImages[key] === "" ||
+  bodyMainImages[key] === undefined ||
+  bodyMainImages[key] === null
+) {
+  mergedMainImages[idx] = null;
+}
 });
 
 // 3️⃣ Apply uploaded files (replace exact index)
@@ -2562,9 +2566,13 @@ Object.keys(bodyMainImages).forEach((key) => {
   const idx = Number(key);
   if (Number.isNaN(idx)) return;
 
-  if (bodyMainImages[key] === "") {
-    mergedMainImages[idx] = null;
-  }
+if (
+  bodyMainImages[key] === "" ||
+  bodyMainImages[key] === undefined ||
+  bodyMainImages[key] === null
+) {
+  mergedMainImages[idx] = null;
+}
 });
 
 // 3️⃣ Apply uploaded files (replace)
@@ -2696,9 +2704,13 @@ Object.keys(bodyProductImages).forEach((key) => {
   const idx = Number(key);
   if (Number.isNaN(idx)) return;
 
-  if (bodyProductImages[key] === "") {
-    mergedProductMainImages[idx] = null;
-  }
+if (
+  bodyProductImages[key] === "" ||
+  bodyProductImages[key] === undefined ||
+  bodyProductImages[key] === null
+) {
+  mergedProductMainImages[idx] = null;
+}
 });
 
 // replacements from files
