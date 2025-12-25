@@ -2299,22 +2299,6 @@ const existingProducts = isUpdate
   ? await Product.findById(req.body._id)
   : null;
 
-    console.log("========== AFTER QS PARSE ==========");
-console.log("RAW BODY main_images:", req.body.main_images);
-console.log("RAW BODY deleted_main_images:", req.body.deleted_main_images);
-
-console.log(
-  "RAW BODY product_variants main_images:",
-  req.body.product_variants?.[1]?.variant_attributes?.[0]?.main_images
-);
-
-console.log(
-  "RAW BODY customization option main_images:",
-  req.body.customizationData?.customizations?.[0]?.optionList?.[0]?.main_images
-);
-
-console.log("====================================");
-
     const data: any = {
       category: req.body.category,
       variant_id: req.body.variant_id,

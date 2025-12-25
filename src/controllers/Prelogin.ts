@@ -897,9 +897,47 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
         filter.$and.push({ $or: [{ product_title: r }, { search_terms: r }] });
       }
 
-      const products = await ProductModel.find(filter)
-        .select("_id product_title ratingAvg sale_price qty isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_variants dynamicFields search_terms")
-        .lean();
+      const products = await ProductModel.aggregate([
+  { $match: filter },
+  {
+    $lookup: {
+      from: "vendordetails",
+      localField: "vendor_id",
+      foreignField: "user_id",
+      as: "vendor"
+    }
+  },
+
+  {
+    $unwind: {
+      path: "$vendor",
+      preserveNullAndEmptyArrays: true
+    }
+  },
+  {
+    $project: {
+      _id: 1,
+      product_title: 1,
+      ratingAvg: 1,
+      sale_price: 1,
+      qty: 1,
+      isCombination: 1,
+      combinationData: 1,
+      videos: 1,
+      image: 1,
+      product_bedge: 1,
+      userReviewCount: 1,
+      createdAt: 1,
+      vendor_id: 1,
+      zoom: 1,
+      product_variants: 1,
+      dynamicFields: 1,
+      search_terms: 1,
+      shop_name: { $ifNull: ["$vendor.shop_name", ""] },
+    }
+  }
+]);
+
 
       products.forEach(p => productMap.set(String(p._id), p));
     }
@@ -1892,7 +1930,22 @@ export const getProductList = async (req: Request, resp: Response) => {
         }
       });
     } // end for each automatic category
-
+    agg.push(
+  {
+    $lookup: {
+      from: "vendordetails",
+      localField: "vendor_id",
+      foreignField: "user_id",
+      as: "vendor"
+    }
+  },
+  {
+    $unwind: {
+      path: "$vendor",
+      preserveNullAndEmptyArrays: true
+    }
+  }
+);
     // After unionWith(s), dedupe by _id and collect entries
     agg.push(
       // group by _id to dedupe
@@ -1905,6 +1958,23 @@ export const getProductList = async (req: Request, resp: Response) => {
       // bring doc back to root
       { $replaceRoot: { newRoot: "$doc" } }
     );
+     agg.push({
+  $project: {
+    _id: 1,
+    product_title: 1,
+    sale_price: 1,
+    image: 1,
+    product_variants: 1,
+    dynamicFields: 1,
+    vendor_id: 1,
+    search_terms: 1,
+    createdAt: 1,
+    category: 1,
+    qty: 1,
+    combinationData: 1,
+    shop_name: { $ifNull: ["$vendor.shop_name", ""] },
+  }
+});
 
     // Now sorting
     if (sortBy === "asc") {
