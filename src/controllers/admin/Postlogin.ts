@@ -2288,6 +2288,7 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
+    const normalizeNullArray = (arr: any[]) => arr.map(v => (v === "null" ? null : v));
     const cleanTitle = stripHtml(req.body.product_title || "");
     const isUpdate =
   req.body._id &&
@@ -2297,6 +2298,22 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
 const existingProducts = isUpdate
   ? await Product.findById(req.body._id)
   : null;
+
+    console.log("========== AFTER QS PARSE ==========");
+console.log("RAW BODY main_images:", req.body.main_images);
+console.log("RAW BODY deleted_main_images:", req.body.deleted_main_images);
+
+console.log(
+  "RAW BODY product_variants main_images:",
+  req.body.product_variants?.[1]?.variant_attributes?.[0]?.main_images
+);
+
+console.log(
+  "RAW BODY customization option main_images:",
+  req.body.customizationData?.customizations?.[0]?.optionList?.[0]?.main_images
+);
+
+console.log("====================================");
 
     const data: any = {
       category: req.body.category,
@@ -2427,6 +2444,26 @@ const oldMainImages =
 // clone
 const mergedMainImages: (string | null)[] = [...oldMainImages];
 
+let deletedCustomizationImages: any = {};
+
+try {
+  deletedCustomizationImages =
+    typeof req.body.deleted_customization_images === "string"
+      ? JSON.parse(req.body.deleted_customization_images)
+      : req.body.deleted_customization_images || {};
+} catch {
+  deletedCustomizationImages = {};
+}
+
+const deleteKey = `${cIdx}-${oIdx}`;
+const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
+
+deleteIndexes.forEach((idx: number) => {
+  if (Number.isInteger(idx)) {
+    mergedMainImages[idx] = null;
+  }
+});
+
 // 2️⃣ Apply deletions from body
 const bodyMainImages =
   req.body?.customizationData?.customizations?.[String(cIdx)]
@@ -2440,7 +2477,8 @@ Object.keys(bodyMainImages).forEach((key) => {
 if (
   bodyMainImages[key] === "" ||
   bodyMainImages[key] === undefined ||
-  bodyMainImages[key] === null
+  bodyMainImages[key] === null ||
+  bodyMainImages[key] === "null"
 ) {
   mergedMainImages[idx] = null;
 }
@@ -2469,7 +2507,7 @@ for (const file of optMainImages) {
               preview_image: optPreview
                 ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
                 : opt.preview_image || "",
-              main_images: mergedMainImages,
+              main_images: normalizeNullArray(mergedMainImages),
               edit_main_image: optEditMain
                 ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
                 : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
@@ -2558,6 +2596,27 @@ const oldMainImages =
 // clone so we don’t mutate DB object
 const mergedMainImages: (string | null)[] = [...oldMainImages];
 
+let deletedVariantImages: any = {};
+
+try {
+  deletedVariantImages =
+    typeof req.body.deleted_variant_images === "string"
+      ? JSON.parse(req.body.deleted_variant_images)
+      : req.body.deleted_variant_images || {};
+} catch {
+  deletedVariantImages = {};
+}
+
+const deleteKey = `${pvIdx}-${aIdx}`;
+const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
+
+deleteIndexes.forEach((idx: number) => {
+  if (Number.isInteger(idx)) {
+    mergedMainImages[idx] = null;
+  }
+});
+
+
 // 2️⃣ Apply body deletions
 const bodyMainImages =
   req.body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images || {};
@@ -2569,7 +2628,8 @@ Object.keys(bodyMainImages).forEach((key) => {
 if (
   bodyMainImages[key] === "" ||
   bodyMainImages[key] === undefined ||
-  bodyMainImages[key] === null
+  bodyMainImages[key] === null ||
+  bodyMainImages[key] === "null"
 ) {
   mergedMainImages[idx] = null;
 }
@@ -2596,7 +2656,7 @@ for (const file of mainImgs) {
             thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : attr.thumbnail || "",
             preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : attr.preview_image || "",
 
-            main_images: mergedMainImages,
+            main_images: normalizeNullArray(mergedMainImages),
 
             edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
             edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
@@ -2707,7 +2767,8 @@ Object.keys(bodyProductImages).forEach((key) => {
 if (
   bodyProductImages[key] === "" ||
   bodyProductImages[key] === undefined ||
-  bodyProductImages[key] === null
+  bodyProductImages[key] === null ||
+  bodyProductImages[key] === "null"
 ) {
   mergedProductMainImages[idx] = null;
 }
@@ -2726,7 +2787,7 @@ for (const file of productMainImages) {
   mergedProductMainImages[index] = url;
 }
 
-data.main_images = mergedProductMainImages;
+    data.main_images = normalizeNullArray(mergedProductMainImages);
 
 
     if (findFile("edit_main_image")) {
@@ -2915,7 +2976,7 @@ if (newCust.guide && oldCust.guide) {
         if (data[k] === undefined) delete data[k];
       });
 
-      await Product.updateOne({ _id: req.body._id }, { $set: {...data, combinationData: data.combinationData, },});
+      await Product.updateOne({ _id: req.body._id }, { $set: {...data, combinationData: data.combinationData, product_variants: data.product_variants },});
 
       return resp
         .status(200)
