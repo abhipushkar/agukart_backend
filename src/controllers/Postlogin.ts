@@ -1596,7 +1596,7 @@ export const createOrder = async (req: CustomRequest, resp: Response) => {
                         reference_id: "PUHF",
                         description: "Your purchase description",
                         amount: {
-                            currency_code: "EUR",
+                            currency_code: "USD",
                             value: "10.00",
                             breakdown: {
                                 item_total: {
