@@ -1600,7 +1600,7 @@ export const createOrder = async (req: CustomRequest, resp: Response) => {
                             value: "10.00",
                             breakdown: {
                                 item_total: {
-                                    currency_code: "EUR",
+                                    currency_code: "USD",
                                     value: "10.00"
                                 }
                             }
@@ -1611,7 +1611,7 @@ export const createOrder = async (req: CustomRequest, resp: Response) => {
                                 description: "description",
                                 quantity: "1",
                                 unit_amount: {
-                                    currency_code: "EUR",
+                                    currency_code: "USD",
                                     value: "10.00"
                                 }
                             }
