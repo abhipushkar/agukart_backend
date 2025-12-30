@@ -138,6 +138,10 @@ const salesDetailsSchema = new Schema(
             ref: 'VariantAttribute',
             default: []
         }],
+        variants: [{
+            variantName: { type: String },
+            attributeName: { type: String }
+        }],
         original_price: {
             type: Number,
             default: 0

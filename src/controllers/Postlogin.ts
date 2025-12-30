@@ -1128,6 +1128,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                     customizationData: "$customizationData",
                     variant_id: "$variant_id",
                     variant_attribute_id: "$variant_attribute_id",
+                    variants: "$variants",
                     affiliate_id: "$affiliate_id",
                     shipping_id: "$shipping_id",
                     shippingName: "$shippingName",
@@ -1476,6 +1477,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                         amount: (item?.sale_price * item?.qty),
                         variant_id: item?.variant_id,
                         variant_attribute_id: item?.variant_attribute_id,
+                        variants: item?.variants || [],
                         affiliate_id: item.affiliate_id ? item.affiliate_id : null,
                         promotional_discount: (item.original_price - item.sale_price),
                         shippingId: item.shipping_id,
@@ -1777,6 +1779,7 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                     customizationData: "$customizationData",
                     variant_id: "$variant_id",
                     variant_attribute_id: "$variant_attribute_id",
+                    variants: "$variants",
                     affiliate_id: "$affiliate_id",
                     shipping_id: "$shipping_id",
                     shippingName: "$shippingName",
@@ -1981,16 +1984,16 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                 if (item?.isCombination) {
                     productData.combinationData.forEach((element: any, index: any) => {
                         element.combinations.forEach((comb: any) => {
-                            let matchVariantAttrId: string[][] = item?.variant_attribute_id.map(
+                            const variantAttrs = Array.isArray(item.variant_attribute_id) ? item.variant_attribute_id : [];
+                            let matchVariantAttrId: string[][] = variantAttrs.map(
                                 (attrId: string) => [attrId]
                             );
-
-                            if (item?.variant_attribute_id.length > 1) {
-                                for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                                    for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+                            if (variantAttrs.length > 1) {
+                                for (let i = 0; i < variantAttrs.length; i++) {
+                                    for (let j = i + 1; j < variantAttrs.length; j++) {
                                         matchVariantAttrId.push([
-                                            item?.variant_attribute_id[i],
-                                            item?.variant_attribute_id[j],
+                                            variantAttrs[i],
+                                            variantAttrs[j],
                                         ]);
                                     }
                                 }
@@ -1999,7 +2002,7 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                                 const attrIdStr = attrId.toString();
                                 const attrIdArray = attrIdStr.split(",");
 
-                                const isMatch =
+                                const isMatch = Array.isArray(comb.combIds) &&
                                     comb.combIds.length === attrIdArray.length &&
                                     comb.combIds.every((id: string) => attrIdArray.includes(id));
 
@@ -2191,6 +2194,7 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                             amount: item?.sale_price * item?.qty,
                             variant_id: item?.variant_id,
                             variant_attribute_id: item?.variant_attribute_id,
+                            variants: item?.variants || [],
                             affiliate_id: item.affiliate_id ? item.affiliate_id : null,
                             promotional_discount: item.original_price - item.sale_price,
                             shippingId: item.shipping_id,
@@ -2284,13 +2288,15 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                 .status(200)
                 .json({ message: "Checkout successfully", orderId: orderId, updateUser: updateUser });
         }
-    } catch (error) {
-        error = true;
-        return resp
-            .status(500)
-            .json({ message: "Something went wrong. Please try again." });
-    }
-};
+    } catch (error: any) {
+        console.error("vendorWiseCheckout ERROR ", error);
+        return resp.status(500).json({
+           message: "Something went wrong",
+           error: error?.message || error,
+           stack: error?.stack
+       });
+   }
+ };
 
 export const orderList = async (req: CustomRequest, resp: Response) => {
     try {

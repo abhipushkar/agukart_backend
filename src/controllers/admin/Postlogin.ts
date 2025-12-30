@@ -4950,6 +4950,17 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                                 },
                             },
                         },
+                        {
+                         $addFields: {
+                            variants: {
+                                $cond: [
+                                    { $gt: [{ $size: { $ifNull: ["$variants", []] } }, 0] },
+                                    "$variants",
+                                    []
+                                ]
+                            }
+                         }
+                        },
                         { $project: { buyerNoteData: 0 } }
                         // ---------- ⭐ END Buyer Notes ----------
                     ],
