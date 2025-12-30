@@ -962,7 +962,54 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     products = products.slice((page - 1) * limit, page * limit);
 
     // 8️⃣ Promotions (unchanged)
-    // ⬇ keep your existing promotion enrichment logic here ⬇
+    const productIds = products.map(p => p._id);
+    const vendorIds = products.map(p => p.vendor_id);
+
+    const promotions = await PromotionalOfferModel.find({
+      product_id: { $in: productIds },
+      vendor_id: { $in: vendorIds },
+      status: true,
+      expiry_status: { $ne: "expired" }
+    }).lean();
+
+    const promoMap = new Map<string, any[]>();
+    promotions.forEach(p => {
+    const key = p.product_id.toString();
+    if (!promoMap.has(key)) promoMap.set(key, []);
+      promoMap.get(key)!.push(p);
+   });
+
+    products = products.map(p => {
+    let originalPrice = +p.sale_price;
+    let finalPrice = originalPrice;
+
+    if (p.isCombination) {
+        const combos = (p.combinationData || []).flatMap((c: any) => c.combinations || []);
+        const minCombo = combos.filter((c: any) => c.price && +c.price > 0).reduce((min: number, c: any) => Math.min(min, +c.price), Infinity);
+        originalPrice = minCombo === Infinity ? originalPrice : minCombo;
+        finalPrice = originalPrice;
+      }
+
+    const promos = promoMap.get(p._id.toString()) || [];
+    if (promos.length) {
+        const bestPromo = promos.reduce((best: any, cur: any) =>
+        !best || cur.qty < best.qty ? cur : best, null);
+    if (bestPromo) {
+      finalPrice = calculatePriceAfterDiscount(
+        bestPromo.offer_type,
+        +bestPromo.discount_amount,
+        originalPrice
+      );
+    }
+  }
+
+   return {
+     ...p,
+     originalPrice,
+     finalPrice,
+     promotionData: promos
+    };
+   });
 
     return resp.status(200).json({
       message: "Products fetched successfully.",

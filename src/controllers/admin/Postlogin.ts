@@ -5229,7 +5229,7 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
         const pipeline: any = [
             {
                 '$match': {
-                    '_id': new mongoose.Types.ObjectId(req.body._id)
+                    '_id': new mongoose.Types.ObjectId(req.body.sales_id)
                 }
             },
             {
