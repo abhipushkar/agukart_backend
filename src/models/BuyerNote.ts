@@ -7,9 +7,9 @@ const buyerNoteSchema = new Schema(
       ref: 'User',
       required: true
     },
-    product_id: {
+    cart_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
+      ref: 'Cart',
       required: true
     },
     vendor_id: {

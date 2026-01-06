@@ -1388,6 +1388,13 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
 
         if (!error) {
             const sales = await Sales.create(salesData);
+            const buyerNotes = await BuyerNoteModel.find({
+                user_id: req.user._id,
+                ...(isVendorCheckout  ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) } : {})
+            }).lean();
+            const buyerNoteMap = new Map<string, string>(
+                buyerNotes.map(note => [note.vendor_id.toString(), note.buyer_note])
+            );
             const vendorSubOrderMap = new Map<string, string>();
             const saleId = sales._id;
             if (cartResult.length !== 0) {
@@ -1545,7 +1552,8 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                         
                         couponData: isVendorCheckout ? vendorCouponMap.get(item.vendor_id.toString()) || null : couponData,
                         shippingData: shippingData,
-                        promotionalOfferData: promotionalOfferData
+                        promotionalOfferData: promotionalOfferData,
+                        buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
                     }
 
                     if (item?.isCombination) {
@@ -1593,6 +1601,10 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                 }));
             }
             await Cart.deleteMany({ user_id: req.user._id, ...(isVendorCheckout ? {vendor_id: req.body.vendor_id } : {}) });
+            await BuyerNoteModel.deleteMany({
+                user_id: req.user._id,
+                ...(isVendorCheckout ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) } : {})
+            });
             if (isVendorCheckout) {
                 await ParentCartModel.updateOne(
                     { user_id: req.user._id },
@@ -4772,23 +4784,51 @@ export const addParentCart = async (req: CustomRequest, resp: Response) => {
 };
 
 export const saveNote = async (req: CustomRequest, resp: Response) => {
-    try {
-        const { vendor_id, note, product_id } = req.body;
-        const user_id = req.user._id;
+  try {
+    const {_id, vendor_id, buyer_note, cart_id } = req.body;
+    const user_id = req.user._id;
 
-        const buyerNote = await BuyerNoteModel.create({
-            user_id,
-            vendor_id,
-            product_id,
-            buyer_note: note
-        });
-
-        return resp.status(200).json({ message: 'Buyer note saved successfully.', buyerNote });
-
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!buyer_note) {
+      return resp.status(400).json({ message: "Note is required" });
     }
+
+    let buyerNote;
+    if (_id) {
+      buyerNote = await BuyerNoteModel.findOneAndUpdate(
+        { _id:_id, user_id },
+        { buyer_note },
+        { new: true }
+      );
+
+      if (!buyerNote) {
+        return resp.status(404).json({ message: "Buyer note not found" });
+      }
+    }else {
+      if (!vendor_id || !cart_id) {
+        return resp
+          .status(400)
+          .json({ message: "vendor_id and cart_id are required" });
+      }
+
+      buyerNote = await BuyerNoteModel.create({
+        user_id,
+        vendor_id,
+        cart_id,
+        buyer_note
+      });
+    }
+
+    return resp.status(200).json({
+      message: "Buyer note saved successfully.",
+      buyerNote
+    });
+
+  } catch (error) {
+    console.error(error);
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again."
+    });
+  }
 };
 
 export const getUserOrders = async (req: CustomRequest, resp: Response) => {

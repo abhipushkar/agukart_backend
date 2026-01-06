@@ -4908,48 +4908,6 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                                 as: "variantAttributeData",
                             },
                         },
-
-                        // ---------- ⭐ NEW: Buyer Notes join per sale detail ----------
-                        {
-                            $lookup: {
-                                from: "buyernotes", // <<-- collection name (update if different)
-                                let: {
-                                    bn_user_id: "$user_id",
-                                    bn_vendor_id: "$vendor_id",
-                                    bn_product_id: "$product_id",
-                                },
-                                pipeline: [
-                                    {
-                                        $match: {
-                                            $expr: {
-                                                $and: [
-                                                    { $eq: ["$user_id", "$$bn_user_id"] },
-                                                    { $eq: ["$vendor_id", "$$bn_vendor_id"] },
-                                                    { $eq: ["$product_id", "$$bn_product_id"] },
-                                                ],
-                                            },
-                                        },
-                                    },
-                                    { $sort: { updatedAt: -1, createdAt: -1 } },
-                                    { $limit: 1 },
-                                    {
-                                        $project: {
-                                            _id: 0,
-                                            // support either field name
-                                            buyer_note: { $ifNull: ["$buyer_note", "$note"] },
-                                        },
-                                    },
-                                ],
-                                as: "buyerNoteData",
-                            },
-                        },
-                        {
-                            $addFields: {
-                                buyer_note: {
-                                    $ifNull: [{ $arrayElemAt: ["$buyerNoteData.buyer_note", 0] }, null],
-                                },
-                            },
-                        },
                         {
                          $addFields: {
                             variants: {
@@ -4975,8 +4933,6 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                                 shop_name: "$vendorData.shop_name"
                             },
                         },
-                        { $project: { buyerNoteData: 0 } },
-                         // ---------- ⭐ END Buyer Notes ----------
                         {
                         $group: {
                             _id: "$sub_order_id",
@@ -5330,48 +5286,6 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                                 foreignField: "_id",
                                 as: "variantAttributeData",
                             }
-                        },
-                        {
-                            $lookup: {
-                                from: "buyernotes",
-                                let: {
-                                    bn_user_id: "$user_id",
-                                    bn_vendor_id: "$vendor_id",
-                                    bn_product_id: "$product_id",
-                                },
-                                pipeline: [
-                                    {
-                                        $match: {
-                                            $expr: {
-                                                $and: [
-                                                    { $eq: ["$user_id", "$$bn_user_id"] },
-                                                    { $eq: ["$vendor_id", "$$bn_vendor_id"] },
-                                                    { $eq: ["$product_id", "$$bn_product_id"] },
-                                                ],
-                                            },
-                                        },
-                                    },
-                                    { $sort: { updatedAt: -1, createdAt: -1 } },
-                                    { $limit: 1 },
-                                    {
-                                        $project: {
-                                            _id: 0,
-                                            buyer_note: 1,
-                                        },
-                                    },
-                                ],
-                                as: "buyerNoteData",
-                            },
-                        },
-                        {
-                            $addFields: {
-                                buyer_note: {
-                                    $ifNull: [{ $arrayElemAt: ["$buyerNoteData.buyer_note", 0] }, ""],
-                                },
-                            },
-                        },
-                        {
-                            $project: { buyerNoteData: 0 }
                         },
                         {
                             $group: {
@@ -7681,7 +7595,6 @@ export const getProductBySku = async (req: Request, resp: Response) => {
         }
       }
     }
-
     const data = {
       product_id: product._id,
       vendor_id: product.vendor_id,
