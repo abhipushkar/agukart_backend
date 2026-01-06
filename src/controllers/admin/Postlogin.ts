@@ -4961,8 +4961,33 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                             }
                          }
                         },
-                        { $project: { buyerNoteData: 0 } }
-                        // ---------- ⭐ END Buyer Notes ----------
+                        {
+                            $lookup: {
+                                from: "vendordetails",
+                                localField: "vendor_id",
+                                foreignField: "user_id",
+                                as: "vendorData",
+                            },
+                        },
+                        { $unwind: { path: "$vendorData", preserveNullAndEmptyArrays: true } },
+                        {
+                            $addFields: {
+                                shop_name: "$vendorData.shop_name"
+                            },
+                        },
+                        { $project: { buyerNoteData: 0 } },
+                         // ---------- ⭐ END Buyer Notes ----------
+                        {
+                        $group: {
+                            _id: "$sub_order_id",
+                            sub_order_id: { $first: "$sub_order_id" },
+                            vendor_id: { $first: "$vendor_id" },
+                            vendor_name: { $first: "$vendor_name" },
+                            order_status: { $first: "$order_status" },
+                            delivery_status: { $first: "$delivery_status" },
+                            items: {$push: "$$ROOT"}
+                            }
+                       }
                     ],
                 },
             },
@@ -4976,18 +5001,19 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                 },
             },
             { $unwind: { path: "$userData", preserveNullAndEmptyArrays: true } },
-            {
-                $lookup: {
-                    from: "vendordetails",
-                    localField: "saleDetaildata.vendor_id",
-                    foreignField: "user_id",
-                    as: "vendordata",
-                },
-            },
-            { $unwind: { path: "$vendordata", preserveNullAndEmptyArrays: true } },
+            // {
+            //     $lookup: {
+            //         from: "vendordetails",
+            //         localField: "saleDetaildata.vendor_id",
+            //         foreignField: "user_id",
+            //         as: "vendordata",
+            //     },
+            // },
+            // { $unwind: { path: "$vendordata", preserveNullAndEmptyArrays: true } },
             {
                 $match: {
-                    ...(delivery_status.length ? { "saleDetaildata.delivery_status": { $in: delivery_status } } : {}),
+                    ...(delivery_status.length ? { saleDetaildata: { $elemMatch: { delivery_status: { $in: delivery_status }}}}
+                    : {}),
                     ...(search
                         ? {
                             $or: [
@@ -4996,7 +5022,7 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                                 { "userData.email": { $regex: search, $options: "i" } },
                                 { "vendordata.shop_name": { $regex: search, $options: "i" } },
                                 { "userData._id": { $regex: search, $options: "i" } },
-                                { "saleDetaildata.productMain.product_title": { $regex: search, $options: "i" } },
+                                { "saleDetaildata.items.productMain.product_title": { $regex: search, $options: "i" } },
                                 { "userData.id_number": { $regex: search, $options: "i" } },
                                 { "userData.address_line1": { $regex: search, $options: "i" } },
                                 { "userData.address_line2": { $regex: search, $options: "i" } },
@@ -5026,7 +5052,7 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                     },
                     saleDetaildata: 1, // contains buyer_note inside each element now
                     createdAt: 1,
-                    shop_name: "$vendordata.shop_name",
+                    // shop_name: "$vendordata.shop_name",
                 },
             },
             { $sort: { _id: _idSort } },
@@ -5225,37 +5251,146 @@ export const updateOrderStatus = async (req: Request, resp: Response) => {
 export const orderHistory = async (req: CustomRequest, resp: Response) => {
 
     try {
-
+        const { sales_id, sub_order_id } = req.body;
         const pipeline: any = [
             {
                 '$match': {
-                    '_id': new mongoose.Types.ObjectId(req.body.sales_id)
+                    '_id': new mongoose.Types.ObjectId(sales_id)
                 }
             },
+            // {
+            //     '$lookup': {
+            //         'from': 'salesdetails',
+            //         'localField': '_id',
+            //         'foreignField': 'sale_id',
+            //         'as': 'saleDetaildata',
+            //         'pipeline': [
+            //             {
+            //                 '$lookup': {
+            //                     'from': "variants",
+            //                     'localField': "variant_id",
+            //                     'foreignField': "_id",
+            //                     'as': "variantData",
+            //                 },
+            //             },
+            //             {
+            //                 '$lookup': {
+            //                     'from': "variantattributes",
+            //                     'localField': "variant_attribute_id",
+            //                     'foreignField': "_id",
+            //                     'as': "variantAttributeData",
+            //                 },
+            //             },
+            //               {
+            //                 $group: {
+            //                     _id: "$sub_order_id",
+            //                     sub_order_id: { $first: "$sub_order_id" },
+            //                     vendor_id: { $first: "$vendor_id" },
+            //                     vendor_name: { $first: "$vendor_name" },
+            //                     order_status: { $first: "$order_status" },
+            //                     delivery_status: { $first: "$delivery_status" },
+            //                     items: {
+            //                         $push: "$$ROOT"
+            //                     }
+            //                 }
+            //            }
+            //         ]
+            //     }
+            // },
             {
-                '$lookup': {
-                    'from': 'salesdetails',
-                    'localField': '_id',
-                    'foreignField': 'sale_id',
-                    'as': 'saleDetaildata',
-                    'pipeline': [
+                $lookup: {
+                    from: "salesdetails",
+                    let: {
+                        saleId: "$_id",
+                        subOrderId: sub_order_id
+                    },
+                    pipeline: [
                         {
-                            '$lookup': {
-                                'from': "variants",
-                                'localField': "variant_id",
-                                'foreignField': "_id",
-                                'as': "variantData",
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$sale_id", "$$saleId"] },
+                                        { $eq: ["$sub_order_id", "$$subOrderId"] }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: "variants",
+                                localField: "variant_id",
+                                foreignField: "_id",
+                                as: "variantData",
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: "variantattributes",
+                                localField: "variant_attribute_id",
+                                foreignField: "_id",
+                                as: "variantAttributeData",
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: "buyernotes",
+                                let: {
+                                    bn_user_id: "$user_id",
+                                    bn_vendor_id: "$vendor_id",
+                                    bn_product_id: "$product_id",
+                                },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $and: [
+                                                    { $eq: ["$user_id", "$$bn_user_id"] },
+                                                    { $eq: ["$vendor_id", "$$bn_vendor_id"] },
+                                                    { $eq: ["$product_id", "$$bn_product_id"] },
+                                                ],
+                                            },
+                                        },
+                                    },
+                                    { $sort: { updatedAt: -1, createdAt: -1 } },
+                                    { $limit: 1 },
+                                    {
+                                        $project: {
+                                            _id: 0,
+                                            buyer_note: 1,
+                                        },
+                                    },
+                                ],
+                                as: "buyerNoteData",
                             },
                         },
                         {
-                            '$lookup': {
-                                'from': "variantattributes",
-                                'localField': "variant_attribute_id",
-                                'foreignField': "_id",
-                                'as': "variantAttributeData",
+                            $addFields: {
+                                buyer_note: {
+                                    $ifNull: [{ $arrayElemAt: ["$buyerNoteData.buyer_note", 0] }, ""],
+                                },
                             },
                         },
-                    ]
+                        {
+                            $project: { buyerNoteData: 0 }
+                        },
+                        {
+                            $group: {
+                                _id: "$sub_order_id",
+                                sub_order_id: { $first: "$sub_order_id" },
+                                vendor_id: { $first: "$vendor_id" },
+                                vendor_name: { $first: "$vendor_name" },
+                                order_status: { $first: "$order_status" },
+                                delivery_status: { $first: "$delivery_status" },
+                                deliveryData: { $first: "$deliveryData" },
+                                shippingName: { $first: "$shippingName" },
+                                shippingAmount: { $first: "$shippingAmount" },
+                                shipped_date: { $first: "$shipped_date" },
+                                delivered_date: { $first: "$delivered_date" },
+                                items: { $push: "$$ROOT" }
+                            }
+                        },
+                    ],
+                    as: "saleDetaildata"
                 }
             },
             {
@@ -5311,47 +5446,83 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
 export const getOrderInvoice = async (req: Request, resp: Response) => {
 
     try {
-
+        const { sales_id, sub_order_id } = req.body;
         const pipeline: any = [
             {
                 '$match': {
-                    '_id': {
-                        '$in': req.body._id.map((id: string) => new mongoose.Types.ObjectId(id))
-                    }
+                    '_id': new mongoose.Types.ObjectId(sales_id)
                 }
             },
+            // {
+            //     '$lookup': {
+            //         'from': 'salesdetails',
+            //         'localField': '_id',
+            //         'foreignField': 'sale_id',
+            //         'as': 'saleDetaildata',
+            //         'pipeline': [
+            //             {
+            //                 '$lookup': {
+            //                     'from': "variants",
+            //                     'localField': "variant_id",
+            //                     'foreignField': "_id",
+            //                     'as': "variantData",
+            //                 },
+            //             },
+            //             {
+            //                 '$lookup': {
+            //                     'from': "variantattributes",
+            //                     'localField': "variant_attribute_id",
+            //                     'foreignField': "_id",
+            //                     'as': "variantAttributeData",
+            //                 },
+            //             },
+            //         ]
+            //     }
+            // },
             {
-                '$lookup': {
-                    'from': 'salesdetails',
-                    'localField': '_id',
-                    'foreignField': 'sale_id',
-                    'as': 'saleDetaildata',
-                    'pipeline': [
+                $lookup: {
+                    from: "salesdetails",
+                    let: {
+                        saleId: "$_id",
+                        subOrderId: sub_order_id
+                    },
+                    pipeline: [
                         {
-                            '$lookup': {
-                                'from': "variants",
-                                'localField': "variant_id",
-                                'foreignField': "_id",
-                                'as': "variantData",
-                            },
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$sale_id", "$$saleId"] },
+                                        { $eq: ["$sub_order_id", "$$subOrderId"] }
+                                    ]
+                                }
+                            }
                         },
                         {
-                            '$lookup': {
-                                'from': "variantattributes",
-                                'localField': "variant_attribute_id",
-                                'foreignField': "_id",
-                                'as': "variantAttributeData",
-                            },
+                            $lookup: {
+                                from: "variants",
+                                localField: "variant_id",
+                                foreignField: "_id",
+                                as: "variantData",
+                            }
                         },
-                    ]
+                        {
+                            $lookup: {
+                                from: "variantattributes",
+                                localField: "variant_attribute_id",
+                                foreignField: "_id",
+                                as: "variantAttributeData",
+                            }
+                        }
+                    ],
+                    as: "saleDetaildata"
                 }
             },
-            {
-                '$unwind': {
-                    'path': '$saleDetaildata',
-                    'preserveNullAndEmptyArrays': true
-                }
-            },
+            // {
+            //     '$unwind': {
+            //         'path': '$saleDetaildata',
+            //         'preserveNullAndEmptyArrays': true
+            //     }
+            // },
             {
                 '$lookup': {
                     'from': 'users',
@@ -5366,33 +5537,33 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
                     'preserveNullAndEmptyArrays': true
                 }
             },
-            {
-                '$group': {
-                    '_id': {
-                        '_id': '$_id',
-                        'vendor_id': '$saleDetaildata.productData.vendor_id'
-                    },
-                    'order_id': { '$first': '$order_id' },
-                    'subtotal': { '$first': '$subtotal' },
-                    'payment_status': { '$first': '$payment_status' },
-                    'name': { '$first': '$name' },
-                    'mobile': { '$first': '$mobile' },
-                    'email': { '$first': '$email' },
-                    'phone_code': { '$first': '$phone_code' },
-                    'country': { '$first': '$country' },
-                    'state': { '$first': '$state' },
-                    'city': { '$first': '$city' },
-                    'address_line1': { '$first': '$address_line1' },
-                    'address_line2': { '$first': '$address_line2' },
-                    'pincode': { '$first': '$pincode' },
-                    'userName': { '$first': '$userData.name' },
-                    'userEmail': { '$first': '$userData.email' },
-                    'createdAt': { '$first': '$createdAt' },
-                    'saleDetails': {
-                        '$push': '$saleDetaildata' // Group all sale details for this vendor
-                    }
-                }
-            },
+            // {
+            //     '$group': {
+            //         '_id': {
+            //             '_id': '$_id',
+            //             'vendor_id': '$saleDetaildata.productData.vendor_id'
+            //         },
+            //         'order_id': { '$first': '$order_id' },
+            //         'subtotal': { '$first': '$subtotal' },
+            //         'payment_status': { '$first': '$payment_status' },
+            //         'name': { '$first': '$name' },
+            //         'mobile': { '$first': '$mobile' },
+            //         'email': { '$first': '$email' },
+            //         'phone_code': { '$first': '$phone_code' },
+            //         'country': { '$first': '$country' },
+            //         'state': { '$first': '$state' },
+            //         'city': { '$first': '$city' },
+            //         'address_line1': { '$first': '$address_line1' },
+            //         'address_line2': { '$first': '$address_line2' },
+            //         'pincode': { '$first': '$pincode' },
+            //         'userName': { '$first': '$userData.name' },
+            //         'userEmail': { '$first': '$userData.email' },
+            //         'createdAt': { '$first': '$createdAt' },
+            //         'saleDetails': {
+            //             '$push': '$saleDetaildata' // Group all sale details for this vendor
+            //         }
+            //     }
+            // },
             {
                 '$project': {
                     '_id': 0,
@@ -5411,7 +5582,8 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
                     'pincode': 1,
                     'userName': '$userData.name',
                     'userEmail': '$userData.email',
-                    'saleDetails': 1,
+                    'sub_order_id': sub_order_id,
+                    'saleDetails': '$saleDetaildata',
                     'createdAt': 1
                 }
             },

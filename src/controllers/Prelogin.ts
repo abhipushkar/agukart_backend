@@ -2051,6 +2051,72 @@ export const getProductList = async (req: Request, resp: Response) => {
       return !checkSoldOut(productQty, combinationData);
     });
 
+    // PROMOTIONAL OFFER ENRICHMENT
+    const productIds = filteredData.map((p: any) => p._id);
+    const vendorIds = Array.from(new Set<string>(filteredData.map((p: any) => p.vendor_id.toString()))).map((id) => new mongoose.Types.ObjectId(id));
+
+    let enrichedData = filteredData;
+
+    if (productIds.length) {
+        const promotions = await PromotionalOfferModel.find({
+        product_id: { $in: productIds },
+        vendor_id: { $in: vendorIds },
+        status: true,
+        expiry_status: { $ne: "expired" }
+    }).select("product_id promotional_title offer_type discount_amount qty").lean();
+
+    const promoMap = new Map<string, any[]>();
+      promotions.forEach(p => {
+      const key = p.product_id.toString();
+      if (!promoMap.has(key)) promoMap.set(key, []);
+      promoMap.get(key)!.push(p);
+    });
+
+    enrichedData = filteredData.map((item: any) => {
+    let originalPrice = +item.sale_price;
+    let finalPrice = originalPrice;
+
+    // 🔹 Handle combination products
+    if (item.isCombination) {
+      const combos = (item.combinationData || []).flatMap(
+        (c: any) => c.combinations || []
+      );
+
+      const minComboPrice = combos
+        .filter((c: any) => c.price && +c.price > 0)
+        .reduce((min: number, c: any) => Math.min(min, +c.price), Infinity);
+
+      originalPrice = minComboPrice === Infinity
+        ? originalPrice
+        : minComboPrice;
+
+      finalPrice = originalPrice;
+    }
+
+    // 🔹 Apply best promotion
+    const promo = promoMap.get(item._id.toString()) || [];
+    if (promo.length) {
+      const bestPromo = promo.reduce((best: any, cur: any) =>
+        !best || cur.qty < best.qty ? cur : best
+      , null);
+
+      if (bestPromo) {
+        finalPrice = calculatePriceAfterDiscount(
+          bestPromo.offer_type,
+          +bestPromo.discount_amount,
+          originalPrice
+        );
+      }
+    }
+
+     return {
+      ...item,
+      originalPrice,
+      finalPrice,
+      promotionData: promo
+    };
+    });
+  }
     const totalCount = filteredData.length
     const totalPages = Math.ceil(totalCount / limit);
 
@@ -2059,7 +2125,7 @@ export const getProductList = async (req: Request, resp: Response) => {
 
     return resp.status(200).json({
       message: "Products fetched successfully (pipeline).",
-      data: filteredData,
+      data: enrichedData,
       base_url,
       video_base_url,
       pagination: {

@@ -1010,8 +1010,13 @@ export const checkoutAddressEligibility = async (userId: any, addressId: any, ve
 export const checkout = async (req: CustomRequest, resp: Response) => {
     let error = false;
     try {
-
-        const checkoutEliginbilityData = await checkoutAddressEligibility(req.user._id, req.body.address_id);
+        console.log("Checkout Request Body:", req.body); // Debug log
+        const isVendorCheckout = !!req.body.vendor_id;
+        const shopCount = Number(req.body.shop_count || 1);
+        if (shopCount <= 0) {
+            return resp.status(400).json({ message: "Invalid shop_count" });
+        }
+        const checkoutEliginbilityData = isVendorCheckout ? await checkoutAddressEligibility(req.user._id, req.body.address_id, req.body.vendor_id) : await checkoutAddressEligibility(req.user._id, req.body.address_id);
 
         if (!checkoutEliginbilityData.status) {
 
@@ -1035,7 +1040,8 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
         const pipeline = [
             {
                 $match: {
-                    'user_id': new mongoose.Types.ObjectId(req.user._id)
+                    'user_id': new mongoose.Types.ObjectId(req.user._id),
+                    ...(isVendorCheckout ? { 'vendor_id': new mongoose.Types.ObjectId(req.body.vendor_id) } : {})
                 }
             },
             {
@@ -1115,6 +1121,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                 $project: {
                     qty: 1,
                     product_id: 1,
+                    vendor_id: 1,
                     delivery_amount:
                         "$product_data.delivery_amount",
                     delivery:
@@ -1165,23 +1172,50 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
 
         }
 
-        const cartCoupon = await CartCouponModel.find({ user_id: req.user._id });
+        const cartCoupon = isVendorCheckout ? await couponCart.findOne({ user_id: req.user._id, vendor_id: req.body.vendor_id }) :
+        await CartCouponModel.find({ user_id: req.user._id });
         let couponCode = '';
+        const vendorCouponMap = new Map<string, { coupon_code: string; discount_amount: number }>();
+        const calculateVendorCouponDiscount = async (vendorId: string) => {
+
+            if (vendorCouponMap.has(vendorId)) {
+              return vendorCouponMap.get(vendorId)!.discount_amount;
+            }
+
+            const couponMap = await couponCart.findOne({
+              user_id: req.user._id,
+              vendor_id: vendorId
+            });
+            if (!couponMap) return 0;
+
+            const coupon = await CouponModel.findOne({ vendor_id: vendorId });
+            if (!coupon) return 0;
+
+            vendorCouponMap.set(vendorId, {
+               coupon_code: coupon.coupon_code,
+               discount_amount: coupon.discount_amount
+            });
+
+            couponCode = coupon.coupon_code;
+            return coupon.discount_amount;
+            };
 
         if (cartResult.length !== 0) {
-
             await Promise.all(cartResult.map(async (item) => {
 
                 const offerPrice = getOfferProductPrice(item.sale_price, item.discount_type, item.discount_amount);
                 const shippingAmount = item.delivery_amount;
+                if (!item.vendor_id) {
+                    throw new Error("Cart item missing vendor_id");
+                }
+                await calculateVendorCouponDiscount(String(item.vendor_id));
                 subTotal += item.sale_price * item.qty;
-
                 if (item.delivery === 'paid') {
                     totalShipping += shippingAmount * item.qty;
                 }
 
                 discount += (item.sale_price - offerPrice) * item.qty;
-                // promotionDiscount += (item.original_price - item.sale_price) * item.qty
+                promotionDiscount += (item.original_price - item.sale_price) * item.qty
 
                 const shippingName = item.parentCartData?.vendor_data?.[0]?.shippingName;
                 const shippingTemplateData = item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
@@ -1198,14 +1232,23 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                 for (const option of selectedShipping) {
                     if (option?.region?.includes(address?.country)) {
                         if (item.parentCartData) {
-                            delivery += (option?.shippingFee?.perItem || 0) * item.qty;
-                            perOrderFee = (option?.shippingFee?.perOrder || 0)
+                            const perItem = option?.shippingFee?.perItem || 0;
+                            const perOrder = option?.shippingFee?.perOrder || 0;
+                            delivery += perItem * item.qty;
+                            perOrderFee = perOrder / ( isVendorCheckout ? shopCount : 1); 
+                            item._shippingBreakdown = {
+                                perItem,
+                                perOrder
+                            }
                         }
                         break; // exit after first match
                     }
                 }
 
                 const parentCartVendorData = item.parentCartData;
+                if(!parentCartVendorData || !Array.isArray(parentCartVendorData.vendor_data) || !parentCartVendorData.vendor_data[0]){
+                    return resp.status(400).json({ message: "Shipping configuration missing for vendor" });
+                }
                 parentCartVendorData.vendor_data[0].perOrder = parseFloat(perOrderFee.toString());
                 parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
 
@@ -1219,25 +1262,23 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                     return resp.status(200).json({ status: false, message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country` });
 
                 }
-                delivery += data.vendor_data[0]?.perOrder;
             }
+             for (const [, coupon] of vendorCouponMap) {
+                discountAmount += coupon.discount_amount;
+            } 
 
-            netAmount = subTotal - promotionDiscount
-            if (cartCoupon.length > 0) {
-                // for (let coupon of cartCoupon) {
-                //     discountAmount += coupon?.discount_amount;
-                //     couponCode = coupon?.coupon_code;
-                // }
-            }
-
-            netAmount = netAmount - discountAmount;
-
+            netAmount = subTotal;
+            netAmount -= promotionDiscount;
+            netAmount -= discountAmount;
+            if(isVendorCheckout) {
+                netAmount -= voucherDiscount / shopCount;
+            } else {
             netAmount -= voucherDiscount;
-
+            }
             netAmount += totalShipping;
             netAmount += delivery;
 
-            if (req.body.wallet == '1' && couponCode == '') {
+            if (req.body.wallet == '1') {
                 const user = await User.findOne({ _id: req.user._id });
                 let walletAmount = 0;
                 if (user) {
@@ -1277,12 +1318,12 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
             shipping: totalShipping,
             discount: discount,
             voucher_id: req.body.voucher_id ? new mongoose.Types.ObjectId(req.body.voucher_id) : null,
-            voucher_dicount: voucherDiscount || 0,
+            voucher_dicount: isVendorCheckout ? voucherDiscount /shopCount : voucherDiscount,
             net_amount: netAmount,
             payment_status: '0',
             coupon_discount: discountAmount,
-            coupon_applied: cartCoupon.length > 0 ? cartCoupon : null,
-            wallet_used: usedWalletAmount,
+            coupon_applied: Object.fromEntries(vendorCouponMap),
+            wallet_used: usedWalletAmount || 0,
             promotional_discount: promotionDiscount,
             delivery: delivery
         }
@@ -1347,11 +1388,16 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
 
         if (!error) {
             const sales = await Sales.create(salesData);
-
+            const vendorSubOrderMap = new Map<string, string>();
             const saleId = sales._id;
             if (cartResult.length !== 0) {
                 await Promise.all(cartResult.map(async (item) => {
-                    const couponData = cartCoupon?.find((coupon: any) => coupon.vendor_id?.toString() === (item.vendor_id?.toString()) || null);
+                    let couponData = null;
+                    if (isVendorCheckout) {
+                        couponData = cartCoupon || null;
+                    } else if (Array.isArray(cartCoupon)) {
+                        couponData = cartCoupon.find((c: any) => c.vendor_id?.toString() === item.vendor_id?.toString()) || null;
+                    }        
                     const shippingData = item.parentCartData?.shippingData?.[0] || null;
                     const promotionalOfferData = (item.original_price > item.sale_price)
                         ? {
@@ -1460,13 +1506,19 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                     }
                     const updatedQty = currentQty - Number(item?.qty);
                     let finalQty = updatedQty.toString();
-
+                    const vendorId = item.vendor_id.toString();
+                    let subOrderId = vendorSubOrderMap.get(String(vendorId));
+                    if (!subOrderId) {
+                      subOrderId = `${orderId}-${vendorId}`;
+                      vendorSubOrderMap.set(String(vendorId), subOrderId);
+                    }
                     const data: any = {
                         user_id: req.user._id,
                         vendor_id: productResult?.vendor_id,
                         vendor_name: productResult?.vendor_name,
                         sale_id: saleId,
                         order_id: orderId,
+                        sub_order_id: subOrderId,
                         product_id: productResult?.product_id,
                         productData: productData ? productData : {},
                         qty: item?.qty,
@@ -1482,8 +1534,16 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                         promotional_discount: (item.original_price - item.sale_price),
                         shippingId: item.shipping_id,
                         shippingName: item.shippingName,
-                        deliveryData: item.parentCartData[0],
-                        couponData: couponData,
+                        deliveryData: {
+                            vendor_id: item.vendor_id,
+                            shippingId: item.shipping_id,
+                            shippingName: item.shippingName,
+                            perItem: item._shippingBreakdown?.perItem || 0,
+                            perOrder: item._shippingBreakdown?.perOrder || 0,
+                            shippingTemplateData: item.parentCartData?.shippingData?.[0]?.shippingTemplateData || null
+                        },
+                        
+                        couponData: isVendorCheckout ? vendorCouponMap.get(item.vendor_id.toString()) || null : couponData,
                         shippingData: shippingData,
                         promotionalOfferData: promotionalOfferData
                     }
@@ -1532,12 +1592,24 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                     await Salesdetail.create(data);
                 }));
             }
-            await Cart.deleteMany({ user_id: req.user._id });
-            await ParentCartModel.deleteMany({ user_id: req.user._id });
+            await Cart.deleteMany({ user_id: req.user._id, ...(isVendorCheckout ? {vendor_id: req.body.vendor_id } : {}) });
+            if (isVendorCheckout) {
+                await ParentCartModel.updateOne(
+                    { user_id: req.user._id },
+                    {
+                        $pull: {
+                            vendor_data: {vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) }
+                        }
+                    }
+                );
+            } else {
+                await ParentCartModel.deleteOne({ user_id: req.user._id });
+            }
             await CartCouponModel.deleteOne({ user_id: req.user._id });
+            if (couponCode) {
             await CouponModel.updateOne({ coupon_code: couponCode }, { $inc: { total_uses: 1 } });
-
-            if (req.body.wallet == '1' && couponCode == '') {
+            }
+            if (req.body.wallet == '1') {
                 const transactionHistorydata = {
                     user_id: req.user._id,
                     transaction_type: 'Dr',
@@ -1560,6 +1632,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
 
 
     } catch (error) {
+        console.error("CHECKOUT ERROR:", error);
         error = true
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
     }
@@ -1679,6 +1752,7 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
         let milliseconds = currentDate.getMilliseconds();
 
         const orderId = `ord${year}${month}${date}${hours}${minutes}${milliseconds}`;
+
 
         const address = await Address.findById({
             _id: new mongoose.Types.ObjectId(req.body.address_id),
@@ -1909,7 +1983,7 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                 }
             }
 
-            netAmount = netAmount - discountAmount;
+            netAmount -= discountAmount;
             netAmount -= voucherDiscount;
             wallet_balance_new = netAmount;
             netAmount += totalShipping;
@@ -2034,7 +2108,7 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
 
         if (!error) {
             const sales = await Sales.create(salesData);
-
+            const vendorSubOrderMap = new Map<string, string>();
             const saleId = sales._id;
             if (cartResult.length !== 0) {
                 await Promise.all(
@@ -2177,13 +2251,18 @@ export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => 
                             maxDate: item.parentCartData?.vendor_data?.[0]?.maxDate || null,
                             shippingTemplateData: item.parentCartData?.shippingData?.[0]?.shippingTemplateData || null,
                         };
-
+                        let subOrderId = vendorSubOrderMap.get(String(vendorId));
+                        if (!subOrderId) {
+                          subOrderId = `${orderId}-${vendorId}`;
+                          vendorSubOrderMap.set(String(vendorId), subOrderId);
+                        }
                         const data: any = {
                             user_id: req.user._id,
                             vendor_id: productResult?.vendor_id,
                             vendor_name: productResult?.vendor_name,
                             sale_id: saleId,
                             order_id: orderId,
+                            sub_order_id: subOrderId,
                             product_id: productResult?.product_id,
                             productData: productData ? productData : {},
                             qty: item?.qty,
