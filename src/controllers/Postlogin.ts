@@ -1007,6 +1007,65 @@ export const checkoutAddressEligibility = async (userId: any, addressId: any, ve
 
 }
 
+export function resolvePriceAndQty({
+  product,
+  cartItem
+}: {
+  product: any;
+  cartItem: any;
+}) {
+  const basePrice = Number(product.sale_price || 0);
+  const baseQty = Number(product.qty || 0);
+
+  const isCheckedPrice = !!product.form_values?.isCheckedPrice;
+  const isCheckedQuantity = !!product.form_values?.isCheckedQuantity;
+
+  const priceDrivenByCombination =
+    isCheckedPrice && basePrice === 0;
+
+  const qtyDrivenByCombination =
+    isCheckedQuantity && baseQty === 0;
+
+  let resolvedPrice = basePrice;
+  let resolvedQty = baseQty;
+
+  if (!priceDrivenByCombination && !qtyDrivenByCombination) {
+    return { price: resolvedPrice, qty: resolvedQty };
+  }
+
+  const selectedVariants = cartItem.variants || [];
+
+  for (const group of product.combinationData || []) {
+    const groupName = String(group.variant_name).trim();
+
+    for (const comb of group.combinations || []) {
+
+      const isMatch = selectedVariants.every((v: any) => {
+        return (
+          String(v.variantName).trim() === groupName &&
+          comb.combValues?.includes(String(v.attributeName))
+        );
+      });
+
+      if (!isMatch) continue;
+
+      if (priceDrivenByCombination && comb.price !== "") {
+        resolvedPrice = Number(comb.price);
+      }
+
+      if (qtyDrivenByCombination && comb.qty !== "") {
+        resolvedQty = Number(comb.qty);
+      }
+
+      return { price: resolvedPrice, qty: resolvedQty };
+    }
+  }
+
+
+  return { price: resolvedPrice, qty: 0 };
+}
+
+
 export const checkout = async (req: CustomRequest, resp: Response) => {
     let error = false;
     try {
@@ -1332,59 +1391,78 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
             return str.replace(/<\/?[^>]+(>|$)/g, "");
         }
 
-        await Promise.all(cartResult.map(async (item) => {
+        // await Promise.all(cartResult.map(async (item) => {
 
-            const productData = await Product.findOne({ _id: item.product_id });
-            if (!productData) {
-                error = true;
-                return resp.status(400).json({ message: "Product not found." })
-            }
-            let currentQty = Number(productData?.qty);
+        //     const productData = await Product.findOne({ _id: item.product_id });
+        //     if (!productData) {
+        //         error = true;
+        //         return resp.status(400).json({ message: "Product not found." })
+        //     }
+        //     let currentQty = Number(productData?.qty);
 
-            if (item?.isCombination) {
-                productData.combinationData.forEach((element: any, index: any) => {
-                    element.combinations.forEach((comb: any) => {
+        //     if (item?.isCombination) {
+        //         productData.combinationData.forEach((element: any, index: any) => {
+        //             element.combinations.forEach((comb: any) => {
 
-                        let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
-                            [attrId]
-                        );
+        //                 let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
+        //                     [attrId]
+        //                 );
 
-                        if (item?.variant_attribute_id.length > 1) {
-                            for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                                for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                                    matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
-                                }
-                            }
-                        }
-                        matchVariantAttrId.forEach((attrId: any) => {
-                            const attrIdStr = attrId.toString();
-                            const attrIdArray = attrIdStr.split(',');
+        //                 if (item?.variant_attribute_id.length > 1) {
+        //                     for (let i = 0; i < item?.variant_attribute_id.length; i++) {
+        //                         for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+        //                             matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
+        //                         }
+        //                     }
+        //                 }
+        //                 matchVariantAttrId.forEach((attrId: any) => {
+        //                     const attrIdStr = attrId.toString();
+        //                     const attrIdArray = attrIdStr.split(',');
 
-                            const isMatch =
-                                comb.combIds.length === attrIdArray.length &&
-                                comb.combIds.every((id: string) => attrIdArray.includes(id));
+        //                     const isMatch =
+        //                         comb.combIds.length === attrIdArray.length &&
+        //                         comb.combIds.every((id: string) => attrIdArray.includes(id));
 
-                            if (isMatch) {
-                                currentQty = comb.qty ? comb.qty : item.qty;
-                            }
-                        });
-                    })
-                })
-            }
+        //                     if (isMatch) {
+        //                         currentQty = comb.qty ? comb.qty : item.qty;
+        //                     }
+        //                 });
+        //             })
+        //         })
+        //     }
 
-            if (currentQty == 0) {
-                error = true;
-                return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` })
-            }
+        //     if (currentQty == 0) {
+        //         error = true;
+        //         return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` })
+        //     }
 
-            const updatedQty = currentQty - Number(item?.qty);
+        //     const updatedQty = currentQty - Number(item?.qty);
 
-            if (updatedQty < 0) {
-                error = true;
-                return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` });
-            }
+        //     if (updatedQty < 0) {
+        //         error = true;
+        //         return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` });
+        //     }
 
-        }));
+        // }));
+        for (const item of cartResult) {
+        const product = await Product.findById(item.product_id);
+        if (!product) {
+            return resp.status(400).json({ message: "Product not found" });
+        }
+
+        const { qty: availableQty } = resolvePriceAndQty({ product, cartItem: item});
+
+        if (availableQty <= 0) {
+            return resp.status(400).json({
+            message: `${removeHtmlTags(product.product_title)} is out of stock`
+       });
+       }
+       if (availableQty < Number(item.qty)) {
+            return resp.status(400).json({
+            message: `${removeHtmlTags(product.product_title)} has only ${availableQty} left`
+        });
+        }
+    }
 
         if (!error) {
             const sales = await Sales.create(salesData);
@@ -1481,38 +1559,78 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                     }
                     let currentQty = Number(productData?.qty);
 
-                    if (item?.isCombination) {
-                        productData.combinationData.forEach((element: any, index: any) => {
-                            element.combinations.forEach((comb: any) => {
+                    // if (item?.isCombination) {
+                    //     productData.combinationData.forEach((element: any, index: any) => {
+                    //         element.combinations.forEach((comb: any) => {
 
-                                let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
-                                    [attrId]
-                                );
+                    //             let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
+                    //                 [attrId]
+                    //             );
 
-                                if (item?.variant_attribute_id.length > 1) {
-                                    for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                                        for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                                            matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
-                                        }
-                                    }
-                                }
-                                matchVariantAttrId.forEach((attrId: any) => {
-                                    const attrIdStr = attrId.toString();
-                                    const attrIdArray = attrIdStr.split(',');
+                    //             if (item?.variant_attribute_id.length > 1) {
+                    //                 for (let i = 0; i < item?.variant_attribute_id.length; i++) {
+                    //                     for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+                    //                         matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
+                    //                     }
+                    //                 }
+                    //             }
+                    //             matchVariantAttrId.forEach((attrId: any) => {
+                    //                 const attrIdStr = attrId.toString();
+                    //                 const attrIdArray = attrIdStr.split(',');
 
-                                    const isMatch =
-                                        comb.combIds.length === attrIdArray.length &&
-                                        comb.combIds.every((id: string) => attrIdArray.includes(id));
+                    //                 const isMatch =
+                    //                     comb.combIds.length === attrIdArray.length &&
+                    //                     comb.combIds.every((id: string) => attrIdArray.includes(id));
 
-                                    if (isMatch) {
-                                        currentQty = comb.qty ? comb.qty : productData.qty;
-                                    }
-                                });
-                            })
-                        })
-                    }
-                    const updatedQty = currentQty - Number(item?.qty);
-                    let finalQty = updatedQty.toString();
+                    //                 if (isMatch) {
+                    //                     currentQty = comb.qty ? comb.qty : productData.qty;
+                    //                 }
+                    //             });
+                    //         })
+                    //     })
+                    // }
+                    // const updatedQty = currentQty - Number(item?.qty);
+                    // let finalQty = updatedQty.toString();
+
+                    const { qty: availableQty } = resolvePriceAndQty({
+  product: productData,
+  cartItem: item
+});
+
+const updatedQty = availableQty - Number(item.qty);
+
+if (updatedQty < 0) {
+  return resp.status(400).json({
+    message: `${removeHtmlTags(productData.product_title)} is out of stock`
+  });
+}
+
+// Decide WHO owns the quantity
+const qtyDrivenByCombination =
+  productData.form_values?.isCheckedQuantity === true &&
+  Number(productData.qty) === 0;
+
+if (qtyDrivenByCombination) {
+  // Deduct ONLY from matched combination
+  for (const group of productData.combinationData || []) {
+    for (const comb of group.combinations || []) {
+      const combValues = (comb.combValues || []).map(String);
+      const selectedValues = (item.variant_attribute_id || []).map(String);
+
+      const isMatch =
+        combValues.length === selectedValues.length &&
+        combValues.every((v: string) => selectedValues.includes(v));
+
+      if (isMatch) {
+        comb.qty = String(updatedQty);
+      }
+    }
+  }
+} else {
+  productData.qty = String(updatedQty);
+}
+
+
                     const vendorId = item.vendor_id.toString();
                     let subOrderId = vendorSubOrderMap.get(String(vendorId));
                     if (!subOrderId) {
@@ -1556,45 +1674,45 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
                         buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
                     }
 
-                    if (item?.isCombination) {
-                        productData.combinationData.forEach((element: any, index: any) => {
-                            element.combinations.forEach((comb: any, ind: any) => {
+                    // if (item?.isCombination) {
+                    //     productData.combinationData.forEach((element: any, index: any) => {
+                    //         element.combinations.forEach((comb: any, ind: any) => {
 
-                                let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
-                                    [attrId]
-                                );
+                    //             let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
+                    //                 [attrId]
+                    //             );
 
-                                if (item?.variant_attribute_id.length > 1) {
-                                    for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                                        for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                                            matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
-                                        }
-                                    }
-                                }
+                    //             if (item?.variant_attribute_id.length > 1) {
+                    //                 for (let i = 0; i < item?.variant_attribute_id.length; i++) {
+                    //                     for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+                    //                         matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
+                    //                     }
+                    //                 }
+                    //             }
 
-                                matchVariantAttrId.forEach((attrId: any) => {
-                                    const attrIdStr = attrId.toString();
-                                    const attrIdArray = attrIdStr.split(',');
+                    //             matchVariantAttrId.forEach((attrId: any) => {
+                    //                 const attrIdStr = attrId.toString();
+                    //                 const attrIdArray = attrIdStr.split(',');
 
-                                    const isMatch =
-                                        comb.combIds.length === attrIdArray.length &&
-                                        comb.combIds.every((id: string) => attrIdArray.includes(id));
+                    //                 const isMatch =
+                    //                     comb.combIds.length === attrIdArray.length &&
+                    //                     comb.combIds.every((id: string) => attrIdArray.includes(id));
 
-                                    if (isMatch) {
-                                        if (element.combinations[ind].qty == "") {
-                                            productData.qty = finalQty
-                                        } else {
-                                            element.combinations[ind].qty = finalQty;
-                                        }
-                                        productData.combinationData[index] = element;
-                                    }
-                                });
+                    //                 if (isMatch) {
+                    //                     if (element.combinations[ind].qty == "") {
+                    //                         productData.qty = finalQty
+                    //                     } else {
+                    //                         element.combinations[ind].qty = finalQty;
+                    //                     }
+                    //                     productData.combinationData[index] = element;
+                    //                 }
+                    //             });
 
-                            })
-                        })
-                    } else {
-                        productData.qty = finalQty;
-                    }
+                    //         })
+                    //     })
+                    // } else {
+                    //     productData.qty = finalQty;
+                    // }
                     await productData.save();
 
                     await Salesdetail.create(data);
