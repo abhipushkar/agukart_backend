@@ -1978,7 +1978,7 @@ export const getAllActiveVariant = async (req: CustomRequest, resp: Response) =>
                 variant_name: data.variant_name
             };
 
-            const variantAttr = await VariantAttribute.find({ variant: data._id, status: true });
+            const variantAttr = await VariantAttribute.find({ variant: data._id, status: true, deleted_status: false });
 
             if (variantAttr) {
                 final['variant_attribute'] = variantAttr;
@@ -2297,6 +2297,23 @@ const findOldVariantAttribute = (
   );
 };
 
+const findOldCustomizationOption = (
+  existingProducts: any,
+  customizationKey: string,
+  optionKey: string
+) => {
+  if (!existingProducts?.customizationData?.customizations) return null;
+
+  const oldCustomization = existingProducts.customizationData.customizations.find(
+    (c: any) => c.customization_name === customizationKey || c._id === customizationKey
+  );
+
+  if (!oldCustomization) return null;
+
+  return oldCustomization.optionList?.find(
+    (o: any) => o.option_name === optionKey || o._id === optionKey
+  );
+};
 
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
@@ -2436,12 +2453,15 @@ const optMainImages = files.filter(
               try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
             }
 
-            // 1️⃣ Base from DB (CRITICAL)
-const oldMainImages =
-  isUpdate
-    ? existingProducts?.customizationData?.customizations?.[cIdx]
-        ?.optionList?.[oIdx]?.main_images || []
-    : opt.main_images || [];
+const oldOpt = isUpdate
+  ? findOldCustomizationOption(
+      existingProducts,
+      cust.customization_name, 
+      opt.option_name         
+    )
+  : null;
+
+const oldMainImages = oldOpt?.main_images || [];
 
 // clone
 const mergedMainImages: (string | null)[] = [...oldMainImages];
@@ -2457,7 +2477,7 @@ try {
   deletedCustomizationImages = {};
 }
 
-const deleteKey = `${cIdx}-${oIdx}`;
+const deleteKey = `${cust.customization_name}__${opt.option_name}`;
 const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
 
 deleteIndexes.forEach((idx: number) => {
@@ -2466,11 +2486,19 @@ deleteIndexes.forEach((idx: number) => {
   }
 });
 
-// 2️⃣ Apply deletions from body
-const bodyMainImages =
-  req.body?.customizationData?.customizations?.[String(cIdx)]
-    ?.optionList?.[String(oIdx)]
-    ?.main_images || {};
+const bodyCustomization = req.body?.customizationData?.customizations
+  ?.find((c: any) =>
+    c.customization_name === cust.customization_name ||
+    c._id === cust._id
+  );
+
+const bodyOption = bodyCustomization?.optionList
+  ?.find((o: any) =>
+    o.option_name === opt.option_name ||
+    o._id === opt._id
+  );
+
+const bodyMainImages = bodyOption?.main_images || {};
 
 Object.keys(bodyMainImages).forEach((key) => {
   const idx = Number(key);
@@ -11454,13 +11482,10 @@ if (data.customizationData?.customizations && Array.isArray(data.customizationDa
               try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
             }
 
-const oldMainImages =
-  isUpdate
-    ? existingProduct?.customizationData?.customizations?.[cIdx]
-        ?.optionList?.[oIdx]?.main_images || []
-    : opt.main_images || [];
+            const oldOpt = isUpdate ? findOldCustomizationOption( existingProduct, cust.customization_name, opt.option_name ) : null;
+            const oldMainImages = oldOpt?.main_images || [];
 
-const mergedMainImages: (string | null)[] = [...oldMainImages];
+            const mergedMainImages: (string | null)[] = [...oldMainImages];
 
 let deletedCustomizationImages: any = {};
 try {
@@ -11470,7 +11495,7 @@ try {
       : req.body.deleted_customization_images || {};
 } catch {}
 
-const deleteKey = `${cIdx}-${oIdx}`;
+const deleteKey = `${cust.customization_name}__${opt.option_name}`;
 const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
 
 deleteIndexes.forEach(idx => {
@@ -11565,12 +11590,9 @@ if (Array.isArray(productVariants)) {
               f.fieldname.startsWith(`${mainKey}[`)
           );
 
-          const oldMainImages =
-            isUpdate
-              ? existingProduct?.product_variants?.[pvIdx]
-                  ?.variant_attributes?.[aIdx]?.main_images || []
-              : [];
+          const oldAttr = isUpdate ? findOldVariantAttribute( existingProduct, pv.variant_name, attr.attribute) : null;
 
+          const oldMainImages = oldAttr?.main_images || [];
           const mergedMainImages: (string | null)[] = [...oldMainImages];
 
           let deletedVariantImages: any = {};
@@ -11581,7 +11603,7 @@ if (Array.isArray(productVariants)) {
                 : req.body.deleted_variant_images || {};
           } catch {}
 
-          const deleteKey = `${pvIdx}-${aIdx}`;
+          const deleteKey = `${pv.variant_name}__${attr.attribute}`;
           const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
 
           deleteIndexes.forEach(idx => {

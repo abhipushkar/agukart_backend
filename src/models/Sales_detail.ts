@@ -28,6 +28,12 @@ const salesDetailsSchema = new Schema(
             type: String,
             default: '',
         },
+        item_id: {
+            type: String,
+            required: true,
+            unique: true,
+            index: true
+        },
         is_approve: {
             type: String,
             default: ''

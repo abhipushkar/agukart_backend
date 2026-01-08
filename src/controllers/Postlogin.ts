@@ -1065,6 +1065,18 @@ export function resolvePriceAndQty({
   return { price: resolvedPrice, qty: 0 };
 }
 
+function generateSubOrderId(orderId: string): string {
+  const last5 = orderId.slice(-5);
+  const random5 = Math.floor(10000 + Math.random() * 90000);
+  return `${last5}${random5}`;
+}
+function generateItemId(subOrderId: string) {
+  const last5 = subOrderId.slice(-3);
+  const timeSuffix = Date.now().toString().slice(-3);
+  const random5 = Math.floor(10000 + Math.random() * 9000);
+  return `${last5}${timeSuffix}${random5}`;
+}
+
 
 export const checkout = async (req: CustomRequest, resp: Response) => {
     let error = false;
@@ -1634,9 +1646,10 @@ if (qtyDrivenByCombination) {
                     const vendorId = item.vendor_id.toString();
                     let subOrderId = vendorSubOrderMap.get(String(vendorId));
                     if (!subOrderId) {
-                      subOrderId = `${orderId}-${vendorId}`;
-                      vendorSubOrderMap.set(String(vendorId), subOrderId);
+                      subOrderId = generateSubOrderId(orderId);
+                      vendorSubOrderMap.set(vendorId, subOrderId);
                     }
+                    const itemId = generateItemId(subOrderId);
                     const data: any = {
                         user_id: req.user._id,
                         vendor_id: productResult?.vendor_id,
@@ -1644,6 +1657,7 @@ if (qtyDrivenByCombination) {
                         sale_id: saleId,
                         order_id: orderId,
                         sub_order_id: subOrderId,
+                        item_id: itemId,
                         product_id: productResult?.product_id,
                         productData: productData ? productData : {},
                         qty: item?.qty,
