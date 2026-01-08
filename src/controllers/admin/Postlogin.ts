@@ -2279,6 +2279,24 @@ const buildMetaDescription = (text = "", max = 160) => {
   const clean = stripHtml(text);
   return clean.length > max ? clean.slice(0, max).trim() : clean;
 };
+const findOldVariantAttribute = (
+  existingProducts: any,
+  variantName: string,
+  attributeName: string
+) => {
+  if (!existingProducts?.product_variants) return null;
+
+  const oldVariant = existingProducts.product_variants.find(
+    (v: any) => v.variant_name === variantName
+  );
+
+  if (!oldVariant) return null;
+
+  return oldVariant.variant_attributes?.find(
+    (a: any) => a.attribute === attributeName
+  );
+};
+
 
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
@@ -2570,15 +2588,17 @@ if (Array.isArray(productVariants)) {
           }
 
           // 🔹 Normalize old main_images (URLs)
-// 1️⃣ Base from DB (CRITICAL)
-const oldMainImages =
-  isUpdate
-    ? existingProducts?.product_variants?.[pvIdx]
-        ?.variant_attributes?.[aIdx]?.main_images || []
-    : [];
+const oldAttr = isUpdate
+  ? findOldVariantAttribute(
+      existingProducts,
+      pv.variant_name,
+      attr.attribute
+    )
+  : null;
 
-// clone so we don’t mutate DB object
-const mergedMainImages: (string | null)[] = [...oldMainImages];
+const mergedMainImages: (string | null)[] = [
+  ...(oldAttr?.main_images || [])
+];
 
 let deletedVariantImages: any = {};
 
@@ -2591,7 +2611,7 @@ try {
   deletedVariantImages = {};
 }
 
-const deleteKey = `${pvIdx}-${aIdx}`;
+const deleteKey = `${pv.variant_name}__${attr.attribute}`;
 const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
 
 deleteIndexes.forEach((idx: number) => {
@@ -2601,9 +2621,16 @@ deleteIndexes.forEach((idx: number) => {
 });
 
 
-// 2️⃣ Apply body deletions
-const bodyMainImages =
-  req.body?.product_variants?.[pvIdx]?.variant_attributes?.[aIdx]?.main_images || {};
+const bodyVariant = req.body?.product_variants?.find(
+  (v: any) => v.variant_name === pv.variant_name
+);
+
+const bodyAttr = bodyVariant?.variant_attributes?.find(
+  (a: any) => a.attribute === attr.attribute
+);
+
+const bodyMainImages = bodyAttr?.main_images || {};
+
 
 Object.keys(bodyMainImages).forEach((key) => {
   const idx = Number(key);
