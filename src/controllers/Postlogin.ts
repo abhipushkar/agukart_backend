@@ -1649,6 +1649,7 @@ if (qtyDrivenByCombination) {
                       subOrderId = generateSubOrderId(orderId);
                       vendorSubOrderMap.set(vendorId, subOrderId);
                     }
+                    const shippingAmount = (item._shippingBreakdown?.perItem || 0) * item.qty + (item._shippingBreakdown?.perOrder || 0);
                     const itemId = generateItemId(subOrderId);
                     const data: any = {
                         user_id: req.user._id,
@@ -1660,7 +1661,8 @@ if (qtyDrivenByCombination) {
                         item_id: itemId,
                         product_id: productResult?.product_id,
                         productData: productData ? productData : {},
-                        qty: item?.qty,
+                        original_price: Number(item.original_price),
+                        qty: Number(item.qty),
                         isCombination: item?.isCombination,
                         customize: item?.customize,
                         customizationData: item?.customizationData,
@@ -1672,11 +1674,12 @@ if (qtyDrivenByCombination) {
                         affiliate_id: item.affiliate_id ? item.affiliate_id : null,
                         promotional_discount: (item.original_price - item.sale_price),
                         shippingId: item.shipping_id,
-                        shippingName: item.shippingName,
+                        shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName || '',
+                        shippingAmount: shippingAmount,
                         deliveryData: {
                             vendor_id: item.vendor_id,
                             shippingId: item.shipping_id,
-                            shippingName: item.shippingName,
+                            shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName || '',
                             perItem: item._shippingBreakdown?.perItem || 0,
                             perOrder: item._shippingBreakdown?.perOrder || 0,
                             shippingTemplateData: item.parentCartData?.shippingData?.[0]?.shippingTemplateData || null

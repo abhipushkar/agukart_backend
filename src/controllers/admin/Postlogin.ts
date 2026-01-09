@@ -4996,6 +4996,7 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                             vendor_name: { $first: "$vendor_name" },
                             order_status: { $first: "$order_status" },
                             delivery_status: { $first: "$delivery_status" },
+                            shippingName: { $first: "$shippingName" },
                             items: {$push: "$$ROOT"}
                             }
                        }
@@ -5384,8 +5385,13 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                     'payment_status': 1,
                     'state': 1,
                     'city': 1,
+                    'mobile': 1,
+                    'id_number': '$userData.id_number',
+                    'phone_code': 1,
+                    'country': 1,
                     'coupon_discount': 1,
                     'net_amount': 1,
+                    'wallet_used': 1,
                     'address_line1': 1,
                     'address_line2': 1,
                     'pincode': 1,
