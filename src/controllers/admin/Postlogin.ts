@@ -5047,9 +5047,11 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                 $project: {
                     _id: 1,
                     order_id: 1,
+                    receiver_name: "$name",
                     subtotal: 1,
                     payment_status: 1,
                     country: 1,
+                    phone_code: 1,
                     state: 1,
                     city: 1,
                     mobile: 1,
@@ -5381,6 +5383,7 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                 '$project': {
                     '_id': 1,
                     'order_id': 1,
+                    'receiver_name': "$name",
                     'subtotal': 1,
                     'payment_status': 1,
                     'state': 1,

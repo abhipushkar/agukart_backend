@@ -1680,6 +1680,9 @@ if (qtyDrivenByCombination) {
                             vendor_id: item.vendor_id,
                             shippingId: item.shipping_id,
                             shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName || '',
+                            note: item.parentCartData?.vendor_data?.[0]?.note || "",
+                            minDate: item.parentCartData?.vendor_data?.[0]?.minDate || null,
+                            maxDate: item.parentCartData?.vendor_data?.[0]?.maxDate || null,
                             perItem: item._shippingBreakdown?.perItem || 0,
                             perOrder: item._shippingBreakdown?.perOrder || 0,
                             shippingTemplateData: item.parentCartData?.shippingData?.[0]?.shippingTemplateData || null
