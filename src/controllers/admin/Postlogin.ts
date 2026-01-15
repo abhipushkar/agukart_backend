@@ -2594,6 +2594,40 @@ if (req.body.product_variants) {
 if (Array.isArray(productVariants)) {
   productVariants = await Promise.all(
     productVariants.map(async (pv: any, pvIdx: number) => {
+      
+      // 🔹 Handle GUIDE for product_variants (MISSING PART)
+    if (Array.isArray(pv.guide)) {
+    pv.guide = await Promise.all(
+    pv.guide.map(async (g: any, gIdx: number) => {
+
+      const guideFile = findFile(
+        `product_variants[${pvIdx}][guide][${gIdx}][guide_file]`
+      );
+
+      let guide_file = g.guide_file || "";
+      let guide_type = g.guide_type || "";
+
+      if (guideFile) {
+        guide_file = await saveProductFile(
+          guideFile,
+          `pv-guide-${Date.now()}-${pvIdx}-${gIdx}`
+        );
+
+        if (guideFile.mimetype.includes("pdf")) {
+          guide_type = "pdf";
+        } else if (guideFile.mimetype.includes("image")) {
+          guide_type = "image";
+        }
+      }
+
+      return {
+        guide_name: g.guide_name || "",
+        guide_description: g.guide_description || "",
+        guide_file,
+        guide_type,
+      };
+    }));
+    }
 
       if (!pv.variant_attributes) return pv;
 
@@ -4572,11 +4606,19 @@ export const getVariantDataByCategoryId = async (req: Request, resp: Response) =
             interface FinalData {
                 id: Types.ObjectId;
                 variant_name: string;
+                guide_name?: string;
+                guide_description?: string;
+                guide_file?: string;
+                guide_type?: string;
                 variant_attribute?: any[];
             }
             let final: FinalData = {
                 id: data._id,
-                variant_name: data.variant_name
+                variant_name: data.variant_name,
+                guide_name: data.guide_name,
+                guide_description: data.guide_description,
+                guide_file: data.guide_file,
+                guide_type: data.guide_type
             };
 
             const variantAttr = await VariantAttribute.find({ variant: data._id, status: true });
@@ -5346,11 +5388,26 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                             }
                         },
                         {
+                            $lookup: {
+                                from: "vendordetails",
+                                localField: "vendor_id",
+                                foreignField: "user_id",
+                                as: "vendorData"
+                            }
+                        },
+                        {
+                            $unwind: {
+                                path: "$vendorData",
+                                preserveNullAndEmptyArrays: true
+                            }
+                        },
+                        {
                             $group: {
                                 _id: "$sub_order_id",
                                 sub_order_id: { $first: "$sub_order_id" },
                                 vendor_id: { $first: "$vendor_id" },
                                 vendor_name: { $first: "$vendor_name" },
+                                shop_name: { $first: "$vendorData.shop_name" },
                                 order_status: { $first: "$order_status" },
                                 delivery_status: { $first: "$delivery_status" },
                                 deliveryData: { $first: "$deliveryData" },
@@ -11587,6 +11644,39 @@ if (req.body.product_variants) {
 if (Array.isArray(productVariants)) {
   productVariants = await Promise.all(
     productVariants.map(async (pv: any, pvIdx: number) => {
+    if (Array.isArray(pv.guide)) {
+    pv.guide = await Promise.all(
+    pv.guide.map(async (g: any, gIdx: number) => {
+
+      const guideFile = findFile(
+        `product_variants[${pvIdx}][guide][${gIdx}][guide_file]`
+      );
+
+      let guide_file = g.guide_file || "";
+      let guide_type = g.guide_type || "";
+
+      if (guideFile) {
+        guide_file = await saveProductFile(
+          guideFile,
+          `pv-guide-${Date.now()}-${pvIdx}-${gIdx}`
+        );
+
+        if (guideFile.mimetype.includes("pdf")) {
+          guide_type = "pdf";
+        } else if (guideFile.mimetype.includes("image")) {
+          guide_type = "image";
+        }
+      }
+
+      return {
+        guide_name: g.guide_name || "",
+        guide_description: g.guide_description || "",
+        guide_file,
+        guide_type,
+      };
+    }));
+    }
+
       if (!pv.variant_attributes) return pv;
 
       pv.variant_attributes = await Promise.all(
