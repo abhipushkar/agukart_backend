@@ -9,17 +9,24 @@ import Product from "../models/Product";
 import Comment from "../models/Comment";
 import User from "../models/User";
 import { RecordWithTtl } from "dns";
-import bcrypt from 'bcrypt';
-import { convertToWebP, getOfferProductPrice, generateUniqueGiftCode, sendToEmail, activity, vandorAndProductActivity } from "../helpers/common";
-import * as fs from 'fs';
-import * as path from 'path';
-import sharp from 'sharp';
+import bcrypt from "bcrypt";
+import {
+  convertToWebP,
+  getOfferProductPrice,
+  generateUniqueGiftCode,
+  sendToEmail,
+  activity,
+  vandorAndProductActivity,
+} from "../helpers/common";
+import * as fs from "fs";
+import * as path from "path";
+import sharp from "sharp";
 import wishlistModel from "../models/Wishlist";
 import ProductModel from "../models/Product";
 import UserProductViewModel from "../models/UserProductView";
 import UserEmailModel from "../models/UserEmail";
-import crypto from 'crypto';
-import nodemailer from 'nodemailer';
+import crypto from "crypto";
+import nodemailer from "nodemailer";
 import CountryModel from "../models/Country";
 import StateModel from "../models/State";
 import CityModel from "../models/City";
@@ -31,7 +38,7 @@ import VendorModel from "../models/VendorDetail";
 import MessageModel from "../models/SenderMessage";
 import CouponModel from "../models/Coupon";
 import GiftCardCategoryModel from "../models/GiftCardCategory";
-import PurchaseGiftCardModel from "../models/PurchaseGiftCard"
+import PurchaseGiftCardModel from "../models/PurchaseGiftCard";
 import GiftCardTransactionHistory from "../models/GiftCardTransactionHistory";
 import GiftCardModel from "../models/GiftCard";
 import GiftCardTransactionHistoryModel from "../models/GiftCardTransactionHistory";
@@ -41,7 +48,7 @@ import PromotionalOfferModel from "../models/PromotionalOffer";
 import moment from "moment";
 import LoginHistoryModel from "../models/LoginHistory";
 import ParentCartModel from "../models/ParentCart";
-const ejs = require('ejs');
+const ejs = require("ejs");
 import ReportModel from "../models/Report";
 import transactionModel from "../models/transaction";
 import AffilateUserModel from "../models/AffiliateUser";
@@ -52,10 +59,11 @@ import voucherModel from "../models/Voucher";
 import couponCart from "../models/CouponCart";
 import got from "got";
 import BuyerNoteModel from "../models/BuyerNote";
+import Shipping from "../models/Shipping";
 
 interface CustomRequest extends Request {
-    user?: any;
-    token?: any;
+  user?: any;
+  token?: any;
 }
 
 export const addToCart = async (req: CustomRequest, resp: Response) => {
@@ -77,7 +85,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       shippingName,
       shipping_id,
       affiliate_id,
-      note
+      note,
     } = req.body;
 
     const customVariants = Array.isArray(variants) ? variants : [];
@@ -88,11 +96,10 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     const hasExternalVariants =
       variant_id.length > 0 || variant_attribute_id.length > 0;
 
-    const hasInternalVariants =
-      customVariants.length > 0;
+    const hasInternalVariants = customVariants.length > 0;
 
     const normalizeIds = (arr: any[]) =>
-      arr.map(id => new mongoose.Types.ObjectId(id));
+      arr.map((id) => new mongoose.Types.ObjectId(id));
 
     const extVariantIds = normalizeIds(variant_id);
     const extAttrIds = normalizeIds(variant_attribute_id);
@@ -101,7 +108,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     if (affiliate_id) {
       const affiliateUser = await User.findOne(
         { affiliate_code: affiliate_id },
-        { _id: 1 }
+        { _id: 1 },
       );
       if (affiliateUser) affiliateId = affiliateUser._id;
     }
@@ -111,7 +118,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       product_id,
       vendor_id,
       isCombination,
-      customizationData: customization
+      customizationData: customization,
     };
 
     query.$expr = { $and: [] };
@@ -121,31 +128,31 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
         {
           $and: [
             { $eq: [{ $size: "$variant_id" }, extVariantIds.length] },
-            { $setEquals: ["$variant_id", extVariantIds] }
-          ]
+            { $setEquals: ["$variant_id", extVariantIds] },
+          ],
         },
         {
           $and: [
             { $eq: [{ $size: "$variant_attribute_id" }, extAttrIds.length] },
-            { $setEquals: ["$variant_attribute_id", extAttrIds] }
-          ]
-        }
+            { $setEquals: ["$variant_attribute_id", extAttrIds] },
+          ],
+        },
       );
     }
 
     if (hasInternalVariants) {
       query.variants = {
-        $all: customVariants.map(v => ({
+        $all: customVariants.map((v) => ({
           $elemMatch: {
             variantName: v.variantName,
-            attributeName: v.attributeName
-          }
-        }))
+            attributeName: v.attributeName,
+          },
+        })),
       };
 
-      query.$expr.$and.push(
-        { $eq: [{ $size: "$variants" }, customVariants.length] }
-      );
+      query.$expr.$and.push({
+        $eq: [{ $size: "$variants" }, customVariants.length],
+      });
     }
 
     if (query.$expr.$and.length === 0) {
@@ -160,7 +167,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       if (cartItem.qty <= 0) {
         await cartItem.deleteOne();
         return resp.status(200).json({
-          message: "Item removed from cart."
+          message: "Item removed from cart.",
         });
       }
 
@@ -172,7 +179,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       await cartItem.save();
 
       return resp.status(200).json({
-        message: "Cart quantity updated successfully."
+        message: "Cart quantity updated successfully.",
       });
     }
 
@@ -192,824 +199,993 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       customize,
       shippingName,
       shipping_id,
-      note
+      note,
     });
 
     return resp.status(200).json({
-      message: "Product added to cart successfully."
+      message: "Product added to cart successfully.",
     });
-
   } catch (err) {
     console.error(err);
     return resp.status(500).json({
-      message: "Something went wrong. Please try again."
+      message: "Something went wrong. Please try again.",
     });
   }
 };
+function findNearestOption(
+  products: any[],
+  currentIndex: number,
+  shippingType: string,
+) {
+  // left
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    const template = products[i]?.selectedShipping?.shippingTemplateData;
+    if (template?.[shippingType]?.length) {
+      return template[shippingType][0];
+    }
+  }
+
+  // right
+  for (let i = currentIndex + 1; i < products.length; i++) {
+    const template = products[i]?.selectedShipping?.shippingTemplateData;
+    if (template?.[shippingType]?.length) {
+      return template[shippingType][0];
+    }
+  }
+
+  return null;
+}
+
+const calculatePreviewDelivery = (
+  products: any[],
+  matchedShippingOptions: any[],
+) => {
+  const preview: Record<string, number> = {};
+
+  for (const { shippingType } of matchedShippingOptions) {
+    const vendorShippingMap: Record<
+      string,
+      { qty: number; perOrder: number; perItem: number }
+    > = {};
+
+    products.forEach((product, index) => {
+      const template = product.selectedShipping?.shippingTemplateData;
+      let option = null;
+
+      // 1️⃣ Product supports shipping
+      if (template?.[shippingType]?.length) {
+        option = template[shippingType][0];
+      }
+      // 2️⃣ Borrow from nearest product
+      else {
+        option = findNearestOption(products, index, shippingType);
+      }
+
+      if (!option) return;
+
+      const key = `${option.shippingFee.perOrder}_${option.shippingFee.perItem}`;
+
+      if (!vendorShippingMap[key]) {
+        vendorShippingMap[key] = {
+          qty: 0,
+          perOrder: Number(option.shippingFee.perOrder || 0),
+          perItem: Number(option.shippingFee.perItem || 0),
+        };
+      }
+
+      vendorShippingMap[key].qty += Number(product.qty || 1);
+    });
+
+    // 🔥 EXACT SAME FINAL CALCULATION
+    let amount = 0;
+    for (const k in vendorShippingMap) {
+      const d = vendorShippingMap[k];
+      amount += d.perOrder;
+      if (d.qty > 1) {
+        amount += d.perItem * (d.qty - 1);
+      }
+    }
+
+    preview[shippingType] = amount;
+  }
+
+  return preview;
+};
+
+function productHasRegionSupport(
+  selectedShipping: any,
+  country: string,
+): boolean {
+  if (!selectedShipping?.shippingTemplateData) return false;
+
+  const template = selectedShipping.shippingTemplateData;
+  const shippingTypes = [
+    "standardShipping",
+    "expedited",
+    "twoDays",
+    "oneDay",
+  ];
+
+  for (const type of shippingTypes) {
+    const options = template[type] || [];
+    for (const option of options) {
+      if (option.region?.includes(country)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 
 export const listofCart = async (req: CustomRequest, resp: Response) => {
-    const base_url = process.env.ASSET_URL + '/uploads/shop-icon/';
-    const image_base_url = process.env.ASSET_URL + '/uploads/product/';
-    try {
-        const user_id = req.user._id;
-        const addressId = req.query.address_id;
-        const userObjectId = new mongoose.Types.ObjectId(user_id);
-        const queryCountry = (req.query.country || "").toString().trim();
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const base_url = process.env.ASSET_URL + "/uploads/shop-icon/";
+  const image_base_url = process.env.ASSET_URL + "/uploads/product/";
+  try {
+    const user_id = req.user._id;
+    const addressId = req.query.address_id;
+    const userObjectId = new mongoose.Types.ObjectId(user_id);
+    const queryCountry = (req.query.country || "").toString().trim();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-        const pipeline: any = [
-            { $match: { user_id: userObjectId } },
+    const pipeline: any = [
+      { $match: { user_id: userObjectId } },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "productData",
+          pipeline: [
             {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "productData",
-                    pipeline: [
-                        {
-                            $lookup: {
-                                from: "promotionaloffers",
-                                let: { productId: "$_id", vendorId: "$vendor_id" },
-                                pipeline: [
-                                    {
-                                        $match: {
-                                            $expr: {
-                                                $and: [
-                                                    { $eq: ["$status", true] },
-                                                    { $ne: ["$expiry_status", "expired"] },
-                                                    { $in: [{ $toObjectId: "$$productId" }, "$product_id"] },
-                                                    { $eq: ["$vendor_id", "$$vendorId"] }
-                                                ]
-                                            }
-                                        }
-                                    }
-                                ],
-                                as: "promotionaloffers"
-                            }
-                        }
-                    ]
-                }
-            },
-            { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } },
-            {
-                $lookup: {
-                    from: "visitcounts",
-                    let: { pid: "$product_id" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$product_id", "$$pid"] },
-                                        {
-                                            $gte: ["$date", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)]
-                                        }
-                                    ]
-                                }
-                            }
-                        },
-                        {
-                            $group: {
-                                _id: null,
-                                totalViews: { $sum: "$visit_count" }
-                            }
-                        }
-                    ],
-                    as: "viewData"
-                }
-            },
-            {
-                $lookup: {
-                    from: "carts",
-                    let: { pid: "$product_id" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: { $eq: ["$product_id", "$$pid"] }
-                            }
-                        },
-                        {
-                            $group: {
-                                _id: "$user_id"
-                            }
-                        }
-                    ],
-                    as: "cartUsers"
-                }
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "productData.vendor_id",
-                    foreignField: "_id",
-                    as: "vendorData"
-                }
-            },
-            { $unwind: { path: "$vendorData", preserveNullAndEmptyArrays: true } },
-            {
-                $lookup: {
-                    from: "addresses",
-                    localField: "user_id",
-                    foreignField: "user_id",
-                    as: "addressData",
-                    pipeline: [
-                        {
-                            $match: addressId
-                                ? { _id: new mongoose.Types.ObjectId(addressId.toString()) }
-                                : { default: "1" }
-                        }
-                    ]
-                }
-            },
-            { $unwind: { path: "$addressData", preserveNullAndEmptyArrays: true } },
-            {
-                $lookup: {
-                    from: "couponcarts",
-                    localField: "user_id",
-                    foreignField: "user_id",
-                    as: "cartCouponData"
-                }
-            },
-            {
-                $lookup: {
-                    from: "variants",
-                    localField: "variant_id",
-                    foreignField: "_id",
-                    as: "variantDetails"
-                }
-            },
-            {
-                $lookup: {
-                    from: "variantattributes",
-                    localField: "variant_attribute_id",
-                    foreignField: "_id",
-                    as: "variantAttributeDetails"
-                }
-            },
-            {
-                $lookup: {
-                    from: "shippings",
-                    localField: "shipping_id",
-                    foreignField: "_id",
-                    as: "shippingData"
-                }
-            },
-            {
-                $addFields: {
-                    vendorCoupon: {
-                        $first: {
-                            $filter: {
-                                input: { $ifNull: ["$cartCouponData", []] },
-                                as: "row",
-                                cond: {
-                                    $eq: [
-                                        { $toString: "$$row.vendor_id" },
-                                        { $toString: "$productData.vendor_id" } // replace if vendor_id path is different
-                                    ]
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                $lookup: {
-                    from: "vendordetails",
-                    localField: "vendorData._id",
-                    foreignField: "user_id",
-                    as: "vendorDetails"
-                }
-            },
-            { $unwind: { path: "$vendorDetails", preserveNullAndEmptyArrays: true } },
-            {
-                $group: {
-                    _id: { vendor_id: "$productData.vendor_id" },
-                    vendorName: { $first: "$vendorData.name" },
-                    viewData: { $first: "$viewData" },
-                    vendorIcon: { $first: { $concat: [base_url, "$vendorDetails.shop_icon"] } },
-                    vendorShop: { $first: "$vendorDetails.shop_name" },
-                    slug: { $first: "$vendorDetails.slug" },
-                    shippingData: { $addToSet: "$shippingData" },
-                    addressData: { $first: "$addressData" },
-                    vendorItems: {
-                        $push: {
-                            cart_id: "$_id",
-                            isCombination: "$isCombination",
-                            customize: "$customize",
-                            customizationData: "$customizationData",
-                            variants: "$variants", 
-                            variantData: "$variantDetails",
-                            variantAttributeData: "$variantAttributeDetails",
-                            variant_attribute_id: "$variant_attribute_id",
-                            variant_id: "$variant_id",
-                            combinationData: "$productData.combinationData",
-                            promotionalOfferData: "$productData.promotionaloffers",
-                            qty: "$qty",
-                            product_id: "$product_id",
-                            product_image: "$productData.image",
-                            stock: "$productData.qty",
-                            product_name: "$productData.product_title",
-                            product_bedge: "$productData.product_bedge",
-                            sale_price: "$price",
-                            real_price: "$productData.sale_price",
-                            original_price: "$original_price",
-                            discount_amount: "$productData.discount_amount",
-                            short_description: "$productData.description",
-                            slug: "$productData.slug",
-                            delivery_amount: "$productData.delivery_amount",
-                            delivery: "$productData.delivery_type",
-                            isDeleted: "$productData.isDeleted",
-                            status: "$productData.status",
-                            viewCount: { $size: "$viewData" },
-                            cartAddedUserCount: { $size: "$cartUsers" }
-                        }
+              $lookup: {
+                from: "promotionaloffers",
+                let: { productId: "$_id", vendorId: "$vendor_id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$status", true] },
+                          { $ne: ["$expiry_status", "expired"] },
+                          {
+                            $in: [
+                              { $toObjectId: "$$productId" },
+                              "$product_id",
+                            ],
+                          },
+                          { $eq: ["$vendor_id", "$$vendorId"] },
+                        ],
+                      },
                     },
-                    vendorCoupon: { $first: { $ifNull: ["$vendorCoupon", null] } }
-                }
+                  },
+                ],
+                as: "promotionaloffers",
+              },
             },
-            { $sort: { "_id.vendor_id": 1 } },
+          ],
+        },
+      },
+      { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "visitcounts",
+          let: { pid: "$product_id" },
+          pipeline: [
             {
-                $addFields: {
-                    products: {
-                        $map: {
-                            input: "$vendorItems",
-                            as: "item",
-                            in: {
-                                cart_id: "$$item.cart_id",
-                                isCombination: "$$item.isCombination",
-                                customize: "$$item.customize",
-                                customizationData: "$$item.customizationData",
-                                variants: "$$item.variants",
-                                shippingData: "$shippingData",
-                                addressData: "$addressData",
-                                variantData: "$$item.variantData",
-                                variantAttributeData: "$$item.variantAttributeData",
-                                variant_attribute_id: "$$item.variant_attribute_id",
-                                variant_id: "$$item.variant_id",
-                                combinationData: "$$item.combinationData",
-                                qty: "$$item.qty",
-                                product_id: "$$item.product_id",
-                                product_name: "$$item.product_name",
-                                product_bedge: "$$item.product_bedge",
-                                sale_price: "$$item.sale_price",
-                                real_price: "$$item.real_price",
-                                original_price: "$$item.original_price",
-                                firstImage: {
-                                    $concat: [image_base_url, { $arrayElemAt: ["$$item.product_image", 0] }]
-                                },
-                                slug: "$$item.slug",
-                                stock: "$$item.stock",
-                                isDeleted: "$$item.isDeleted",
-                                status: "$$item.status",
-                                promotionalOfferData: "$$item.promotionalOfferData",
-                                viewCount: {
-                                    $ifNull: [{ $arrayElemAt: ["$viewData.totalViews", 0] }, 0]
-                                },
-                                cartAddedUserCount: "$$item.cartAddedUserCount"
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    vendor_id: "$_id.vendor_id",
-                    shippingData: 1,
-                    addressData: 1,
-                    viewData: 1,
-                    vendorName: 1,
-                    slug: 1,
-                    vendorIcon: 1,
-                    vendorShop: 1,
-                    vendorCoupon: { $ifNull: ["$vendorCoupon", null] },
-                    products: 1
-                }
-            }
-        ];
-
-        const cartResult = await CartModel.aggregate(pipeline);
-
-        if (!cartResult || cartResult.length === 0) {
-            await CartCouponModel.findOneAndDelete({ user_id: user_id });
-            return resp.status(200).json({ message: "Cart list fetched successfully.", result: [] });
-        }
-
-        const formattedResult = await Promise.all(
-            cartResult.map(async (item) => {
-                const shippingData = item.shippingData?.flat() || [];
-                const userCountry = queryCountry || item.addressData?.country?.trim();
-                const shippingTypes = ["standardShipping", "expedited", "twoDays", "oneDay"];
-                const combinedShipping: Record<string, any[]> = {
-                    standardShipping: [],
-                    expedited: [],
-                    twoDays: [],
-                    oneDay: []
-                };
-
-                if (userCountry && shippingData.length > 0) {
-                    for (const shipping of shippingData) {
-                        const template = shipping.shippingTemplateData;
-                        for (const type of shippingTypes) {
-                            const typeData = template[type] || [];
-                            for (const option of typeData) {
-                                if (option.region.includes(userCountry)) {
-                                    combinedShipping[type].push({
-                                        _id: shipping._id,
-                                        title: shipping.title,
-                                        minDays: Number(option.transitTime.minDays),
-                                        maxDays: Number(option.transitTime.maxDays),
-                                        perOrder: Number(option.shippingFee.perOrder),
-                                        perItem: Number(option.shippingFee.perItem),
-                                        region: option.region
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-
-                const matchedShippingOptions = Object.entries(combinedShipping)
-                    .filter(([, options]) => options.length > 0)
-                    .map(([type, options]) => ({ shippingType: type, options }));
-
-                let totalAmount = 0;
-                let discountAmount = 0;
-                let discountEligibleAmount = 0;
-
-                if (item.products?.length > 0) {
-                    totalAmount = item.products.reduce((acc: any, prod: any) => {
-                        return acc + Number(prod.sale_price) * Number(prod.qty);
-                    }, 0);
-                }
-
-                let couponData: any = null;
-                if (item.vendorCoupon?.vendor_id) {
-                    couponData = await CouponModel.findOne(
-                        { vendor_id: item.vendorCoupon.vendor_id },
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$product_id", "$$pid"] },
                     {
-                          coupon_code: 1,
-                          discount_amount: 1,
-                          discount_type: 1,
-                          product_id: 1,
-                          isSynced: 1  
-                    });
+                      $gte: [
+                        "$date",
+                        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalViews: { $sum: "$visit_count" },
+              },
+            },
+          ],
+          as: "viewData",
+        },
+      },
+      {
+        $lookup: {
+          from: "carts",
+          let: { pid: "$product_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$product_id", "$$pid"] },
+              },
+            },
+            {
+              $group: {
+                _id: "$user_id",
+              },
+            },
+          ],
+          as: "cartUsers",
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "productData.vendor_id",
+          foreignField: "_id",
+          as: "vendorData",
+        },
+      },
+      { $unwind: { path: "$vendorData", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "addresses",
+          localField: "user_id",
+          foreignField: "user_id",
+          as: "addressData",
+          pipeline: [
+            {
+              $match: addressId
+                ? { _id: new mongoose.Types.ObjectId(addressId.toString()) }
+                : { default: "1" },
+            },
+          ],
+        },
+      },
+      { $unwind: { path: "$addressData", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "couponcarts",
+          localField: "user_id",
+          foreignField: "user_id",
+          as: "cartCouponData",
+        },
+      },
+      {
+        $lookup: {
+          from: "variants",
+          localField: "variant_id",
+          foreignField: "_id",
+          as: "variantDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "variantattributes",
+          localField: "variant_attribute_id",
+          foreignField: "_id",
+          as: "variantAttributeDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "shippings",
+          localField: "shipping_id",
+          foreignField: "_id",
+          as: "shippingData",
+        },
+      },
+      {
+        $addFields: {
+          vendorCoupon: {
+            $first: {
+              $filter: {
+                input: { $ifNull: ["$cartCouponData", []] },
+                as: "row",
+                cond: {
+                  $eq: [
+                    { $toString: "$$row.vendor_id" },
+                    { $toString: "$productData.vendor_id" }, // replace if vendor_id path is different
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "vendordetails",
+          localField: "vendorData._id",
+          foreignField: "user_id",
+          as: "vendorDetails",
+        },
+      },
+      { $unwind: { path: "$vendorDetails", preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: { vendor_id: "$productData.vendor_id" },
+          vendorName: { $first: "$vendorData.name" },
+          viewData: { $first: "$viewData" },
+          vendorIcon: {
+            $first: { $concat: [base_url, "$vendorDetails.shop_icon"] },
+          },
+          vendorShop: { $first: "$vendorDetails.shop_name" },
+          slug: { $first: "$vendorDetails.slug" },
+          shippingData: { $addToSet: "$shippingData" },
+          addressData: { $first: "$addressData" },
+          vendorItems: {
+            $push: {
+              cart_id: "$_id",
+              isCombination: "$isCombination",
+              customize: "$customize",
+              customizationData: "$customizationData",
+              shipping_id: "$shipping_id", // ✅ IMPORTANT
+              selectedShipping: {
+                // ✅ IMPORTANT
+                $arrayElemAt: ["$shippingData", 0],
+              },
+              variants: "$variants",
+              variantData: "$variantDetails",
+              variantAttributeData: "$variantAttributeDetails",
+              variant_attribute_id: "$variant_attribute_id",
+              variant_id: "$variant_id",
+              combinationData: "$productData.combinationData",
+              promotionalOfferData: "$productData.promotionaloffers",
+              qty: "$qty",
+              product_id: "$product_id",
+              product_image: "$productData.image",
+              stock: "$productData.qty",
+              product_name: "$productData.product_title",
+              product_bedge: "$productData.product_bedge",
+              sale_price: "$price",
+              real_price: "$productData.sale_price",
+              original_price: "$original_price",
+              discount_amount: "$productData.discount_amount",
+              short_description: "$productData.description",
+              slug: "$productData.slug",
+              delivery_amount: "$productData.delivery_amount",
+              delivery: "$productData.delivery_type",
+              isDeleted: "$productData.isDeleted",
+              status: "$productData.status",
+              viewCount: { $size: "$viewData" },
+              cartAddedUserCount: { $size: "$cartUsers" },
+            },
+          },
+          vendorCoupon: { $first: { $ifNull: ["$vendorCoupon", null] } },
+        },
+      },
+      { $sort: { "_id.vendor_id": 1 } },
+      {
+        $addFields: {
+          products: {
+            $map: {
+              input: "$vendorItems",
+              as: "item",
+              in: {
+                cart_id: "$$item.cart_id",
+                isCombination: "$$item.isCombination",
+                customize: "$$item.customize",
+                customizationData: "$$item.customizationData",
+                variants: "$$item.variants",
+                // shippingData: "$shippingData",
+                selectedShipping: "$$item.selectedShipping",
+shipping_id: "$$item.shipping_id",
+                addressData: "$addressData",
+                variantData: "$$item.variantData",
+                variantAttributeData: "$$item.variantAttributeData",
+                variant_attribute_id: "$$item.variant_attribute_id",
+                variant_id: "$$item.variant_id",
+                combinationData: "$$item.combinationData",
+                qty: "$$item.qty",
+                product_id: "$$item.product_id",
+                product_name: "$$item.product_name",
+                product_bedge: "$$item.product_bedge",
+                sale_price: "$$item.sale_price",
+                real_price: "$$item.real_price",
+                original_price: "$$item.original_price",
+                firstImage: {
+                  $concat: [
+                    image_base_url,
+                    { $arrayElemAt: ["$$item.product_image", 0] },
+                  ],
+                },
+                slug: "$$item.slug",
+                stock: "$$item.stock",
+                isDeleted: "$$item.isDeleted",
+                status: "$$item.status",
+                promotionalOfferData: "$$item.promotionalOfferData",
+                viewCount: {
+                  $ifNull: [{ $arrayElemAt: ["$viewData.totalViews", 0] }, 0],
+                },
+                cartAddedUserCount: "$$item.cartAddedUserCount",
+              },
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          vendor_id: "$_id.vendor_id",
+          shippingData: 1,
+          addressData: 1,
+          viewData: 1,
+          vendorName: 1,
+          slug: 1,
+          vendorIcon: 1,
+          vendorShop: 1,
+          vendorCoupon: { $ifNull: ["$vendorCoupon", null] },
+          products: 1,
+        },
+      },
+    ];
 
-                    if (couponData?.discount_type && couponData?.discount_amount) {
-                        const allowedProductIds = (couponData.product_id || []).map((id: any) =>
-                            id.toString()
-                        );
+    const cartResult = await CartModel.aggregate(pipeline);
 
-                        discountEligibleAmount = item.products.reduce((acc: any, prod: any) => {
-                            return allowedProductIds.includes(prod.product_id.toString())
-                                ? acc + Number(prod.sale_price) * Number(prod.qty)
-                                : acc;
-                        }, 0);
+    if (!cartResult || cartResult.length === 0) {
+      await CartCouponModel.findOneAndDelete({ user_id: user_id });
+      return resp
+        .status(200)
+        .json({ message: "Cart list fetched successfully.", result: [] });
+    }
 
-                        const type = couponData.discount_type;
-                        const value = Number(couponData.discount_amount);
+    const formattedResult = await Promise.all(
+      cartResult.map(async (item) => {
+        const shippingData = item.shippingData?.flat() || [];
+        const userCountry = queryCountry || item.addressData?.country?.trim();
+        const shippingAvailable = !!userCountry && item.products.every((product: any) =>
+        productHasRegionSupport(product.selectedShipping, userCountry));
+        const shippingTypes = [
+          "standardShipping",
+          "expedited",
+          "twoDays",
+          "oneDay",
+        ];
+        const combinedShipping: Record<string, any[]> = {
+          standardShipping: [],
+          expedited: [],
+          twoDays: [],
+          oneDay: [],
+        };
 
-                        discountAmount = type === "percentage" ? (discountEligibleAmount * value) / 100 : value;
-
-                        discountAmount = Math.min(discountAmount, discountEligibleAmount);
-                    }
+        if (userCountry && shippingData.length > 0) {
+          for (const shipping of shippingData) {
+            const template = shipping.shippingTemplateData;
+            for (const type of shippingTypes) {
+              const typeData = template[type] || [];
+              for (const option of typeData) {
+                if (option.region.includes(userCountry)) {
+                  combinedShipping[type].push({
+                    _id: shipping._id,
+                    title: shipping.title,
+                    minDays: Number(option.transitTime.minDays),
+                    maxDays: Number(option.transitTime.maxDays),
+                    perOrder: Number(option.shippingFee.perOrder),
+                    perItem: Number(option.shippingFee.perItem),
+                    region: option.region,
+                  });
                 }
-
-                return {
-                    vendor_id: item.vendor_id,
-                    slug: item.slug,
-                    vendor_name: item.vendorName,
-                    shippingAvailable: matchedShippingOptions.length > 0,
-                    matchedShippingOptions,
-                    shop_icon: item.vendorIcon,
-                    shop_name: item.vendorShop,
-                    vendor_coupon: item.vendorCoupon
-                      ? {
-                          ...item.vendorCoupon,
-                          coupon_data: {
-                              coupon_code: couponData?.coupon_code,
-                              discount_amount: discountAmount,
-                              isSynced: couponData?.isSynced ?? false
-                          }
-                        }
-                     : null,
-                    coupon_status: !!item.vendorCoupon,
-                    totalAmount,
-                    discountAmount,
-                    products: item.products
-                };
-            })
-        );
-
-        const activeVendorIdsInCart = formattedResult.map((item: any) => item.vendor_id.toString());
-        const cartCouponDoc = await couponCart.find({ user_id: user_id });
-
-        if (cartCouponDoc.length > 0) {
-            for (const item of cartCouponDoc) {
-                if (!activeVendorIdsInCart.includes(item.vendor_id.toString())) {
-                    await couponCart.findOneAndDelete({ user_id: user_id, vendor_id: item.vendor_id });
-                }
+              }
             }
+          }
         }
 
-        return resp.status(200).json({
-            message: "Cart list fetched successfully.",
-            result: formattedResult
-        });
-    } catch (error) {
-        return resp.status(500).json({ message: "Something went wrong. Please try again." });
+        const matchedShippingOptions = Object.entries(combinedShipping)
+          .filter(([, options]) => options.length > 0)
+          .map(([type, options]) => ({ shippingType: type, options }));
+
+        const previewDelivery = calculatePreviewDelivery(
+          item.products,
+          matchedShippingOptions,
+        );  
+
+        let totalAmount = 0;
+        let discountAmount = 0;
+        let discountEligibleAmount = 0;
+
+        if (item.products?.length > 0) {
+          totalAmount = item.products.reduce((acc: any, prod: any) => {
+            return acc + Number(prod.sale_price) * Number(prod.qty);
+          }, 0);
+        }
+
+        let couponData: any = null;
+        if (item.vendorCoupon?.vendor_id) {
+          couponData = await CouponModel.findOne(
+            { vendor_id: item.vendorCoupon.vendor_id },
+            {
+              coupon_code: 1,
+              discount_amount: 1,
+              discount_type: 1,
+              product_id: 1,
+              isSynced: 1,
+            },
+          );
+
+          if (couponData?.discount_type && couponData?.discount_amount) {
+            const allowedProductIds = (couponData.product_id || []).map(
+              (id: any) => id.toString(),
+            );
+
+            discountEligibleAmount = item.products.reduce(
+              (acc: any, prod: any) => {
+                return allowedProductIds.includes(prod.product_id.toString())
+                  ? acc + Number(prod.sale_price) * Number(prod.qty)
+                  : acc;
+              },
+              0,
+            );
+
+            const type = couponData.discount_type;
+            const value = Number(couponData.discount_amount);
+
+            discountAmount =
+              type === "percentage"
+                ? (discountEligibleAmount * value) / 100
+                : value;
+
+            discountAmount = Math.min(discountAmount, discountEligibleAmount);
+          }
+        }
+
+        return {
+          vendor_id: item.vendor_id,
+          slug: item.slug,
+          vendor_name: item.vendorName,
+          shippingAvailable,
+          matchedShippingOptions,
+          previewDelivery,
+          shop_icon: item.vendorIcon,
+          shop_name: item.vendorShop,
+          vendor_coupon: item.vendorCoupon
+            ? {
+                ...item.vendorCoupon,
+                coupon_data: {
+                  coupon_code: couponData?.coupon_code,
+                  discount_amount: discountAmount,
+                  isSynced: couponData?.isSynced ?? false,
+                },
+              }
+            : null,
+          coupon_status: !!item.vendorCoupon,
+          totalAmount,
+          discountAmount,
+          products: item.products,
+        };
+      }),
+    );
+
+    const activeVendorIdsInCart = formattedResult.map((item: any) =>
+      item.vendor_id.toString(),
+    );
+    const cartCouponDoc = await couponCart.find({ user_id: user_id });
+
+    if (cartCouponDoc.length > 0) {
+      for (const item of cartCouponDoc) {
+        if (!activeVendorIdsInCart.includes(item.vendor_id.toString())) {
+          await couponCart.findOneAndDelete({
+            user_id: user_id,
+            vendor_id: item.vendor_id,
+          });
+        }
+      }
     }
+
+    return resp.status(200).json({
+      message: "Cart list fetched successfully.",
+      result: formattedResult,
+    });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const deleteCart = async (req: CustomRequest, resp: Response) => {
-    try {
-        const cart_id = req.body.cart_id;
-        if (!cart_id) {
-            return resp.status(400).json({ message: "Please Provide Cart Id" });
-        }
-        const cart = await Cart.findOneAndDelete({ _id: cart_id, user_id: req.user._id });
-        if (!cart) {
-            return resp.status(400).json({ message: "Cart Not Found" });
-        }
-
-        // remove parent vendor cart if any vendor product is not available in the user cart
-        const checkOtherVendorProduct = await Cart.findOne({ user_id: cart.user_id, vendor_id: cart.vendor_id });
-
-        if (!checkOtherVendorProduct) {
-            await ParentCart.findOneAndDelete({ vendor_id: cart.vendor_id, user_id: cart.user_id });
-        }
-
-        const productData = await Product.findOne({ _id: cart.product_id });
-        await activity(
-            req.user._id,
-            cart.product_id,
-            cart.vendor_id,
-            'delete-cart',
-            `${productData?.product_title} deleted cart.`,
-        );
-        await vandorAndProductActivity(
-            req.user._id,
-            cart.product_id,
-            cart.vendor_id,
-            "product",
-            "delete-cart",
-            `${productData?.product_title} deleted product from cart.`,
-        )
-        return resp.status(200).json({ message: 'Cart Product Delete successfully.' });
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+  try {
+    const cart_id = req.body.cart_id;
+    if (!cart_id) {
+      return resp.status(400).json({ message: "Please Provide Cart Id" });
     }
-}
-
-export const deleteCompleteCart = async (req: CustomRequest, resp: Response) => {
-    try {
-        await Cart.deleteMany({ user_id: req.user._id });
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'delete-cart',
-            `All Product deleted from cart.`,
-        );
-        return resp.status(200).json({ message: 'User Cart delete successfully.' });
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+    const cart = await Cart.findOneAndDelete({
+      _id: cart_id,
+      user_id: req.user._id,
+    });
+    if (!cart) {
+      return resp.status(400).json({ message: "Cart Not Found" });
     }
-}
+
+    // remove parent vendor cart if any vendor product is not available in the user cart
+    const checkOtherVendorProduct = await Cart.findOne({
+      user_id: cart.user_id,
+      vendor_id: cart.vendor_id,
+    });
+
+    if (!checkOtherVendorProduct) {
+      await ParentCart.findOneAndDelete({
+        vendor_id: cart.vendor_id,
+        user_id: cart.user_id,
+      });
+    }
+
+    const productData = await Product.findOne({ _id: cart.product_id });
+    await activity(
+      req.user._id,
+      cart.product_id,
+      cart.vendor_id,
+      "delete-cart",
+      `${productData?.product_title} deleted cart.`,
+    );
+    await vandorAndProductActivity(
+      req.user._id,
+      cart.product_id,
+      cart.vendor_id,
+      "product",
+      "delete-cart",
+      `${productData?.product_title} deleted product from cart.`,
+    );
+    return resp
+      .status(200)
+      .json({ message: "Cart Product Delete successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
+
+export const deleteCompleteCart = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    await Cart.deleteMany({ user_id: req.user._id });
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "delete-cart",
+      `All Product deleted from cart.`,
+    );
+    return resp.status(200).json({ message: "User Cart delete successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const addAddress = async (req: CustomRequest, resp: Response) => {
-    try {
-        const data: any = {
-            user_id: req.user._id,
-            first_name: req.body.first_name,
-            last_name: req.body.last_name,
-            country: req.body.country,
-            mobile: req.body.mobile,
-            email: req.user.email,
-            phone_code: req.body.phone_code,
-            address_line1: req.body.address_line1,
-            address_line2: req.body.address_line2,
-            state: req.body.state,
-            city: req.body.city,
-            pincode: req.body.pincode
-        }
-        if (req.body.default == '1') {
-            await Address.updateMany(
-                { user_id: req.user._id },
-                { $set: { default: 0 } }
-            )
-            data.default = '1';
-        }
-        if (req.body._id === 'new') {
-            await Address.create(data);
-            await activity(
-                req.user._id,
-                null,
-                null,
-                'add-address',
-                `Address added for user ${req.user.name}.`,
-            );
-            resp.status(200).json({ message: 'Address Added Successfully' });
-        } else {
-
-            await Address.updateOne(
-                { _id: req.body._id },
-                { $set: data }
-            );
-
-            await activity(
-                req.user._id,
-                null,
-                null,
-                'update-address',
-                `Address updated for user ${req.user.name}.`,
-            );
-
-            return resp.status(200).json({ message: 'Address updated successfully.' });
-        }
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+  try {
+    const data: any = {
+      user_id: req.user._id,
+      first_name: req.body.first_name,
+      last_name: req.body.last_name,
+      country: req.body.country,
+      mobile: req.body.mobile,
+      email: req.user.email,
+      phone_code: req.body.phone_code,
+      address_line1: req.body.address_line1,
+      address_line2: req.body.address_line2,
+      state: req.body.state,
+      city: req.body.city,
+      pincode: req.body.pincode,
+    };
+    if (req.body.default == "1") {
+      await Address.updateMany(
+        { user_id: req.user._id },
+        { $set: { default: 0 } },
+      );
+      data.default = "1";
     }
-}
+    if (req.body._id === "new") {
+      await Address.create(data);
+      await activity(
+        req.user._id,
+        null,
+        null,
+        "add-address",
+        `Address added for user ${req.user.name}.`,
+      );
+      resp.status(200).json({ message: "Address Added Successfully" });
+    } else {
+      await Address.updateOne({ _id: req.body._id }, { $set: data });
 
+      await activity(
+        req.user._id,
+        null,
+        null,
+        "update-address",
+        `Address updated for user ${req.user.name}.`,
+      );
+
+      return resp
+        .status(200)
+        .json({ message: "Address updated successfully." });
+    }
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const deleteAddress = async (req: CustomRequest, resp: Response) => {
-    try {
+  try {
+    const address_id = req.body.address_id;
 
-        const address_id = req.body.address_id;
+    const existingAddress = await Address.findOne({
+      _id: address_id,
+      user_id: req.user._id,
+    });
 
-        const existingAddress = await Address.findOne({ _id: address_id, user_id: req.user._id });
-
-        if (!existingAddress) {
-            return resp.status(404).json({ message: 'Address not found.' });
-        }
-
-        await Address.deleteOne({ _id: address_id, user_id: req.user._id });
-
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'delete-address',
-            `Address deleted for user ${req.user.name}.`,
-        );
-
-        return resp.status(200).json({ message: 'Address deleted successfully.' });
-
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+    if (!existingAddress) {
+      return resp.status(404).json({ message: "Address not found." });
     }
-}
+
+    await Address.deleteOne({ _id: address_id, user_id: req.user._id });
+
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "delete-address",
+      `Address deleted for user ${req.user.name}.`,
+    );
+
+    return resp.status(200).json({ message: "Address deleted successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const getAddress = async (req: CustomRequest, resp: Response) => {
-    try {
-        const { limit, offset } = req.query;
-        const user_id = req.user._id;
+  try {
+    const { limit, offset } = req.query;
+    const user_id = req.user._id;
 
-        const limitNum = parseInt(limit as string, 10) || 10;
-        const offsetNum = parseInt(offset as string, 10) || 0;
+    const limitNum = parseInt(limit as string, 10) || 10;
+    const offsetNum = parseInt(offset as string, 10) || 0;
 
-        const totalAddresses = await Address.countDocuments({ user_id: user_id });
-        const totalPages = Math.ceil(totalAddresses / limitNum);
+    const totalAddresses = await Address.countDocuments({ user_id: user_id });
+    const totalPages = Math.ceil(totalAddresses / limitNum);
 
-        const addresses = await Address.find({ user_id: user_id })
-            .sort({ default: -1, _id: -1 }) // Sort by default (1 first), then by _id in descending order
-            .skip(offsetNum * limitNum)
-            .limit(limitNum);
+    const addresses = await Address.find({ user_id: user_id })
+      .sort({ default: -1, _id: -1 }) // Sort by default (1 first), then by _id in descending order
+      .skip(offsetNum * limitNum)
+      .limit(limitNum);
 
-        if (!addresses || addresses.length === 0) {
-            return resp.status(404).json({ message: 'Address not found.' });
-        }
-
-        return resp.status(200).json({ message: 'Address fetched successfully.', addresses, addressLength: totalAddresses, totalPages });
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!addresses || addresses.length === 0) {
+      return resp.status(404).json({ message: "Address not found." });
     }
-}
+
+    return resp
+      .status(200)
+      .json({
+        message: "Address fetched successfully.",
+        addresses,
+        addressLength: totalAddresses,
+        totalPages,
+      });
+  } catch (error) {
+    console.error(error);
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const getAddressById = async (req: CustomRequest, resp: Response) => {
-    try {
-        const address_id = req.params.id;
-        const address = await Address.findOne({ _id: address_id, user_id: req.user._id });
-        return resp.status(200).json({ message: 'Address fetched successfully.', address });
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
-    }
-}
+  try {
+    const address_id = req.params.id;
+    const address = await Address.findOne({
+      _id: address_id,
+      user_id: req.user._id,
+    });
+    return resp
+      .status(200)
+      .json({ message: "Address fetched successfully.", address });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
-export const checkoutAddressEligibility = async (userId: any, addressId: any, vendorId: any = "") => {
+export const checkoutAddressEligibility = async (
+  userId: any,
+  addressId: any,
+  vendorId: any = "",
+) => {
+  // check address
+  const addressResult = await Address.findOne({
+    _id: new mongoose.Types.ObjectId(addressId as string),
+  });
 
-    // check address
-    const addressResult = await Address.findOne({ _id: new mongoose.Types.ObjectId(addressId as string) })
-
-    if (!addressResult) {
-
-        return {
-            status: false,
-            message: 'Address not found.'
-        }
-
-    }
-
-    const addressCountry = addressResult.country || 'India';
-
-    let pipeline = [
-        {
-            $match: {
-                user_id: new mongoose.Types.ObjectId(userId),
-                ...(vendorId ? { vendor_id: new mongoose.Types.ObjectId(vendorId) } : {})
-            }
-        },
-        {
-            $lookup: {
-                from: 'users',
-                localField: 'vendor_id',
-                foreignField: '_id',
-                pipeline: [
-                    {
-                        $project: {
-                            _id: 1
-                        }
-                    },
-                    {
-                        $lookup: {
-                            from: 'vendordetails',
-                            localField: "_id",
-                            foreignField: "user_id",
-                            pipeline: [
-                                {
-                                    $project: {
-                                        shop_name: 1
-                                    }
-                                }
-                            ],
-                            as: 'vendorprofile'
-                        }
-                    }
-                ],
-                as: 'vendorDetails'
-            }
-        },
-        {
-            $unwind: {
-                path: "$vendorDetails",
-                preserveNullAndEmptyArrays: true
-            }
-        },
-        {
-            $addFields: {
-                vendorShopName: {
-                    $ifNull: ["$vendorDetails.vendorprofile.shop_name", null]
-                }
-            }
-        },
-        {
-            $lookup: {
-                from: 'carts',
-                localField: 'vendor_id',
-                foreignField: 'vendor_id',
-                pipeline: [
-                    {
-                        $match: {
-                            user_id: new mongoose.Types.ObjectId(userId)
-                        }
-                    },
-                    {
-                        $lookup: {
-                            from: 'shippings',
-                            localField: 'shipping_id',
-                            foreignField: '_id',
-                            pipeline: [
-                                {
-                                    $project: {
-                                        shippingTemplateData: 1
-                                    }
-                                }
-                            ],
-                            as: 'shippingDetail'
-                        }
-                    },
-                    {
-                        $unwind: {
-                            path: '$shippingDetail',
-                            preserveNullAndEmptyArrays: true
-                        }
-                    },
-                    {
-                        $project: {
-                            shipping_id: 1,
-                            shippingName: 1,
-                            shippingDetail: 1
-                        }
-                    }
-                ],
-                as: 'cartData'
-            }
-        },
-        {
-            $project: {
-                createdAt: 0,
-                updatedAt: 0,
-                vendorDetails: 0,
-            }
-        }
-    ];
-
-    const getVendorCartData = await ParentCart.aggregate(pipeline);
-
-    if (!getVendorCartData) {
-
-        return {
-            status: false,
-            message: 'No items in your cart.'
-        }
-
-    }
-
-
-    let errorVendorName = "";
-    getVendorCartData.forEach((carts) => {
-
-        const applyVendorShippingTemplate = carts.vendor_data[0].shippingName;
-        // check shipping in the related cart products;
-
-        let allowCountries = [];
-
-        for (let cart of (carts.cartData)) {
-
-            if (applyVendorShippingTemplate === "standardShipping") {
-
-                for (let region of (cart?.shippingDetail?.shippingTemplateData.standardShipping)) {
-
-                    allowCountries.push(...region?.region)
-
-                }
-
-            }
-
-            if (applyVendorShippingTemplate === "expedited") {
-
-                for (let region of (cart?.shippingDetail?.shippingTemplateData.expedited)) {
-
-                    allowCountries.push(...region?.region)
-
-                }
-            }
-
-            if (applyVendorShippingTemplate === "twoDays") {
-
-                for (let region of (cart?.shippingDetail?.shippingTemplateData.twoDays)) {
-
-                    allowCountries.push(...region?.region)
-
-                }
-            }
-
-            if (applyVendorShippingTemplate === "oneDay") {
-
-                for (let region of (cart?.shippingDetail?.shippingTemplateData.oneDay)) {
-
-                    allowCountries.push(...region?.region)
-
-                }
-            }
-
-        }
-
-        const getUniqueCountries = [...new Set(allowCountries)];
-
-        if (!getUniqueCountries.includes(addressCountry)) {
-
-            errorVendorName = getVendorCartData[0]?.vendorShopName;
-            return;
-
-        }
-
-    })
-
-    if (errorVendorName) {
-
-        return {
-            status: false,
-            message: `${getVendorCartData[0]?.vendorShopName} doesn't allow the delivery for your country`
-        }
-
-
-    }
-
-
+  if (!addressResult) {
     return {
-        status: true,
-        message: 'Allowing delhivery for your country'
+      status: false,
+      message: "Address not found.",
+    };
+  }
+
+  const addressCountry = addressResult.country || "India";
+
+  let pipeline = [
+    {
+      $match: {
+        user_id: new mongoose.Types.ObjectId(userId),
+        ...(vendorId
+          ? { vendor_id: new mongoose.Types.ObjectId(vendorId) }
+          : {}),
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "vendor_id",
+        foreignField: "_id",
+        pipeline: [
+          {
+            $project: {
+              _id: 1,
+            },
+          },
+          {
+            $lookup: {
+              from: "vendordetails",
+              localField: "_id",
+              foreignField: "user_id",
+              pipeline: [
+                {
+                  $project: {
+                    shop_name: 1,
+                  },
+                },
+              ],
+              as: "vendorprofile",
+            },
+          },
+        ],
+        as: "vendorDetails",
+      },
+    },
+    {
+      $unwind: {
+        path: "$vendorDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $addFields: {
+        vendorShopName: {
+          $ifNull: ["$vendorDetails.vendorprofile.shop_name", null],
+        },
+      },
+    },
+    {
+      $lookup: {
+        from: "carts",
+        localField: "vendor_id",
+        foreignField: "vendor_id",
+        pipeline: [
+          {
+            $match: {
+              user_id: new mongoose.Types.ObjectId(userId),
+            },
+          },
+          {
+            $lookup: {
+              from: "shippings",
+              localField: "shipping_id",
+              foreignField: "_id",
+              pipeline: [
+                {
+                  $project: {
+                    shippingTemplateData: 1,
+                  },
+                },
+              ],
+              as: "shippingDetail",
+            },
+          },
+          {
+            $unwind: {
+              path: "$shippingDetail",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              shipping_id: 1,
+              shippingName: 1,
+              shippingDetail: 1,
+            },
+          },
+        ],
+        as: "cartData",
+      },
+    },
+    {
+      $project: {
+        createdAt: 0,
+        updatedAt: 0,
+        vendorDetails: 0,
+      },
+    },
+  ];
+
+  const getVendorCartData = await ParentCart.aggregate(pipeline);
+
+  if (!getVendorCartData) {
+    return {
+      status: false,
+      message: "No items in your cart.",
+    };
+  }
+
+  let errorVendorName = "";
+  getVendorCartData.forEach((carts) => {
+    const applyVendorShippingTemplate = carts.vendor_data[0].shippingName;
+    // check shipping in the related cart products;
+
+    let allowCountries = [];
+
+    for (let cart of carts.cartData) {
+      if (applyVendorShippingTemplate === "standardShipping") {
+        for (let region of cart?.shippingDetail?.shippingTemplateData
+          .standardShipping) {
+          allowCountries.push(...region?.region);
+        }
+      }
+
+      if (applyVendorShippingTemplate === "expedited") {
+        for (let region of cart?.shippingDetail?.shippingTemplateData
+          .expedited) {
+          allowCountries.push(...region?.region);
+        }
+      }
+
+      if (applyVendorShippingTemplate === "twoDays") {
+        for (let region of cart?.shippingDetail?.shippingTemplateData.twoDays) {
+          allowCountries.push(...region?.region);
+        }
+      }
+
+      if (applyVendorShippingTemplate === "oneDay") {
+        for (let region of cart?.shippingDetail?.shippingTemplateData.oneDay) {
+          allowCountries.push(...region?.region);
+        }
+      }
     }
 
-}
+    const getUniqueCountries = [...new Set(allowCountries)];
+
+    if (!getUniqueCountries.includes(addressCountry)) {
+      errorVendorName = getVendorCartData[0]?.vendorShopName;
+      return;
+    }
+  });
+
+  if (errorVendorName) {
+    return {
+      status: false,
+      message: `${getVendorCartData[0]?.vendorShopName} doesn't allow the delivery for your country`,
+    };
+  }
+
+  return {
+    status: true,
+    message: "Allowing delhivery for your country",
+  };
+};
 
 export function resolvePriceAndQty({
   product,
-  cartItem
+  cartItem,
 }: {
   product: any;
   cartItem: any;
@@ -1020,11 +1196,9 @@ export function resolvePriceAndQty({
   const isCheckedPrice = !!product.form_values?.isCheckedPrice;
   const isCheckedQuantity = !!product.form_values?.isCheckedQuantity;
 
-  const priceDrivenByCombination =
-    isCheckedPrice && basePrice === 0;
+  const priceDrivenByCombination = isCheckedPrice && basePrice === 0;
 
-  const qtyDrivenByCombination =
-    isCheckedQuantity && baseQty === 0;
+  const qtyDrivenByCombination = isCheckedQuantity && baseQty === 0;
 
   let resolvedPrice = basePrice;
   let resolvedQty = baseQty;
@@ -1039,7 +1213,6 @@ export function resolvePriceAndQty({
     const groupName = String(group.variant_name).trim();
 
     for (const comb of group.combinations || []) {
-
       const isMatch = selectedVariants.every((v: any) => {
         return (
           String(v.variantName).trim() === groupName &&
@@ -1061,7 +1234,6 @@ export function resolvePriceAndQty({
     }
   }
 
-
   return { price: resolvedPrice, qty: 0 };
 }
 
@@ -1077,3207 +1249,3771 @@ function generateItemId(subOrderId: string) {
   return `${last5}${timeSuffix}${random5}`;
 }
 
-
 export const checkout = async (req: CustomRequest, resp: Response) => {
-    let error = false;
-    try {
-        console.log("Checkout Request Body:", req.body); // Debug log
-        const isVendorCheckout = !!req.body.vendor_id;
-        const shopCount = Number(req.body.shop_count || 1);
-        if (shopCount <= 0) {
-            return resp.status(400).json({ message: "Invalid shop_count" });
-        }
-        const checkoutEliginbilityData = isVendorCheckout ? await checkoutAddressEligibility(req.user._id, req.body.address_id, req.body.vendor_id) : await checkoutAddressEligibility(req.user._id, req.body.address_id);
+  let error = false;
+  try {
+    console.log("Checkout Request Body:", req.body); // Debug log
+    const isVendorCheckout = !!req.body.vendor_id;
+    const shopCount = Number(req.body.shop_count || 1);
+    if (shopCount <= 0) {
+      return resp.status(400).json({ message: "Invalid shop_count" });
+    }
+    const checkoutEliginbilityData = isVendorCheckout
+      ? await checkoutAddressEligibility(
+          req.user._id,
+          req.body.address_id,
+          req.body.vendor_id,
+        )
+      : await checkoutAddressEligibility(req.user._id, req.body.address_id);
 
-        if (!checkoutEliginbilityData.status) {
-
-            return resp.status(400).json({ message: checkoutEliginbilityData.message });
-        }
-
-        const totalSales = await Sales.countDocuments();
-
-        const currentDate = new Date();
-        const year = currentDate.getFullYear(); // e.g., 2024
-        const month = String(currentDate.getMonth() + 1).padStart(2, '0'); // Month is zero-based, so add 1 and pad to 2 digits
-        const date = String(currentDate.getDate()).padStart(2, '0'); // Pad date to 2 digits
-        let hours = currentDate.getHours();
-        let minutes = currentDate.getMinutes();
-        let milliseconds = currentDate.getMilliseconds();
-
-        const orderId = `ord${year}${month}${date}${hours}${minutes}${milliseconds}`;
-
-        const address = await Address.findById({ _id: new mongoose.Types.ObjectId(req.body.address_id) });
-
-        const pipeline = [
-            {
-                $match: {
-                    'user_id': new mongoose.Types.ObjectId(req.user._id),
-                    ...(isVendorCheckout ? { 'vendor_id': new mongoose.Types.ObjectId(req.body.vendor_id) } : {})
-                }
-            },
-            {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "product_data"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$product_data",
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $lookup: {
-                    from: "parentcarts",
-                    localField: "vendor_id",
-                    foreignField: "vendor_id",
-                    pipeline: [
-                        {
-                            $match: {
-                                user_id: new mongoose.Types.ObjectId(req.user._id)
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: 'users',
-                                localField: 'vendor_id',
-                                foreignField: '_id',
-                                pipeline: [
-                                    {
-                                        $project: {
-                                            _id: 1
-                                        }
-                                    },
-                                    {
-                                        $lookup: {
-                                            from: 'vendordetails',
-                                            localField: "_id",
-                                            foreignField: "user_id",
-                                            pipeline: [
-                                                {
-                                                    $project: {
-                                                        shop_name: 1
-                                                    }
-                                                }
-                                            ],
-                                            as: 'vendorprofile'
-                                        }
-                                    }
-                                ],
-                                as: 'vendorDetails'
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "shippings",
-                                localField: "shipping_id",
-                                foreignField: "_id",
-                                as: "shippingData"
-                            }
-                        }
-                    ],
-                    as: "parentCartData"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$parentCartData",
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $project: {
-                    qty: 1,
-                    product_id: 1,
-                    vendor_id: 1,
-                    delivery_amount:
-                        "$product_data.delivery_amount",
-                    delivery:
-                        "$product_data.delivery_type",
-                    sale_price: "$price",
-                    original_price: "$original_price",
-                    discount_type: "$product_data.discount_type",
-                    discount_amount: "$product_data.discount_amount",
-                    isCombination: "$product_data.isCombination",
-                    customize: "$customize",
-                    customizationData: "$customizationData",
-                    variant_id: "$variant_id",
-                    variant_attribute_id: "$variant_attribute_id",
-                    variants: "$variants",
-                    affiliate_id: "$affiliate_id",
-                    shipping_id: "$shipping_id",
-                    shippingName: "$shippingName",
-                    parentCartData: 1
-                    // parentCartData: {
-                    //     $cond: {
-                    //         if: { $isArray: "$parentCartData.vendor_data" },
-                    //         then: "$parentCartData.vendor_data",
-                    //         else: []
-                    //     }
-                    // }
-                }
-            }
-        ]
-        const cartResult = await Cart.aggregate(pipeline);
-
-        let subTotal = 0;
-        let totalShipping = 0;
-        let discount = 0;
-        let discountAmount = 0;
-        let netAmount = 0;
-        let usedWalletAmount = 0;
-        let voucherDiscount = Number(req.body.voucher_discount || 0);
-        let promotionDiscount = 0;
-        let delivery = 0;
-        let parentCartData: any = {};
-
-        if (!address || (address && address?.country === "")) {
-
-            return resp.status(400).json({
-                status: false,
-                message: 'User selected address country not found.'
-            });
-
-        }
-
-        const cartCoupon = isVendorCheckout ? await couponCart.findOne({ user_id: req.user._id, vendor_id: req.body.vendor_id }) :
-        await CartCouponModel.find({ user_id: req.user._id });
-        let couponCode = '';
-        const vendorCouponMap = new Map<string, { coupon_code: string; discount_amount: number }>();
-        const calculateVendorCouponDiscount = async (vendorId: string) => {
-
-            if (vendorCouponMap.has(vendorId)) {
-              return vendorCouponMap.get(vendorId)!.discount_amount;
-            }
-
-            const couponMap = await couponCart.findOne({
-              user_id: req.user._id,
-              vendor_id: vendorId
-            });
-            if (!couponMap) return 0;
-
-            const coupon = await CouponModel.findOne({ vendor_id: vendorId });
-            if (!coupon) return 0;
-
-            vendorCouponMap.set(vendorId, {
-               coupon_code: coupon.coupon_code,
-               discount_amount: coupon.discount_amount
-            });
-
-            couponCode = coupon.coupon_code;
-            return coupon.discount_amount;
-            };
-
-        if (cartResult.length !== 0) {
-            await Promise.all(cartResult.map(async (item) => {
-
-                const offerPrice = getOfferProductPrice(item.sale_price, item.discount_type, item.discount_amount);
-                const shippingAmount = item.delivery_amount;
-                if (!item.vendor_id) {
-                    throw new Error("Cart item missing vendor_id");
-                }
-                await calculateVendorCouponDiscount(String(item.vendor_id));
-                subTotal += item.sale_price * item.qty;
-                if (item.delivery === 'paid') {
-                    totalShipping += shippingAmount * item.qty;
-                }
-
-                discount += (item.sale_price - offerPrice) * item.qty;
-                promotionDiscount += (item.original_price - item.sale_price) * item.qty
-
-                const shippingName = item.parentCartData?.vendor_data?.[0]?.shippingName;
-                const shippingTemplateData = item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
-                const shippingOptions = {
-                    standardShipping: shippingTemplateData?.standardShipping,
-                    expedited: shippingTemplateData?.expedited,
-                    twoDays: shippingTemplateData?.twoDays,
-                    oneDay: shippingTemplateData?.oneDay,
-                };
-
-                const selectedShipping = shippingOptions[shippingName as keyof typeof shippingOptions] || [];
-
-                let perOrderFee = 0;
-                for (const option of selectedShipping) {
-                    if (option?.region?.includes(address?.country)) {
-                        if (item.parentCartData) {
-                            const perItem = option?.shippingFee?.perItem || 0;
-                            const perOrder = option?.shippingFee?.perOrder || 0;
-                            delivery += perItem * item.qty;
-                            perOrderFee = perOrder / ( isVendorCheckout ? shopCount : 1); 
-                            item._shippingBreakdown = {
-                                perItem,
-                                perOrder
-                            }
-                        }
-                        break; // exit after first match
-                    }
-                }
-
-                const parentCartVendorData = item.parentCartData;
-                if(!parentCartVendorData || !Array.isArray(parentCartVendorData.vendor_data) || !parentCartVendorData.vendor_data[0]){
-                    return resp.status(400).json({ message: "Shipping configuration missing for vendor" });
-                }
-                parentCartVendorData.vendor_data[0].perOrder = parseFloat(perOrderFee.toString());
-                parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
-
-            }));
-
-            for (const vendorId in parentCartData) {
-                const data = parentCartData[vendorId];
-
-                if (data.vendor_data[0]?.perOrder <= 0) {
-
-                    return resp.status(200).json({ status: false, message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country` });
-
-                }
-            }
-             for (const [, coupon] of vendorCouponMap) {
-                discountAmount += coupon.discount_amount;
-            } 
-
-            netAmount = subTotal;
-            netAmount -= promotionDiscount;
-            netAmount -= discountAmount;
-            if(isVendorCheckout) {
-                netAmount -= voucherDiscount / shopCount;
-            } else {
-            netAmount -= voucherDiscount;
-            }
-            netAmount += totalShipping;
-            netAmount += delivery;
-
-            if (req.body.wallet == '1') {
-                const user = await User.findOne({ _id: req.user._id });
-                let walletAmount = 0;
-                if (user) {
-                    walletAmount = user.wallet_balance;
-                    if (walletAmount > netAmount) {
-                        usedWalletAmount = netAmount;
-                        netAmount = 0;
-                    } else if (walletAmount < netAmount) {
-                        usedWalletAmount = walletAmount;
-                        netAmount -= walletAmount;
-                    }
-                }
-            }
-
-        } else {
-            error = true;
-            return resp.status(400).json({ message: 'No items in your cart.' })
-        }
-
-
-
-        const salesData: any = {
-            user_id: req.user._id,
-            order_id: orderId,
-            name: address?.first_name || '' + address?.last_name || '',
-            email: address?.email,
-            mobile: address?.mobile,
-            phone_code: address?.phone_code,
-            country: address?.country,
-            state: address?.state,
-            city: address?.city,
-            address_line1: address?.address_line1,
-            address_line2: address?.address_line2,
-            pincode: address?.pincode,
-            payment_type: req.body.payment_type,
-            subtotal: subTotal,
-            shipping: totalShipping,
-            discount: discount,
-            voucher_id: req.body.voucher_id ? new mongoose.Types.ObjectId(req.body.voucher_id) : null,
-            voucher_dicount: isVendorCheckout ? voucherDiscount /shopCount : voucherDiscount,
-            net_amount: netAmount,
-            payment_status: '0',
-            coupon_discount: discountAmount,
-            coupon_applied: Object.fromEntries(vendorCouponMap),
-            wallet_used: usedWalletAmount || 0,
-            promotional_discount: promotionDiscount,
-            delivery: delivery
-        }
-
-        function removeHtmlTags(str: string): string {
-            return str.replace(/<\/?[^>]+(>|$)/g, "");
-        }
-
-        // await Promise.all(cartResult.map(async (item) => {
-
-        //     const productData = await Product.findOne({ _id: item.product_id });
-        //     if (!productData) {
-        //         error = true;
-        //         return resp.status(400).json({ message: "Product not found." })
-        //     }
-        //     let currentQty = Number(productData?.qty);
-
-        //     if (item?.isCombination) {
-        //         productData.combinationData.forEach((element: any, index: any) => {
-        //             element.combinations.forEach((comb: any) => {
-
-        //                 let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
-        //                     [attrId]
-        //                 );
-
-        //                 if (item?.variant_attribute_id.length > 1) {
-        //                     for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-        //                         for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-        //                             matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
-        //                         }
-        //                     }
-        //                 }
-        //                 matchVariantAttrId.forEach((attrId: any) => {
-        //                     const attrIdStr = attrId.toString();
-        //                     const attrIdArray = attrIdStr.split(',');
-
-        //                     const isMatch =
-        //                         comb.combIds.length === attrIdArray.length &&
-        //                         comb.combIds.every((id: string) => attrIdArray.includes(id));
-
-        //                     if (isMatch) {
-        //                         currentQty = comb.qty ? comb.qty : item.qty;
-        //                     }
-        //                 });
-        //             })
-        //         })
-        //     }
-
-        //     if (currentQty == 0) {
-        //         error = true;
-        //         return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` })
-        //     }
-
-        //     const updatedQty = currentQty - Number(item?.qty);
-
-        //     if (updatedQty < 0) {
-        //         error = true;
-        //         return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` });
-        //     }
-
-        // }));
-        for (const item of cartResult) {
-        const product = await Product.findById(item.product_id);
-        if (!product) {
-            return resp.status(400).json({ message: "Product not found" });
-        }
-
-        const { qty: availableQty } = resolvePriceAndQty({ product, cartItem: item});
-
-        if (availableQty <= 0) {
-            return resp.status(400).json({
-            message: `${removeHtmlTags(product.product_title)} is out of stock`
-       });
-       }
-       if (availableQty < Number(item.qty)) {
-            return resp.status(400).json({
-            message: `${removeHtmlTags(product.product_title)} has only ${availableQty} left`
-        });
-        }
+    if (!checkoutEliginbilityData.status) {
+      return resp
+        .status(400)
+        .json({ message: checkoutEliginbilityData.message });
     }
 
-        if (!error) {
-            const sales = await Sales.create(salesData);
-            const buyerNotes = await BuyerNoteModel.find({
-                user_id: req.user._id,
-                ...(isVendorCheckout  ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) } : {})
-            }).lean();
-            const buyerNoteMap = new Map<string, string>(
-                buyerNotes.map(note => [note.vendor_id.toString(), note.buyer_note])
-            );
-            const vendorSubOrderMap = new Map<string, string>();
-            const saleId = sales._id;
-            if (cartResult.length !== 0) {
-                await Promise.all(cartResult.map(async (item) => {
-                    let couponData = null;
-                    if (isVendorCheckout) {
-                        couponData = cartCoupon || null;
-                    } else if (Array.isArray(cartCoupon)) {
-                        couponData = cartCoupon.find((c: any) => c.vendor_id?.toString() === item.vendor_id?.toString()) || null;
-                    }        
-                    const shippingData = item.parentCartData?.shippingData?.[0] || null;
-                    const promotionalOfferData = (item.original_price > item.sale_price)
-                        ? {
-                            discount: item.original_price - item.sale_price,
-                            type: item.discount_type,
-                            amount: item.discount_amount
-                        }
-                        : null;
+    const totalSales = await Sales.countDocuments();
 
-                    const productResultPipeline = [
+    const currentDate = new Date();
+    const year = currentDate.getFullYear(); // e.g., 2024
+    const month = String(currentDate.getMonth() + 1).padStart(2, "0"); // Month is zero-based, so add 1 and pad to 2 digits
+    const date = String(currentDate.getDate()).padStart(2, "0"); // Pad date to 2 digits
+    let hours = currentDate.getHours();
+    let minutes = currentDate.getMinutes();
+    let milliseconds = currentDate.getMilliseconds();
+
+    const orderId = `ord${year}${month}${date}${hours}${minutes}${milliseconds}`;
+
+    const address = await Address.findById({
+      _id: new mongoose.Types.ObjectId(req.body.address_id),
+    });
+
+    const pipeline = [
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(req.user._id),
+          ...(isVendorCheckout
+            ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) }
+            : {}),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_data",
+        },
+      },
+      {
+        $unwind: {
+          path: "$product_data",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "parentcarts",
+          localField: "vendor_id",
+          foreignField: "vendor_id",
+          pipeline: [
+            {
+              $match: {
+                user_id: new mongoose.Types.ObjectId(req.user._id),
+              },
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "vendor_id",
+                foreignField: "_id",
+                pipeline: [
+                  {
+                    $project: {
+                      _id: 1,
+                    },
+                  },
+                  {
+                    $lookup: {
+                      from: "vendordetails",
+                      localField: "_id",
+                      foreignField: "user_id",
+                      pipeline: [
                         {
-                            $match: { '_id': new mongoose.Types.ObjectId(item.product_id) }
+                          $project: {
+                            shop_name: 1,
+                          },
                         },
-                        {
-                            $lookup: {
-                                from: "parentproducts",
-                                localField: "parent_id",
-                                foreignField: "_id",
-                                as: "parentData"
-                            }
-                        },
-                        {
-                            $unwind: {
-                                path: "$parentData",
-                                preserveNullAndEmptyArrays: true
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "users",
-                                localField: "vendor_id",
-                                foreignField: "_id",
-                                as: "vendorData"
-                            }
-                        },
-                        {
-                            $unwind: {
-                                path: "$vendorData",
-                                preserveNullAndEmptyArrays: true
-                            }
-                        },
-                        {
-                            $project: {
-                                product_title: 1,
-                                product_id: "$_id",
-                                variant_attribute_id:
-                                    "$parentData.variant_attribute_id",
-                                discount_type: "$discount_type",
-                                discount_amount: "$discount_amount",
-                                delivery: "$delivery",
-                                delivery_amount: "$delivery_amount",
-                                image: "$image",
-                                vendor_id: "$vendor_id",
-                                vendor_name: "$vendorData.name",
-                                slug: "$slug",
-                                stock: "$stock",
-                                sale_price: "$sale_price",
-                                offer_price: "$offer_price",
-                                return_policy: "$return_policy",
-                                meta_title: "$meta_title",
-                                meta_keywords: "$meta_keywords",
-                                meta_description: "$meta_description"
-                            }
-                        }
-                    ]
+                      ],
+                      as: "vendorprofile",
+                    },
+                  },
+                ],
+                as: "vendorDetails",
+              },
+            },
+            {
+              $lookup: {
+                from: "shippings",
+                localField: "shipping_id",
+                foreignField: "_id",
+                as: "shippingData",
+              },
+            },
+          ],
+          as: "parentCartData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$parentCartData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          qty: 1,
+          product_id: 1,
+          vendor_id: 1,
+          delivery_amount: "$product_data.delivery_amount",
+          delivery: "$product_data.delivery_type",
+          sale_price: "$price",
+          original_price: "$original_price",
+          discount_type: "$product_data.discount_type",
+          discount_amount: "$product_data.discount_amount",
+          isCombination: "$product_data.isCombination",
+          customize: "$customize",
+          customizationData: "$customizationData",
+          variant_id: "$variant_id",
+          variant_attribute_id: "$variant_attribute_id",
+          variants: "$variants",
+          affiliate_id: "$affiliate_id",
+          shipping_id: "$shipping_id",
+          shippingName: "$shippingName",
+          parentCartData: 1,
+          // parentCartData: {
+          //     $cond: {
+          //         if: { $isArray: "$parentCartData.vendor_data" },
+          //         then: "$parentCartData.vendor_data",
+          //         else: []
+          //     }
+          // }
+        },
+      },
+    ];
+    const cartResult = await Cart.aggregate(pipeline);
 
-                    const aggregation = await Product.aggregate(productResultPipeline)
+    let subTotal = 0;
+    let totalShipping = 0;
+    let discount = 0;
+    let discountAmount = 0;
+    let netAmount = 0;
+    let usedWalletAmount = 0;
+    let voucherDiscount = Number(req.body.voucher_discount || 0);
+    let promotionDiscount = 0;
+    let delivery = 0;
+    let parentCartData: any = {};
 
-                    const productResult = aggregation[0];
-                    const productData = await Product.findOne({ _id: new mongoose.Types.ObjectId(item.product_id) });
-                    if (!productData) {
-                        error = true;
-                        return resp.status(400).json({ message: "Product not found." })
-                    }
-                    let currentQty = Number(productData?.qty);
+    const vendorDeliveryMap: Record<string, number> = {};
 
-                    // if (item?.isCombination) {
-                    //     productData.combinationData.forEach((element: any, index: any) => {
-                    //         element.combinations.forEach((comb: any) => {
+    if (!address || (address && address?.country === "")) {
+      return resp.status(400).json({
+        status: false,
+        message: "User selected address country not found.",
+      });
+    }
 
-                    //             let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
-                    //                 [attrId]
-                    //             );
+    const cartCoupon = isVendorCheckout
+      ? await couponCart.findOne({
+          user_id: req.user._id,
+          vendor_id: req.body.vendor_id,
+        })
+      : await CartCouponModel.find({ user_id: req.user._id });
+    let couponCode = "";
+    const vendorCouponMap = new Map<
+      string,
+      { coupon_code: string; discount_amount: number }
+    >();
+    const calculateVendorCouponDiscount = async (vendorId: string) => {
+      if (vendorCouponMap.has(vendorId)) {
+        return vendorCouponMap.get(vendorId)!.discount_amount;
+      }
 
-                    //             if (item?.variant_attribute_id.length > 1) {
-                    //                 for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                    //                     for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                    //                         matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
-                    //                     }
-                    //                 }
-                    //             }
-                    //             matchVariantAttrId.forEach((attrId: any) => {
-                    //                 const attrIdStr = attrId.toString();
-                    //                 const attrIdArray = attrIdStr.split(',');
+      const couponMap = await couponCart.findOne({
+        user_id: req.user._id,
+        vendor_id: vendorId,
+      });
+      if (!couponMap) return 0;
 
-                    //                 const isMatch =
-                    //                     comb.combIds.length === attrIdArray.length &&
-                    //                     comb.combIds.every((id: string) => attrIdArray.includes(id));
+      const coupon = await CouponModel.findOne({ vendor_id: vendorId });
+      if (!coupon) return 0;
 
-                    //                 if (isMatch) {
-                    //                     currentQty = comb.qty ? comb.qty : productData.qty;
-                    //                 }
-                    //             });
-                    //         })
-                    //     })
-                    // }
-                    // const updatedQty = currentQty - Number(item?.qty);
-                    // let finalQty = updatedQty.toString();
+      vendorCouponMap.set(vendorId, {
+        coupon_code: coupon.coupon_code,
+        discount_amount: coupon.discount_amount,
+      });
 
-                    const { qty: availableQty } = resolvePriceAndQty({
-  product: productData,
-  cartItem: item
-});
+      couponCode = coupon.coupon_code;
+      return coupon.discount_amount;
+    };
+    const vendorShippingMap: Record<
+  string,
+  Record<
+    string,
+    {
+      qty: number;
+      perOrder: number;
+      perItem: number;
+    }
+  >
+> = {};
 
-const updatedQty = availableQty - Number(item.qty);
 
-if (updatedQty < 0) {
+    if (cartResult.length !== 0) {
+      await Promise.all(
+        cartResult.map(async (item) => {
+          const offerPrice = getOfferProductPrice(
+            item.sale_price,
+            item.discount_type,
+            item.discount_amount,
+          );
+          const shippingAmount = item.delivery_amount;
+          if (!item.vendor_id) {
+            throw new Error("Cart item missing vendor_id");
+          }
+          await calculateVendorCouponDiscount(String(item.vendor_id));
+          subTotal += item.sale_price * item.qty;
+          if (item.delivery === "paid") {
+            totalShipping += shippingAmount * item.qty;
+          }
+
+          discount += (item.sale_price - offerPrice) * item.qty;
+          promotionDiscount +=
+            (item.original_price - item.sale_price) * item.qty;
+
+          // const shippingName =
+          //   item.parentCartData?.vendor_data?.[0]?.shippingName;
+          // const shippingTemplateData =
+          //   item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
+          // const shippingOptions = {
+          //   standardShipping: shippingTemplateData?.standardShipping,
+          //   expedited: shippingTemplateData?.expedited,
+          //   twoDays: shippingTemplateData?.twoDays,
+          //   oneDay: shippingTemplateData?.oneDay,
+          // };
+
+          // const selectedShipping =
+          //   shippingOptions[shippingName as keyof typeof shippingOptions] || [];
+
+          // let perOrderFee = 0;
+          // for (const option of selectedShipping) {
+          //   if (option?.region?.includes(address?.country)) {
+          //     if (item.parentCartData) {
+          //       const perItem = option?.shippingFee?.perItem || 0;
+          //       const perOrder = option?.shippingFee?.perOrder || 0;
+          //       delivery += perItem * item.qty;
+          //       perOrderFee = perOrder / (isVendorCheckout ? shopCount : 1);
+          //       item._shippingBreakdown = {
+          //         perItem,
+          //         perOrder,
+          //       };
+          //     }
+          //     break; // exit after first match
+          //   }
+          // }
+
+      //     const parentCartVendorData = item.parentCartData;
+      //     if (
+      //       !parentCartVendorData ||
+      //       !Array.isArray(parentCartVendorData.vendor_data) ||
+      //       !parentCartVendorData.vendor_data[0]
+      //     ) {
+      //       return resp
+      //         .status(400)
+      //         .json({ message: "Shipping configuration missing for vendor" });
+      //     }
+      //     parentCartVendorData.vendor_data[0].perOrder = parseFloat(
+      //       perOrderFee.toString(),
+      //     );
+      //     parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
+      const savedShipping =
+  item.parentCartData?.vendor_data?.find(
+    (v: any) =>
+      v.product_id?.toString() === item.product_id?.toString()
+  );
+
+if (!savedShipping) {
   return resp.status(400).json({
-    message: `${removeHtmlTags(productData.product_title)} is out of stock`
+    status: false,
+    message: "Shipping not selected for product",
   });
 }
 
-// Decide WHO owns the quantity
-const qtyDrivenByCombination =
-  productData.form_values?.isCheckedQuantity === true &&
-  Number(productData.qty) === 0;
+const perItem = Number(savedShipping.perItem || 0);
+const perOrder = Number(savedShipping.perOrder || 0);
 
-if (qtyDrivenByCombination) {
-  // Deduct ONLY from matched combination
-  for (const group of productData.combinationData || []) {
-    for (const comb of group.combinations || []) {
-      const combValues = (comb.combValues || []).map(String);
-      const selectedValues = (item.variant_attribute_id || []).map(String);
+const vendorId = item.vendor_id.toString();
+const shippingKey = `${savedShipping.shippingName}_${savedShipping.shipping_id}`;
 
-      const isMatch =
-        combValues.length === selectedValues.length &&
-        combValues.every((v: string) => selectedValues.includes(v));
+if (!vendorShippingMap[vendorId]) {
+  vendorShippingMap[vendorId] = {};
+}
 
-      if (isMatch) {
-        comb.qty = String(updatedQty);
-      }
+if (!vendorShippingMap[vendorId][shippingKey]) {
+  vendorShippingMap[vendorId][shippingKey] = {
+    qty: 0,
+    perOrder: Number(savedShipping.perOrder || 0),
+    perItem: Number(savedShipping.perItem || 0),
+  };
+}
+
+// 🔑 CRITICAL: qty across PRODUCTS
+vendorShippingMap[vendorId][shippingKey].qty += Number(item.qty);
+
+// store meta only (NO calculation)
+item._shippingMeta = {
+  shippingKey,
+};
+
+         }),
+       );
+
+
+for (const vendorId in vendorShippingMap) {
+  let vendorDelivery = 0;
+
+  for (const key in vendorShippingMap[vendorId]) {
+    const d = vendorShippingMap[vendorId][key];
+
+    vendorDelivery += d.perOrder;
+
+    if (d.qty > 1) {
+      vendorDelivery += d.perItem * (d.qty - 1);
     }
   }
-} else {
-  productData.qty = String(updatedQty);
+
+  vendorDeliveryMap[vendorId] = vendorDelivery;
+  delivery += vendorDelivery;
 }
 
 
-                    const vendorId = item.vendor_id.toString();
-                    let subOrderId = vendorSubOrderMap.get(String(vendorId));
-                    if (!subOrderId) {
-                      subOrderId = generateSubOrderId(orderId);
-                      vendorSubOrderMap.set(vendorId, subOrderId);
-                    }
-                    const shippingAmount = (item._shippingBreakdown?.perItem || 0) * item.qty + (item._shippingBreakdown?.perOrder || 0);
-                    const itemId = generateItemId(subOrderId);
-                    const data: any = {
-                        user_id: req.user._id,
-                        vendor_id: productResult?.vendor_id,
-                        vendor_name: productResult?.vendor_name,
-                        sale_id: saleId,
-                        order_id: orderId,
-                        sub_order_id: subOrderId,
-                        item_id: itemId,
-                        product_id: productResult?.product_id,
-                        productData: productData ? productData : {},
-                        original_price: Number(item.original_price),
-                        qty: Number(item.qty),
-                        isCombination: item?.isCombination,
-                        customize: item?.customize,
-                        customizationData: item?.customizationData,
-                        sub_total: item?.sale_price * item?.qty,
-                        amount: (item?.sale_price * item?.qty),
-                        variant_id: item?.variant_id,
-                        variant_attribute_id: item?.variant_attribute_id,
-                        variants: item?.variants || [],
-                        affiliate_id: item.affiliate_id ? item.affiliate_id : null,
-                        promotional_discount: (item.original_price - item.sale_price),
-                        shippingId: item.shipping_id,
-                        shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName || '',
-                        shippingAmount: shippingAmount,
-                        deliveryData: {
-                            vendor_id: item.vendor_id,
-                            shippingId: item.shipping_id,
-                            shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName || '',
-                            note: item.parentCartData?.vendor_data?.[0]?.note || "",
-                            minDate: item.parentCartData?.vendor_data?.[0]?.minDate || null,
-                            maxDate: item.parentCartData?.vendor_data?.[0]?.maxDate || null,
-                            perItem: item._shippingBreakdown?.perItem || 0,
-                            perOrder: item._shippingBreakdown?.perOrder || 0,
-                            shippingTemplateData: item.parentCartData?.shippingData?.[0]?.shippingTemplateData || null
-                        },
-                        
-                        couponData: isVendorCheckout ? vendorCouponMap.get(item.vendor_id.toString()) || null : couponData,
-                        shippingData: shippingData,
-                        promotionalOfferData: promotionalOfferData,
-                        buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
-                    }
+      // for (const vendorId in parentCartData) {
+      //   const data = parentCartData[vendorId];
 
-                    // if (item?.isCombination) {
-                    //     productData.combinationData.forEach((element: any, index: any) => {
-                    //         element.combinations.forEach((comb: any, ind: any) => {
+      //   if (data.vendor_data[0]?.perOrder <= 0) {
+      //     return resp
+      //       .status(200)
+      //       .json({
+      //         status: false,
+      //         message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`,
+      //       });
+      //   }
+      // }
+      for (const [, coupon] of vendorCouponMap) {
+        discountAmount += coupon.discount_amount;
+      }
 
-                    //             let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
-                    //                 [attrId]
-                    //             );
+      netAmount = subTotal;
+      netAmount -= promotionDiscount;
+      netAmount -= discountAmount;
+      if (isVendorCheckout) {
+        netAmount -= voucherDiscount / shopCount;
+      } else {
+        netAmount -= voucherDiscount;
+      }
+      netAmount += totalShipping;
+      netAmount += delivery;
 
-                    //             if (item?.variant_attribute_id.length > 1) {
-                    //                 for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                    //                     for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                    //                         matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
-                    //                     }
-                    //                 }
-                    //             }
-
-                    //             matchVariantAttrId.forEach((attrId: any) => {
-                    //                 const attrIdStr = attrId.toString();
-                    //                 const attrIdArray = attrIdStr.split(',');
-
-                    //                 const isMatch =
-                    //                     comb.combIds.length === attrIdArray.length &&
-                    //                     comb.combIds.every((id: string) => attrIdArray.includes(id));
-
-                    //                 if (isMatch) {
-                    //                     if (element.combinations[ind].qty == "") {
-                    //                         productData.qty = finalQty
-                    //                     } else {
-                    //                         element.combinations[ind].qty = finalQty;
-                    //                     }
-                    //                     productData.combinationData[index] = element;
-                    //                 }
-                    //             });
-
-                    //         })
-                    //     })
-                    // } else {
-                    //     productData.qty = finalQty;
-                    // }
-                    await productData.save();
-
-                    await Salesdetail.create(data);
-                }));
-            }
-            await Cart.deleteMany({ user_id: req.user._id, ...(isVendorCheckout ? {vendor_id: req.body.vendor_id } : {}) });
-            await BuyerNoteModel.deleteMany({
-                user_id: req.user._id,
-                ...(isVendorCheckout ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) } : {})
-            });
-            if (isVendorCheckout) {
-                await ParentCartModel.updateOne(
-                    { user_id: req.user._id },
-                    {
-                        $pull: {
-                            vendor_data: {vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) }
-                        }
-                    }
-                );
-            } else {
-                await ParentCartModel.deleteOne({ user_id: req.user._id });
-            }
-            await CartCouponModel.deleteOne({ user_id: req.user._id });
-            if (couponCode) {
-            await CouponModel.updateOne({ coupon_code: couponCode }, { $inc: { total_uses: 1 } });
-            }
-            if (req.body.wallet == '1') {
-                const transactionHistorydata = {
-                    user_id: req.user._id,
-                    transaction_type: 'Dr',
-                    amount: usedWalletAmount,
-                    description: 'Used Amount for Shopping',
-                }
-                await User.updateOne({ _id: req.user._id }, { $inc: { wallet_balance: -usedWalletAmount } });
-                await GiftCardTransactionHistoryModel.create(transactionHistorydata);
-            }
-            const updateUser = await User.findOne({ _id: req.user._id });
-            await activity(
-                req.user._id,
-                null,
-                null,
-                'checkout',
-                'Checkout successfully with order ID: ' + orderId,
-            );
-            return resp.status(200).json({ message: 'Checkout successfully', orderId: orderId, updateUser: updateUser });
+      if (req.body.wallet == "1") {
+        const user = await User.findOne({ _id: req.user._id });
+        let walletAmount = 0;
+        if (user) {
+          walletAmount = user.wallet_balance;
+          if (walletAmount > netAmount) {
+            usedWalletAmount = netAmount;
+            netAmount = 0;
+          } else if (walletAmount < netAmount) {
+            usedWalletAmount = walletAmount;
+            netAmount -= walletAmount;
+          }
         }
-
-
-    } catch (error) {
-        console.error("CHECKOUT ERROR:", error);
-        error = true
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+      }
+    } else {
+      error = true;
+      return resp.status(400).json({ message: "No items in your cart." });
     }
-}
+
+    const salesData: any = {
+      user_id: req.user._id,
+      order_id: orderId,
+      name: `${address?.first_name || ""} ${address?.last_name || ""}`.trim(),
+      email: address?.email,
+      mobile: address?.mobile,
+      phone_code: address?.phone_code,
+      country: address?.country,
+      state: address?.state,
+      city: address?.city,
+      address_line1: address?.address_line1,
+      address_line2: address?.address_line2,
+      pincode: address?.pincode,
+      payment_type: req.body.payment_type,
+      subtotal: subTotal,
+      shipping: totalShipping,
+      discount: discount,
+      voucher_id: req.body.voucher_id
+        ? new mongoose.Types.ObjectId(req.body.voucher_id)
+        : null,
+      voucher_dicount: isVendorCheckout
+        ? voucherDiscount / shopCount
+        : voucherDiscount,
+      net_amount: netAmount,
+      payment_status: "0",
+      coupon_discount: discountAmount,
+      coupon_applied: Object.fromEntries(vendorCouponMap),
+      wallet_used: usedWalletAmount || 0,
+      promotional_discount: promotionDiscount,
+      delivery: delivery,
+    };
+
+    function removeHtmlTags(str: string): string {
+      return str.replace(/<\/?[^>]+(>|$)/g, "");
+    }
+
+    // await Promise.all(cartResult.map(async (item) => {
+
+    //     const productData = await Product.findOne({ _id: item.product_id });
+    //     if (!productData) {
+    //         error = true;
+    //         return resp.status(400).json({ message: "Product not found." })
+    //     }
+    //     let currentQty = Number(productData?.qty);
+
+    //     if (item?.isCombination) {
+    //         productData.combinationData.forEach((element: any, index: any) => {
+    //             element.combinations.forEach((comb: any) => {
+
+    //                 let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
+    //                     [attrId]
+    //                 );
+
+    //                 if (item?.variant_attribute_id.length > 1) {
+    //                     for (let i = 0; i < item?.variant_attribute_id.length; i++) {
+    //                         for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+    //                             matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
+    //                         }
+    //                     }
+    //                 }
+    //                 matchVariantAttrId.forEach((attrId: any) => {
+    //                     const attrIdStr = attrId.toString();
+    //                     const attrIdArray = attrIdStr.split(',');
+
+    //                     const isMatch =
+    //                         comb.combIds.length === attrIdArray.length &&
+    //                         comb.combIds.every((id: string) => attrIdArray.includes(id));
+
+    //                     if (isMatch) {
+    //                         currentQty = comb.qty ? comb.qty : item.qty;
+    //                     }
+    //                 });
+    //             })
+    //         })
+    //     }
+
+    //     if (currentQty == 0) {
+    //         error = true;
+    //         return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` })
+    //     }
+
+    //     const updatedQty = currentQty - Number(item?.qty);
+
+    //     if (updatedQty < 0) {
+    //         error = true;
+    //         return resp.status(400).json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` });
+    //     }
+
+    // }));
+    for (const item of cartResult) {
+      const product = await Product.findById(item.product_id);
+      if (!product) {
+        return resp.status(400).json({ message: "Product not found" });
+      }
+
+      const { qty: availableQty } = resolvePriceAndQty({
+        product,
+        cartItem: item,
+      });
+
+      if (availableQty <= 0) {
+        return resp.status(400).json({
+          message: `${removeHtmlTags(product.product_title)} is out of stock`,
+        });
+      }
+      if (availableQty < Number(item.qty)) {
+        return resp.status(400).json({
+          message: `${removeHtmlTags(product.product_title)} has only ${availableQty} left`,
+        });
+      }
+    }
+
+    if (!error) {
+      const sales = await Sales.create(salesData);
+      const buyerNotes = await BuyerNoteModel.find({
+        user_id: req.user._id,
+        ...(isVendorCheckout
+          ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) }
+          : {}),
+      }).lean();
+      const buyerNoteMap = new Map<string, string>(
+        buyerNotes.map((note) => [note.vendor_id.toString(), note.buyer_note]),
+      );
+      const vendorSubOrderMap = new Map<string, string>();
+      const saleId = sales._id;
+      if (cartResult.length !== 0) {
+        await Promise.all(
+          cartResult.map(async (item) => {
+            let couponData = null;
+            if (isVendorCheckout) {
+              couponData = cartCoupon || null;
+            } else if (Array.isArray(cartCoupon)) {
+              couponData =
+                cartCoupon.find(
+                  (c: any) =>
+                    c.vendor_id?.toString() === item.vendor_id?.toString(),
+                ) || null;
+            }
+            const shippingData = item.parentCartData?.shippingData?.[0] || null;
+            const promotionalOfferData =
+              item.original_price > item.sale_price
+                ? {
+                    discount: item.original_price - item.sale_price,
+                    type: item.discount_type,
+                    amount: item.discount_amount,
+                  }
+                : null;
+
+            const productResultPipeline = [
+              {
+                $match: { _id: new mongoose.Types.ObjectId(item.product_id) },
+              },
+              {
+                $lookup: {
+                  from: "parentproducts",
+                  localField: "parent_id",
+                  foreignField: "_id",
+                  as: "parentData",
+                },
+              },
+              {
+                $unwind: {
+                  path: "$parentData",
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "vendor_id",
+                  foreignField: "_id",
+                  as: "vendorData",
+                },
+              },
+              {
+                $unwind: {
+                  path: "$vendorData",
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              {
+                $project: {
+                  product_title: 1,
+                  product_id: "$_id",
+                  variant_attribute_id: "$parentData.variant_attribute_id",
+                  discount_type: "$discount_type",
+                  discount_amount: "$discount_amount",
+                  delivery: "$delivery",
+                  delivery_amount: "$delivery_amount",
+                  image: "$image",
+                  vendor_id: "$vendor_id",
+                  vendor_name: "$vendorData.name",
+                  slug: "$slug",
+                  stock: "$stock",
+                  sale_price: "$sale_price",
+                  offer_price: "$offer_price",
+                  return_policy: "$return_policy",
+                  meta_title: "$meta_title",
+                  meta_keywords: "$meta_keywords",
+                  meta_description: "$meta_description",
+                },
+              },
+            ];
+
+            const aggregation = await Product.aggregate(productResultPipeline);
+
+            const productResult = aggregation[0];
+            const productData = await Product.findOne({
+              _id: new mongoose.Types.ObjectId(item.product_id),
+            });
+            if (!productData) {
+              error = true;
+              return resp.status(400).json({ message: "Product not found." });
+            }
+            let currentQty = Number(productData?.qty);
+
+            // if (item?.isCombination) {
+            //     productData.combinationData.forEach((element: any, index: any) => {
+            //         element.combinations.forEach((comb: any) => {
+
+            //             let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
+            //                 [attrId]
+            //             );
+
+            //             if (item?.variant_attribute_id.length > 1) {
+            //                 for (let i = 0; i < item?.variant_attribute_id.length; i++) {
+            //                     for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+            //                         matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
+            //                     }
+            //                 }
+            //             }
+            //             matchVariantAttrId.forEach((attrId: any) => {
+            //                 const attrIdStr = attrId.toString();
+            //                 const attrIdArray = attrIdStr.split(',');
+
+            //                 const isMatch =
+            //                     comb.combIds.length === attrIdArray.length &&
+            //                     comb.combIds.every((id: string) => attrIdArray.includes(id));
+
+            //                 if (isMatch) {
+            //                     currentQty = comb.qty ? comb.qty : productData.qty;
+            //                 }
+            //             });
+            //         })
+            //     })
+            // }
+            // const updatedQty = currentQty - Number(item?.qty);
+            // let finalQty = updatedQty.toString();
+
+            const { qty: availableQty } = resolvePriceAndQty({
+              product: productData,
+              cartItem: item,
+            });
+
+            const updatedQty = availableQty - Number(item.qty);
+
+            if (updatedQty < 0) {
+              return resp.status(400).json({
+                message: `${removeHtmlTags(productData.product_title)} is out of stock`,
+              });
+            }
+
+            // Decide WHO owns the quantity
+            const qtyDrivenByCombination =
+              productData.form_values?.isCheckedQuantity === true &&
+              Number(productData.qty) === 0;
+
+            if (qtyDrivenByCombination) {
+              // Deduct ONLY from matched combination
+              for (const group of productData.combinationData || []) {
+                for (const comb of group.combinations || []) {
+                  const combValues = (comb.combValues || []).map(String);
+                  const selectedValues = (item.variant_attribute_id || []).map(
+                    String,
+                  );
+
+                  const isMatch =
+                    combValues.length === selectedValues.length &&
+                    combValues.every((v: string) => selectedValues.includes(v));
+
+                  if (isMatch) {
+                    comb.qty = String(updatedQty);
+                  }
+                }
+              }
+            } else {
+              productData.qty = String(updatedQty);
+            }
+
+            const vendorId = item.vendor_id.toString();
+            let subOrderId = vendorSubOrderMap.get(String(vendorId));
+            if (!subOrderId) {
+              subOrderId = generateSubOrderId(orderId);
+              vendorSubOrderMap.set(vendorId, subOrderId);
+            }
+            const shippingAmount = vendorDeliveryMap[item.vendor_id.toString()];
+            const shippingKey = item._shippingMeta?.shippingKey;
+            const shippingMeta = vendorShippingMap[vendorId]?.[shippingKey] || {
+                  perItem: 0,
+                  perOrder: 0,
+            };
+            const itemId = generateItemId(subOrderId);
+            const data: any = {
+              user_id: req.user._id,
+              vendor_id: productResult?.vendor_id,
+              vendor_name: productResult?.vendor_name,
+              sale_id: saleId,
+              order_id: orderId,
+              sub_order_id: subOrderId,
+              item_id: itemId,
+              product_id: productResult?.product_id,
+              productData: productData ? productData : {},
+              original_price: Number(item.original_price),
+              qty: Number(item.qty),
+              isCombination: item?.isCombination,
+              customize: item?.customize,
+              customizationData: item?.customizationData,
+              sub_total: item?.sale_price * item?.qty,
+              amount: item?.sale_price * item?.qty,
+              variant_id: item?.variant_id,
+              variant_attribute_id: item?.variant_attribute_id,
+              variants: item?.variants || [],
+              affiliate_id: item.affiliate_id ? item.affiliate_id : null,
+              promotional_discount: item.original_price - item.sale_price,
+              shippingId: item.shipping_id,
+              shippingName:
+                item.parentCartData?.vendor_data?.[0]?.shippingName || "",
+              shippingAmount: shippingAmount,
+              deliveryData: {
+                vendor_id: item.vendor_id,
+                shippingId: item.shipping_id,
+                shippingName:
+                  item.parentCartData?.vendor_data?.[0]?.shippingName || "",
+                note: item.parentCartData?.vendor_data?.[0]?.note || "",
+                minDate: item.parentCartData?.vendor_data?.[0]?.minDate || null,
+                maxDate: item.parentCartData?.vendor_data?.[0]?.maxDate || null,
+                perItem: shippingMeta.perItem,
+                perOrder: shippingMeta.perOrder,
+                shippingTemplateData:
+                  item.parentCartData?.shippingData?.[0]
+                    ?.shippingTemplateData || null,
+              },
+
+              couponData: isVendorCheckout
+                ? vendorCouponMap.get(item.vendor_id.toString()) || null
+                : couponData,
+              shippingData: shippingData,
+              promotionalOfferData: promotionalOfferData,
+              buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
+            };
+
+            // if (item?.isCombination) {
+            //     productData.combinationData.forEach((element: any, index: any) => {
+            //         element.combinations.forEach((comb: any, ind: any) => {
+
+            //             let matchVariantAttrId: string[][] = item?.variant_attribute_id.map((attrId: string) =>
+            //                 [attrId]
+            //             );
+
+            //             if (item?.variant_attribute_id.length > 1) {
+            //                 for (let i = 0; i < item?.variant_attribute_id.length; i++) {
+            //                     for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
+            //                         matchVariantAttrId.push([item?.variant_attribute_id[i], item?.variant_attribute_id[j]]);
+            //                     }
+            //                 }
+            //             }
+
+            //             matchVariantAttrId.forEach((attrId: any) => {
+            //                 const attrIdStr = attrId.toString();
+            //                 const attrIdArray = attrIdStr.split(',');
+
+            //                 const isMatch =
+            //                     comb.combIds.length === attrIdArray.length &&
+            //                     comb.combIds.every((id: string) => attrIdArray.includes(id));
+
+            //                 if (isMatch) {
+            //                     if (element.combinations[ind].qty == "") {
+            //                         productData.qty = finalQty
+            //                     } else {
+            //                         element.combinations[ind].qty = finalQty;
+            //                     }
+            //                     productData.combinationData[index] = element;
+            //                 }
+            //             });
+
+            //         })
+            //     })
+            // } else {
+            //     productData.qty = finalQty;
+            // }
+            await productData.save();
+
+            await Salesdetail.create(data);
+          }),
+        );
+      }
+      await Cart.deleteMany({
+        user_id: req.user._id,
+        ...(isVendorCheckout ? { vendor_id: req.body.vendor_id } : {}),
+      });
+      await BuyerNoteModel.deleteMany({
+        user_id: req.user._id,
+        ...(isVendorCheckout
+          ? { vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id) }
+          : {}),
+      });
+      if (isVendorCheckout) {
+        await ParentCartModel.updateOne(
+          { user_id: req.user._id },
+          {
+            $pull: {
+              vendor_data: {
+                vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id),
+              },
+            },
+          },
+        );
+      } else {
+        await ParentCartModel.deleteOne({ user_id: req.user._id });
+      }
+      await CartCouponModel.deleteOne({ user_id: req.user._id });
+      if (couponCode) {
+        await CouponModel.updateOne(
+          { coupon_code: couponCode },
+          { $inc: { total_uses: 1 } },
+        );
+      }
+      if (req.body.wallet == "1") {
+        const transactionHistorydata = {
+          user_id: req.user._id,
+          transaction_type: "Dr",
+          amount: usedWalletAmount,
+          description: "Used Amount for Shopping",
+        };
+        await User.updateOne(
+          { _id: req.user._id },
+          { $inc: { wallet_balance: -usedWalletAmount } },
+        );
+        await GiftCardTransactionHistoryModel.create(transactionHistorydata);
+      }
+      const updateUser = await User.findOne({ _id: req.user._id });
+      await activity(
+        req.user._id,
+        null,
+        null,
+        "checkout",
+        "Checkout successfully with order ID: " + orderId,
+      );
+      return resp
+        .status(200)
+        .json({
+          message: "Checkout successfully",
+          orderId: orderId,
+          updateUser: updateUser,
+        });
+    }
+  } catch (error) {
+    console.error("CHECKOUT ERROR:", error);
+    error = true;
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const getAccessToken = async () => {
-    try {
-        const response = await got.post('https://api-m.sandbox.paypal.com/v1/oauth2/token', {
-            form: {
-                grant_type: 'client_credentials',
-            },
-            username: "AYKXmGSaIYk_P8R1brliTpBwrpi2hA8y5yulQMmi4XLByhWw1rvfdtoefzWkm0nUvSQ86123jZYOuaWq",
-            password: "ECTyKQDW5kwDmCxXHj3miWDYXyaNhEOPg_S87zJnIV8XBW-6TTtztez08_I7-_iaGIZVF5g_RFGGqZsV",
-        });
+  try {
+    const response = await got.post(
+      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      {
+        form: {
+          grant_type: "client_credentials",
+        },
+        username:
+          "AYKXmGSaIYk_P8R1brliTpBwrpi2hA8y5yulQMmi4XLByhWw1rvfdtoefzWkm0nUvSQ86123jZYOuaWq",
+        password:
+          "ECTyKQDW5kwDmCxXHj3miWDYXyaNhEOPg_S87zJnIV8XBW-6TTtztez08_I7-_iaGIZVF5g_RFGGqZsV",
+      },
+    );
 
-        const data = JSON.parse(response.body);
-        const newAccessToken = data.access_token;
-        return newAccessToken;
-    } catch (error: any) {
-    }
+    const data = JSON.parse(response.body);
+    const newAccessToken = data.access_token;
+    return newAccessToken;
+  } catch (error: any) {}
 };
 
 export const createOrder = async (req: CustomRequest, resp: Response) => {
-    try {
-        const accessToken = await getAccessToken();
+  try {
+    const accessToken = await getAccessToken();
 
-        const response = await got.post("https://api-m.sandbox.paypal.com/v2/checkout/orders", {
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
+    const response = await got.post(
+      "https://api-m.sandbox.paypal.com/v2/checkout/orders",
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        json: {
+          intent: "CAPTURE",
+          purchase_units: [
+            {
+              reference_id: "PUHF",
+              description: "Your purchase description",
+              amount: {
+                currency_code: "USD",
+                value: "10.00",
+                breakdown: {
+                  item_total: {
+                    currency_code: "USD",
+                    value: "10.00",
+                  },
+                },
+              },
+              items: [
+                {
+                  name: "item",
+                  description: "description",
+                  quantity: "1",
+                  unit_amount: {
+                    currency_code: "USD",
+                    value: "10.00",
+                  },
+                },
+              ],
+              shipping: {
+                address: {
+                  address_line_1: "1234 Main Street",
+                  address_line_2: "Apt 101",
+                  admin_area_2: "San Francisco",
+                  admin_area_1: "CA",
+                  postal_code: "94105",
+                  country_code: "US",
+                },
+              },
             },
-            json: {
-                intent: "CAPTURE",
-                purchase_units: [
-                    {
-                        reference_id: "PUHF",
-                        description: "Your purchase description",
-                        amount: {
-                            currency_code: "USD",
-                            value: "10.00",
-                            breakdown: {
-                                item_total: {
-                                    currency_code: "USD",
-                                    value: "10.00"
-                                }
-                            }
-                        },
-                        items: [
-                            {
-                                name: "item",
-                                description: "description",
-                                quantity: "1",
-                                unit_amount: {
-                                    currency_code: "USD",
-                                    value: "10.00"
-                                }
-                            }
-                        ],
-                        shipping: {
-                            address: {
-                                address_line_1: "1234 Main Street",
-                                address_line_2: "Apt 101",
-                                admin_area_2: "San Francisco",
-                                admin_area_1: "CA",
-                                postal_code: "94105",
-                                country_code: "US"
-                            }
-                        }
-                    }
-                ],
-                payment_source: {
-                    paypal: {
-                        experience_context: {
-                            payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
-                            payment_method_selected: "PAYPAL",
-                            brand_name: "Dekhohub-Volaity store",
-                            shipping_preference: "SET_PROVIDED_ADDRESS",
-                            locale: "en-US",
-                            user_action: "PAY_NOW",
-                            return_url: "https://api-m.sandbox.paypal.com/complete-payment",
-                            cancel_url: "https://api-m.sandbox.paypal.com/complete-payment"
-                        }
-                    }
-                }
+          ],
+          payment_source: {
+            paypal: {
+              experience_context: {
+                payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
+                payment_method_selected: "PAYPAL",
+                brand_name: "Dekhohub-Volaity store",
+                shipping_preference: "SET_PROVIDED_ADDRESS",
+                locale: "en-US",
+                user_action: "PAY_NOW",
+                return_url: "https://api-m.sandbox.paypal.com/complete-payment",
+                cancel_url: "https://api-m.sandbox.paypal.com/complete-payment",
+              },
             },
-            responseType: 'json'
-        });
-        return resp.status(200).json({ success: "order created successfully", data: response.body });
-    } catch (error: any) {
-        console.error('Error creating PayPal order:', error.response?.body || error.message);
-        return resp.status(400).json({ message: 'Bad Request. Please check your request data.', details: error.response?.body || error.message });
-    }
+          },
+        },
+        responseType: "json",
+      },
+    );
+    return resp
+      .status(200)
+      .json({ success: "order created successfully", data: response.body });
+  } catch (error: any) {
+    console.error(
+      "Error creating PayPal order:",
+      error.response?.body || error.message,
+    );
+    return resp
+      .status(400)
+      .json({
+        message: "Bad Request. Please check your request data.",
+        details: error.response?.body || error.message,
+      });
+  }
 };
 
-export const vendorWiseCheckout = async (req: CustomRequest, resp: Response) => {
-    let error = false;
-    try {
-        const checkoutEliginbilityData = await checkoutAddressEligibility(
-            req.user._id,
-            req.body.address_id,
-            req.body.vendor_id
-        );
+export const vendorWiseCheckout = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  let error = false;
+  try {
+    const checkoutEliginbilityData = await checkoutAddressEligibility(
+      req.user._id,
+      req.body.address_id,
+      req.body.vendor_id,
+    );
 
-        if (!checkoutEliginbilityData.status) {
-            return resp.status(400).json({ message: checkoutEliginbilityData.message });
-        }
+    if (!checkoutEliginbilityData.status) {
+      return resp
+        .status(400)
+        .json({ message: checkoutEliginbilityData.message });
+    }
 
-        const vendorId = req.body.vendor_id;
-        const shop_count = req.body.shop_count;
-        const totalSales = await Sales.countDocuments();
-        const currentDate = new Date();
-        const year = currentDate.getFullYear(); // e.g., 2024
-        const month = String(currentDate.getMonth() + 1).padStart(2, "0"); // Month is zero-based, so add 1 and pad to 2 digits
-        const date = String(currentDate.getDate()).padStart(2, "0"); // Pad date to 2 digits
-        let hours = currentDate.getHours();
-        let minutes = currentDate.getMinutes();
-        let milliseconds = currentDate.getMilliseconds();
+    const vendorId = req.body.vendor_id;
+    const shop_count = req.body.shop_count;
+    const totalSales = await Sales.countDocuments();
+    const currentDate = new Date();
+    const year = currentDate.getFullYear(); // e.g., 2024
+    const month = String(currentDate.getMonth() + 1).padStart(2, "0"); // Month is zero-based, so add 1 and pad to 2 digits
+    const date = String(currentDate.getDate()).padStart(2, "0"); // Pad date to 2 digits
+    let hours = currentDate.getHours();
+    let minutes = currentDate.getMinutes();
+    let milliseconds = currentDate.getMilliseconds();
 
-        const orderId = `ord${year}${month}${date}${hours}${minutes}${milliseconds}`;
+    const orderId = `ord${year}${month}${date}${hours}${minutes}${milliseconds}`;
 
+    const address = await Address.findById({
+      _id: new mongoose.Types.ObjectId(req.body.address_id),
+    });
 
-        const address = await Address.findById({
-            _id: new mongoose.Types.ObjectId(req.body.address_id),
-        });
-
-        const pipeline = [
+    const pipeline = [
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(req.user._id),
+          vendor_id: new mongoose.Types.ObjectId(vendorId),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_data",
+        },
+      },
+      {
+        $unwind: {
+          path: "$product_data",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "parentcarts",
+          localField: "vendor_id",
+          foreignField: "vendor_id",
+          pipeline: [
             {
-                $match: {
-                    user_id: new mongoose.Types.ObjectId(req.user._id),
-                    vendor_id: new mongoose.Types.ObjectId(vendorId),
-                },
+              $match: {
+                user_id: new mongoose.Types.ObjectId(req.user._id),
+              },
             },
             {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "product_data",
-                },
-            },
-            {
-                $unwind: {
-                    path: "$product_data",
-                    preserveNullAndEmptyArrays: true,
-                },
-            },
-            {
-                $lookup: {
-                    from: "parentcarts",
-                    localField: "vendor_id",
-                    foreignField: "vendor_id",
-                    pipeline: [
-                        {
-                            $match: {
-                                user_id: new mongoose.Types.ObjectId(req.user._id),
-                            },
-                        },
-                        {
-                            $lookup: {
-                                from: "users",
-                                localField: "vendor_id",
-                                foreignField: "_id",
-                                pipeline: [
-                                    {
-                                        $project: {
-                                            _id: 1,
-                                        },
-                                    },
-                                    {
-                                        $lookup: {
-                                            from: "vendordetails",
-                                            localField: "_id",
-                                            foreignField: "user_id",
-                                            pipeline: [
-                                                {
-                                                    $project: {
-                                                        shop_name: 1,
-                                                    },
-                                                },
-                                            ],
-                                            as: "vendorprofile",
-                                        },
-                                    },
-                                ],
-                                as: "vendorDetails",
-                            },
-                        },
-                        {
-                            $lookup: {
-                                from: "shippings",
-                                localField: "shipping_id",
-                                foreignField: "_id",
-                                as: "shippingData",
-                            },
-                        },
-                    ],
-                    as: "parentCartData",
-                },
-            },
-            {
-                $unwind: {
-                    path: "$parentCartData",
-                    preserveNullAndEmptyArrays: true,
-                },
-            },
-            {
-                $project: {
-                    qty: 1,
-                    product_id: 1,
-                    delivery_amount: "$product_data.delivery_amount",
-                    delivery: "$product_data.delivery_type",
-                    sale_price: "$price",
-                    original_price: "$original_price",
-                    discount_type: "$product_data.discount_type",
-                    discount_amount: "$product_data.discount_amount",
-                    isCombination: "$product_data.isCombination",
-                    customize: "$customize",
-                    customizationData: "$customizationData",
-                    variant_id: "$variant_id",
-                    variant_attribute_id: "$variant_attribute_id",
-                    variants: "$variants",
-                    affiliate_id: "$affiliate_id",
-                    shipping_id: "$shipping_id",
-                    shippingName: "$shippingName",
-                    parentCartData: 1,
-                },
-            },
-        ];
-
-        if (!address || (address && address?.country === "")) {
-            return resp.status(400).json({
-                status: false,
-                message: "User selected address country not found.",
-            });
-        }
-
-        const cartResult = await Cart.aggregate(pipeline);
-
-        let subTotal = 0;
-        let totalShipping = 0;
-        let discount = 0;
-        let discountAmount = 0;
-        let netAmount = 0;
-        let wallet_balance_new = 0;
-        let usedWalletAmount = 0;
-        let promotionDiscount = 0;
-        let delivery = 0;
-        let parentCartData: any = {};
-
-        // NEW: voucher amount (same behavior as checkout)
-        let voucherDiscount = Number(req.body.voucher_discount || 0);
-
-        const cartCoupon = await CartCouponModel.findOne({ user_id: req.user._id });
-        let couponCode = "";
-
-        if (cartResult.length !== 0) {
-            await Promise.all(
-                cartResult.map(async (item) => {
-                    const offerPrice = getOfferProductPrice(
-                        item.sale_price,
-                        item.discount_type,
-                        item.discount_amount
-                    );
-
-                    const couponData = await couponCart.findOne({ vendor_id: req.body.vendor_id, user_id: req.user._id });
-                    const couponDatas = couponData ? couponData : null;
-
-                    if (couponDatas) {
-                        const couponData = await CouponModel.findOne({
-                            vendor_id: couponDatas.vendor_id
-                        });
-
-                        if (couponData?.discount_type && couponData?.discount_amount) {
-                            const allowedProductIds = (couponData.product_id || []).map((id: any) =>
-                                id.toString()
-                            );
-
-                            const discountEligibleAmount = allowedProductIds.includes(item.product_id.toString()) ? Number(item.sale_price) * Number(item.qty) : 0;
-                            const type = couponData.discount_type;
-                            const value = Number(couponData.discount_amount);
-
-                            discountAmount = type === "percentage" ? (discountEligibleAmount * value) / 100 : value;
-
-                            discountAmount = Math.min(discountAmount, discountEligibleAmount);
-                        }
-                    }
-
-                    subTotal += item.sale_price * item.qty + (item.parentCartData?.vendor_data[0]?.perItem * item.qty) + (item.parentCartData?.vendor_data[0]?.perOrder / cartResult.length) - discountAmount - (voucherDiscount / shop_count);
-
-
-                    discount += (item.sale_price - offerPrice) * item.qty;
-                    promotionDiscount += (item.original_price - item.sale_price) * item.qty;
-
-                    const shippingName = item.parentCartData?.vendor_data?.[0]?.shippingName;
-                    const shippingAmount = item.parentCartData?.vendor_data[0]?.perOrder * item.qty;
-
-                    const shippingTemplateData =
-                        item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
-                    const shippingOptions = {
-                        standardShipping: shippingTemplateData?.standardShipping,
-                        expedited: shippingTemplateData?.expedited,
-                        twoDays: shippingTemplateData?.twoDays,
-                        oneDay: shippingTemplateData?.oneDay,
-                    };
-
-                    const selectedShipping =
-                        shippingOptions[shippingName as keyof typeof shippingOptions] || [];
-
-                    let perOrderFee = 0;
-                    for (const option of selectedShipping) {
-                        if (option?.region?.includes(address?.country)) {
-                            if (item.parentCartData) {
-                                delivery += (option?.shippingFee?.perItem || 0) * item.qty;
-                                perOrderFee = option?.shippingFee?.perOrder || 0;
-                            }
-                            break; // exit after first match
-                        }
-                    }
-
-                    const parentCartVendorData = item.parentCartData;
-                    parentCartVendorData.vendor_data[0].perOrder = parseFloat(
-                        perOrderFee.toString()
-                    );
-                    parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
-                })
-            );
-
-            // loop for vendor product data
-            for (const vendorId in parentCartData) {
-                const data = parentCartData[vendorId];
-
-                if (data.vendor_data[0]?.perOrder <= 0) {
-                    return resp.status(200).json({
-                        status: false,
-                        message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`,
-                    });
-                }
-                delivery += data.vendor_data[0]?.perOrder;
-            }
-
-            // --- totals (order matches main checkout) ---
-            netAmount = subTotal - promotionDiscount;
-
-            if (cartCoupon && cartCoupon.coupon_data) {
-                for (const [vendorId, couponDetails] of cartCoupon.coupon_data) {
-                    discountAmount += couponDetails.discount_amount;
-                    couponCode = couponDetails.coupon_code;
-                }
-            }
-
-            netAmount -= discountAmount;
-            netAmount -= voucherDiscount;
-            wallet_balance_new = netAmount;
-            netAmount += totalShipping;
-            netAmount += delivery;
-
-            if (req.body.wallet == "1") {
-                const user = await User.findOne({ _id: req.user._id });
-                let walletAmount = 0;
-                if (user) {
-                    walletAmount = user.wallet_balance;
-                    if (walletAmount > netAmount) {
-                        usedWalletAmount = wallet_balance_new;
-                        netAmount = 0;
-                    } else if (walletAmount < netAmount) {
-                        usedWalletAmount = walletAmount;
-                        netAmount -= walletAmount;
-                    }
-                }
-            }
-            // --- end totals ---
-
-        } else {
-            error = true;
-            return resp.status(400).json({ message: "No items in your cart." });
-        }
-
-        const salesData: any = {
-            user_id: req.user._id,
-            order_id: orderId,
-            name: address?.first_name || "" + address?.last_name || "",
-            email: address?.email,
-            mobile: address?.mobile,
-            phone_code: address?.phone_code,
-            country: address?.country,
-            state: address?.state,
-            city: address?.city,
-            address_line1: address?.address_line1,
-            address_line2: address?.address_line2,
-            pincode: address?.pincode,
-            payment_type: req.body.payment_type,
-            subtotal: subTotal,
-            shipping: totalShipping,
-            discount: discount,
-            net_amount: netAmount,
-            payment_status: "0",
-            coupon_discount: discountAmount,
-            coupon_applied: cartCoupon?.coupon_data,
-            wallet_used: subTotal,
-            promotional_discount: promotionDiscount,
-            delivery: delivery,
-
-            // NEW: voucher fields (same names as in checkout)
-            voucher_id: req.body.voucher_id
-                ? new mongoose.Types.ObjectId(req.body.voucher_id)
-                : null,
-            voucher_dicount: (voucherDiscount) / shop_count || 0,
-        };
-
-        function removeHtmlTags(str: string): string {
-            return str.replace(/<\/?[^>]+(>|$)/g, "");
-        }
-
-        await Promise.all(
-            cartResult.map(async (item) => {
-                const productData = await Product.findOne({ _id: item.product_id });
-                if (!productData) {
-                    error = true;
-                    return resp.status(400).json({ message: "Product not found." });
-                }
-                let currentQty = Number(productData?.qty);
-
-                if (item?.isCombination) {
-                    productData.combinationData.forEach((element: any, index: any) => {
-                        element.combinations.forEach((comb: any) => {
-                            const variantAttrs = Array.isArray(item.variant_attribute_id) ? item.variant_attribute_id : [];
-                            let matchVariantAttrId: string[][] = variantAttrs.map(
-                                (attrId: string) => [attrId]
-                            );
-                            if (variantAttrs.length > 1) {
-                                for (let i = 0; i < variantAttrs.length; i++) {
-                                    for (let j = i + 1; j < variantAttrs.length; j++) {
-                                        matchVariantAttrId.push([
-                                            variantAttrs[i],
-                                            variantAttrs[j],
-                                        ]);
-                                    }
-                                }
-                            }
-                            matchVariantAttrId.forEach((attrId: any) => {
-                                const attrIdStr = attrId.toString();
-                                const attrIdArray = attrIdStr.split(",");
-
-                                const isMatch = Array.isArray(comb.combIds) &&
-                                    comb.combIds.length === attrIdArray.length &&
-                                    comb.combIds.every((id: string) => attrIdArray.includes(id));
-
-                                if (isMatch) {
-                                    currentQty = comb.qty ? comb.qty : item.qty;
-                                }
-                            });
-                        });
-                    });
-                }
-
-                if (currentQty == 0) {
-                    error = true;
-                    return resp
-                        .status(400)
-                        .json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` });
-                }
-
-                const updatedQty = currentQty - Number(item?.qty);
-
-                if (updatedQty < 0) {
-                    error = true;
-                    return resp
-                        .status(400)
-                        .json({ message: `${removeHtmlTags(productData.product_title)} is out of stock` });
-                }
-            })
-        );
-
-        if (!error) {
-            const sales = await Sales.create(salesData);
-            const vendorSubOrderMap = new Map<string, string>();
-            const saleId = sales._id;
-            if (cartResult.length !== 0) {
-                await Promise.all(
-                    cartResult.map(async (item) => {
-                        const productResultPipeline = [
-                            {
-                                $match: { _id: new mongoose.Types.ObjectId(item.product_id) },
-                            },
-                            {
-                                $lookup: {
-                                    from: "parentproducts",
-                                    localField: "parent_id",
-                                    foreignField: "_id",
-                                    as: "parentData",
-                                },
-                            },
-                            {
-                                $unwind: {
-                                    path: "$parentData",
-                                    preserveNullAndEmptyArrays: true,
-                                },
-                            },
-                            {
-                                $lookup: {
-                                    from: "users",
-                                    localField: "vendor_id",
-                                    foreignField: "_id",
-                                    as: "vendorData",
-                                },
-                            },
-                            {
-                                $unwind: {
-                                    path: "$vendorData",
-                                    preserveNullAndEmptyArrays: true,
-                                },
-                            },
-                            {
-                                $project: {
-                                    product_title: 1,
-                                    product_id: "$_id",
-                                    variant_attribute_id: "$parentData.variant_attribute_id",
-                                    discount_type: "$discount_type",
-                                    discount_amount: "$discount_amount",
-                                    delivery: "$delivery",
-                                    delivery_amount: "$delivery_amount",
-                                    image: "$image",
-                                    vendor_id: "$vendor_id",
-                                    vendor_name: "$vendorData.name",
-                                    slug: "$slug",
-                                    stock: "$stock",
-                                    sale_price: "$sale_price",
-                                    offer_price: "$offer_price",
-                                    return_policy: "$return_policy",
-                                    meta_title: "$meta_title",
-                                    meta_keywords: "$meta_keywords",
-                                    meta_description: "$meta_description",
-                                },
-                            },
-                        ];
-
-                        const aggregation = await Product.aggregate(productResultPipeline);
-
-                        const productResult = aggregation[0];
-                        const productData = await Product.findOne({
-                            _id: new mongoose.Types.ObjectId(item.product_id),
-                        });
-                        if (!productData) {
-                            error = true;
-                            return resp.status(400).json({ message: "Product not found." });
-                        }
-                        let currentQty = Number(productData?.qty);
-
-                        if (item?.isCombination) {
-                            productData.combinationData.forEach((element: any, index: any) => {
-                                element.combinations.forEach((comb: any) => {
-                                    let matchVariantAttrId: string[][] = item?.variant_attribute_id.map(
-                                        (attrId: string) => [attrId]
-                                    );
-
-                                    if (item?.variant_attribute_id.length > 1) {
-                                        for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                                            for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                                                matchVariantAttrId.push([
-                                                    item?.variant_attribute_id[i],
-                                                    item?.variant_attribute_id[j],
-                                                ]);
-                                            }
-                                        }
-                                    }
-                                    matchVariantAttrId.forEach((attrId: any) => {
-                                        const attrIdStr = attrId.toString();
-                                        const attrIdArray = attrIdStr.split(",");
-
-                                        const isMatch =
-                                            comb.combIds.length === attrIdArray.length &&
-                                            comb.combIds.every((id: string) => attrIdArray.includes(id));
-
-                                        if (isMatch) {
-                                            currentQty = comb.qty ? comb.qty : productData.qty;
-                                        }
-                                    });
-                                });
-                            });
-                        }
-                        const updatedQty = currentQty - Number(item?.qty);
-                        let finalQty = updatedQty.toString();
-                        const shippingAmount = (item.parentCartData?.vendor_data[0]?.perItem * item.qty) + (item.parentCartData?.vendor_data[0]?.perOrder / cartResult?.length);
-
-                        const couponData = await couponCart.findOne({ vendor_id: req.body.vendor_id, user_id: req.user._id });
-                        const couponDatas = couponData ? couponData : null;
-
-                        if (couponDatas) {
-                            const couponData = await CouponModel.findOne({
-                                vendor_id: couponDatas.vendor_id
-                            });
-
-                            if (couponData?.discount_type && couponData?.discount_amount) {
-                                const allowedProductIds = (couponData.product_id || []).map((id: any) =>
-                                    id.toString()
-                                );
-
-                                const discountEligibleAmount = allowedProductIds.includes(item.product_id.toString()) ? Number(item.sale_price) * Number(item.qty) : 0;
-                                const type = couponData.discount_type;
-                                const value = Number(couponData.discount_amount);
-
-                                discountAmount = type === "percentage" ? (discountEligibleAmount * value) / 100 : value;
-
-                                discountAmount = Math.min(discountAmount, discountEligibleAmount);
-                            }
-                        }
-
-                        const deliveryDataObj = {
-                            vendor_id: item.parentCartData?.vendor_id || null,
-                            shippingId: item.shipping_id || item.parentCartData?.shipping_id || null,
-                            shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName || null,
-                            perItem: item.parentCartData?.vendor_data?.[0]?.perItem ?? 0,
-                            perOrder: item.parentCartData?.vendor_data?.[0]?.perOrder ?? 0,
-                            note: item.parentCartData?.vendor_data?.[0]?.note || "",
-                            minDate: item.parentCartData?.vendor_data?.[0]?.minDate || null,
-                            maxDate: item.parentCartData?.vendor_data?.[0]?.maxDate || null,
-                            shippingTemplateData: item.parentCartData?.shippingData?.[0]?.shippingTemplateData || null,
-                        };
-                        let subOrderId = vendorSubOrderMap.get(String(vendorId));
-                        if (!subOrderId) {
-                          subOrderId = `${orderId}-${vendorId}`;
-                          vendorSubOrderMap.set(String(vendorId), subOrderId);
-                        }
-                        const data: any = {
-                            user_id: req.user._id,
-                            vendor_id: productResult?.vendor_id,
-                            vendor_name: productResult?.vendor_name,
-                            sale_id: saleId,
-                            order_id: orderId,
-                            sub_order_id: subOrderId,
-                            product_id: productResult?.product_id,
-                            productData: productData ? productData : {},
-                            qty: item?.qty,
-                            isCombination: item?.isCombination,
-                            customize: item?.customize,
-                            customizationData: item?.customizationData,
-                            sub_total: item?.sale_price * item?.qty,
-                            amount: item?.sale_price * item?.qty,
-                            variant_id: item?.variant_id,
-                            variant_attribute_id: item?.variant_attribute_id,
-                            variants: item?.variants || [],
-                            affiliate_id: item.affiliate_id ? item.affiliate_id : null,
-                            promotional_discount: item.original_price - item.sale_price,
-                            shippingId: item.shipping_id,
-                            shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName,
-                            shippingAmount: shippingAmount,
-                            couponData: couponDatas,
-                            couponDiscountAmount: discountAmount,
-                            deliveryData: deliveryDataObj,
-                            original_price: item.original_price
-                        };
-
-                        if (item?.isCombination) {
-                            productData.combinationData.forEach((element: any, index: any) => {
-                                element.combinations.forEach((comb: any, ind: any) => {
-                                    let matchVariantAttrId: string[][] = item?.variant_attribute_id.map(
-                                        (attrId: string) => [attrId]
-                                    );
-
-                                    if (item?.variant_attribute_id.length > 1) {
-                                        for (let i = 0; i < item?.variant_attribute_id.length; i++) {
-                                            for (let j = i + 1; j < item?.variant_attribute_id.length; j++) {
-                                                matchVariantAttrId.push([
-                                                    item?.variant_attribute_id[i],
-                                                    item?.variant_attribute_id[j],
-                                                ]);
-                                            }
-                                        }
-                                    }
-
-                                    matchVariantAttrId.forEach((attrId: any) => {
-                                        const attrIdStr = attrId.toString();
-                                        const attrIdArray = attrIdStr.split(",");
-
-                                        const isMatch =
-                                            comb.combIds.length === attrIdArray.length &&
-                                            comb.combIds.every((id: string) => attrIdArray.includes(id));
-
-                                        if (isMatch) {
-                                            if (element.combinations[ind].qty == "") {
-                                                productData.qty = finalQty;
-                                            } else {
-                                                element.combinations[ind].qty = finalQty;
-                                            }
-                                            productData.combinationData[index] = element;
-                                        }
-                                    });
-                                });
-                            });
-                        } else {
-                            productData.qty = finalQty;
-                        }
-                        await productData.save();
-
-                        await Salesdetail.create(data);
-                    })
-                );
-            }
-            await Cart.deleteMany({ user_id: req.user._id, vendor_id: vendorId });
-            await ParentCartModel.deleteMany(
-                { user_id: req.user._id, vendor_id: vendorId },
-                {
-                    $pull: {
-                        vendor_data: {
-                            vendor_id: new mongoose.Types.ObjectId(vendorId),
-                        },
+              $lookup: {
+                from: "users",
+                localField: "vendor_id",
+                foreignField: "_id",
+                pipeline: [
+                  {
+                    $project: {
+                      _id: 1,
                     },
-                }
-            );
-            await couponCart.deleteOne({ user_id: req.user._id, vendor_id: vendorId });
-            await CartCouponModel.deleteOne({ user_id: req.user._id });
-            await CouponModel.updateOne(
-                { coupon_code: couponCode },
-                { $inc: { total_uses: 1 } }
-            );
+                  },
+                  {
+                    $lookup: {
+                      from: "vendordetails",
+                      localField: "_id",
+                      foreignField: "user_id",
+                      pipeline: [
+                        {
+                          $project: {
+                            shop_name: 1,
+                          },
+                        },
+                      ],
+                      as: "vendorprofile",
+                    },
+                  },
+                ],
+                as: "vendorDetails",
+              },
+            },
+            {
+              $lookup: {
+                from: "shippings",
+                localField: "shipping_id",
+                foreignField: "_id",
+                as: "shippingData",
+              },
+            },
+          ],
+          as: "parentCartData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$parentCartData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          qty: 1,
+          product_id: 1,
+          delivery_amount: "$product_data.delivery_amount",
+          delivery: "$product_data.delivery_type",
+          sale_price: "$price",
+          original_price: "$original_price",
+          discount_type: "$product_data.discount_type",
+          discount_amount: "$product_data.discount_amount",
+          isCombination: "$product_data.isCombination",
+          customize: "$customize",
+          customizationData: "$customizationData",
+          variant_id: "$variant_id",
+          variant_attribute_id: "$variant_attribute_id",
+          variants: "$variants",
+          affiliate_id: "$affiliate_id",
+          shipping_id: "$shipping_id",
+          shippingName: "$shippingName",
+          parentCartData: 1,
+        },
+      },
+    ];
 
-            if (req.body.wallet == "1" && couponCode == "") {
-                const transactionHistorydata = {
-                    user_id: req.user._id,
-                    transaction_type: "Dr",
-                    amount: usedWalletAmount,
-                    description: "Used Amount for Shopping",
-                };
-                await User.updateOne(
-                    { _id: req.user._id },
-                    { $inc: { wallet_balance: -usedWalletAmount } }
-                );
-                await GiftCardTransactionHistoryModel.create(transactionHistorydata);
+    if (!address || (address && address?.country === "")) {
+      return resp.status(400).json({
+        status: false,
+        message: "User selected address country not found.",
+      });
+    }
+
+    const cartResult = await Cart.aggregate(pipeline);
+
+    let subTotal = 0;
+    let totalShipping = 0;
+    let discount = 0;
+    let discountAmount = 0;
+    let netAmount = 0;
+    let wallet_balance_new = 0;
+    let usedWalletAmount = 0;
+    let promotionDiscount = 0;
+    let delivery = 0;
+    let parentCartData: any = {};
+
+    // NEW: voucher amount (same behavior as checkout)
+    let voucherDiscount = Number(req.body.voucher_discount || 0);
+
+    const cartCoupon = await CartCouponModel.findOne({ user_id: req.user._id });
+    let couponCode = "";
+
+    if (cartResult.length !== 0) {
+      await Promise.all(
+        cartResult.map(async (item) => {
+          const offerPrice = getOfferProductPrice(
+            item.sale_price,
+            item.discount_type,
+            item.discount_amount,
+          );
+
+          const couponData = await couponCart.findOne({
+            vendor_id: req.body.vendor_id,
+            user_id: req.user._id,
+          });
+          const couponDatas = couponData ? couponData : null;
+
+          if (couponDatas) {
+            const couponData = await CouponModel.findOne({
+              vendor_id: couponDatas.vendor_id,
+            });
+
+            if (couponData?.discount_type && couponData?.discount_amount) {
+              const allowedProductIds = (couponData.product_id || []).map(
+                (id: any) => id.toString(),
+              );
+
+              const discountEligibleAmount = allowedProductIds.includes(
+                item.product_id.toString(),
+              )
+                ? Number(item.sale_price) * Number(item.qty)
+                : 0;
+              const type = couponData.discount_type;
+              const value = Number(couponData.discount_amount);
+
+              discountAmount =
+                type === "percentage"
+                  ? (discountEligibleAmount * value) / 100
+                  : value;
+
+              discountAmount = Math.min(discountAmount, discountEligibleAmount);
             }
-            const updateUser = await User.findOne({ _id: req.user._id });
-            return resp
-                .status(200)
-                .json({ message: "Checkout successfully", orderId: orderId, updateUser: updateUser });
+          }
+
+          subTotal +=
+            item.sale_price * item.qty +
+            item.parentCartData?.vendor_data[0]?.perItem * item.qty +
+            item.parentCartData?.vendor_data[0]?.perOrder / cartResult.length -
+            discountAmount -
+            voucherDiscount / shop_count;
+
+          discount += (item.sale_price - offerPrice) * item.qty;
+          promotionDiscount +=
+            (item.original_price - item.sale_price) * item.qty;
+
+          const shippingName =
+            item.parentCartData?.vendor_data?.[0]?.shippingName;
+          const shippingAmount =
+            item.parentCartData?.vendor_data[0]?.perOrder * item.qty;
+
+          const shippingTemplateData =
+            item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
+          const shippingOptions = {
+            standardShipping: shippingTemplateData?.standardShipping,
+            expedited: shippingTemplateData?.expedited,
+            twoDays: shippingTemplateData?.twoDays,
+            oneDay: shippingTemplateData?.oneDay,
+          };
+
+          const selectedShipping =
+            shippingOptions[shippingName as keyof typeof shippingOptions] || [];
+
+          let perOrderFee = 0;
+          for (const option of selectedShipping) {
+            if (option?.region?.includes(address?.country)) {
+              if (item.parentCartData) {
+                delivery += (option?.shippingFee?.perItem || 0) * item.qty;
+                perOrderFee = option?.shippingFee?.perOrder || 0;
+              }
+              break; // exit after first match
+            }
+          }
+
+          const parentCartVendorData = item.parentCartData;
+          parentCartVendorData.vendor_data[0].perOrder = parseFloat(
+            perOrderFee.toString(),
+          );
+          parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
+        }),
+      );
+
+      // loop for vendor product data
+      for (const vendorId in parentCartData) {
+        const data = parentCartData[vendorId];
+
+        if (data.vendor_data[0]?.perOrder <= 0) {
+          return resp.status(200).json({
+            status: false,
+            message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`,
+          });
         }
-    } catch (error: any) {
-        console.error("vendorWiseCheckout ERROR ", error);
-        return resp.status(500).json({
-           message: "Something went wrong",
-           error: error?.message || error,
-           stack: error?.stack
-       });
-   }
- };
+        delivery += data.vendor_data[0]?.perOrder;
+      }
 
-export const orderList = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user_id = req.user._id;
-        const startDate = req.query.startDate ? resp.locals.currentdate(req.query.startDate).startOf('day').toDate() : null;
-        const endDate = req.query.endDate ? resp.locals.currentdate(req.query.endDate).endOf('day').toDate() : null;
+      // --- totals (order matches main checkout) ---
+      netAmount = subTotal - promotionDiscount;
 
-        const offset = parseInt(req.query.offset as string) || 0;
-        const limit = 10;
+      if (cartCoupon && cartCoupon.coupon_data) {
+        for (const [vendorId, couponDetails] of cartCoupon.coupon_data) {
+          discountAmount += couponDetails.discount_amount;
+          couponCode = couponDetails.coupon_code;
+        }
+      }
 
-        let pipe: any[] = [];
+      netAmount -= discountAmount;
+      netAmount -= voucherDiscount;
+      wallet_balance_new = netAmount;
+      netAmount += totalShipping;
+      netAmount += delivery;
 
-        pipe.push(
-            {
-                $match: {
-                    user_id: new mongoose.Types.ObjectId(user_id)
-                }
-            },
-            {
-                $lookup: {
-                    from: "salesdetails",
-                    localField: "_id",
-                    foreignField: "sale_id",
-                    as: "saleDetaildata",
-                    pipeline: [
-                        {
-                            $lookup: {
-                                from: "variants",
-                                localField: "variant_id",
-                                foreignField: "_id",
-                                as: "variantData"
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "variantattributes",
-                                localField: "variant_attribute_id",
-                                foreignField: "_id",
-                                as: "variantAttributeData"
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "variantdetails",
-                                localField: "variant_id",
-                                foreignField: "variant_id",
-                                as: "variantDetail"
-                            }
-                        },
-                        {
-                            $unwind: {
-                                path: "$variantDetail",
-                                preserveNullAndEmptyArrays: true
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "vendordetails",
-                                localField: "vendor_id",
-                                foreignField: "user_id",
-                                as: "vendorData"
-                            }
-                        },
-                        {
-                            $unwind: {
-                                path: "$vendorData",
-                                preserveNullAndEmptyArrays: true
-                            }
-                        }
-                    ]
-                }
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "user_id",
-                    foreignField: "_id",
-                    as: "userData"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$userData",
-                    preserveNullAndEmptyArrays: true
-                }
-            }
-        );
+      if (req.body.wallet == "1") {
+        const user = await User.findOne({ _id: req.user._id });
+        let walletAmount = 0;
+        if (user) {
+          walletAmount = user.wallet_balance;
+          if (walletAmount > netAmount) {
+            usedWalletAmount = wallet_balance_new;
+            netAmount = 0;
+          } else if (walletAmount < netAmount) {
+            usedWalletAmount = walletAmount;
+            netAmount -= walletAmount;
+          }
+        }
+      }
+      // --- end totals ---
+    } else {
+      error = true;
+      return resp.status(400).json({ message: "No items in your cart." });
+    }
 
-        if (startDate && endDate) {
-            pipe.push({
-                $match: {
-                    createdAt: {
-                        $gte: startDate,
-                        $lte: endDate
-                    }
+    const salesData: any = {
+      user_id: req.user._id,
+      order_id: orderId,
+      name: address?.first_name || "" + address?.last_name || "",
+      email: address?.email,
+      mobile: address?.mobile,
+      phone_code: address?.phone_code,
+      country: address?.country,
+      state: address?.state,
+      city: address?.city,
+      address_line1: address?.address_line1,
+      address_line2: address?.address_line2,
+      pincode: address?.pincode,
+      payment_type: req.body.payment_type,
+      subtotal: subTotal,
+      shipping: totalShipping,
+      discount: discount,
+      net_amount: netAmount,
+      payment_status: "0",
+      coupon_discount: discountAmount,
+      coupon_applied: cartCoupon?.coupon_data,
+      wallet_used: subTotal,
+      promotional_discount: promotionDiscount,
+      delivery: delivery,
+
+      // NEW: voucher fields (same names as in checkout)
+      voucher_id: req.body.voucher_id
+        ? new mongoose.Types.ObjectId(req.body.voucher_id)
+        : null,
+      voucher_dicount: voucherDiscount / shop_count || 0,
+    };
+
+    function removeHtmlTags(str: string): string {
+      return str.replace(/<\/?[^>]+(>|$)/g, "");
+    }
+
+    await Promise.all(
+      cartResult.map(async (item) => {
+        const productData = await Product.findOne({ _id: item.product_id });
+        if (!productData) {
+          error = true;
+          return resp.status(400).json({ message: "Product not found." });
+        }
+        let currentQty = Number(productData?.qty);
+
+        if (item?.isCombination) {
+          productData.combinationData.forEach((element: any, index: any) => {
+            element.combinations.forEach((comb: any) => {
+              const variantAttrs = Array.isArray(item.variant_attribute_id)
+                ? item.variant_attribute_id
+                : [];
+              let matchVariantAttrId: string[][] = variantAttrs.map(
+                (attrId: string) => [attrId],
+              );
+              if (variantAttrs.length > 1) {
+                for (let i = 0; i < variantAttrs.length; i++) {
+                  for (let j = i + 1; j < variantAttrs.length; j++) {
+                    matchVariantAttrId.push([variantAttrs[i], variantAttrs[j]]);
+                  }
                 }
+              }
+              matchVariantAttrId.forEach((attrId: any) => {
+                const attrIdStr = attrId.toString();
+                const attrIdArray = attrIdStr.split(",");
+
+                const isMatch =
+                  Array.isArray(comb.combIds) &&
+                  comb.combIds.length === attrIdArray.length &&
+                  comb.combIds.every((id: string) => attrIdArray.includes(id));
+
+                if (isMatch) {
+                  currentQty = comb.qty ? comb.qty : item.qty;
+                }
+              });
+            });
+          });
+        }
+
+        if (currentQty == 0) {
+          error = true;
+          return resp
+            .status(400)
+            .json({
+              message: `${removeHtmlTags(productData.product_title)} is out of stock`,
             });
         }
 
-        pipe.push(
-            {
+        const updatedQty = currentQty - Number(item?.qty);
+
+        if (updatedQty < 0) {
+          error = true;
+          return resp
+            .status(400)
+            .json({
+              message: `${removeHtmlTags(productData.product_title)} is out of stock`,
+            });
+        }
+      }),
+    );
+
+    if (!error) {
+      const sales = await Sales.create(salesData);
+      const vendorSubOrderMap = new Map<string, string>();
+      const saleId = sales._id;
+      if (cartResult.length !== 0) {
+        await Promise.all(
+          cartResult.map(async (item) => {
+            const productResultPipeline = [
+              {
+                $match: { _id: new mongoose.Types.ObjectId(item.product_id) },
+              },
+              {
+                $lookup: {
+                  from: "parentproducts",
+                  localField: "parent_id",
+                  foreignField: "_id",
+                  as: "parentData",
+                },
+              },
+              {
+                $unwind: {
+                  path: "$parentData",
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "vendor_id",
+                  foreignField: "_id",
+                  as: "vendorData",
+                },
+              },
+              {
+                $unwind: {
+                  path: "$vendorData",
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              {
                 $project: {
-                    _id: 1,
-                    order_id: 1,
-                    subtotal: 1,
-                    payment_status: 1,
-                    state: 1,
-                    country: 1,
-                    city: 1,
-                    address_line1: 1,
-                    address_line2: 1,
-                    pincode: 1,
-                    userName: "$userData.name",
-                    userEmail: "$userData.email",
-                    saleDetaildata: 1,
-                    createdAt: 1
-                }
-            },
-            {
-                $sort: { createdAt: -1 }
-            },
-            {
-                $skip: offset
-            },
-            {
-                $limit: limit
+                  product_title: 1,
+                  product_id: "$_id",
+                  variant_attribute_id: "$parentData.variant_attribute_id",
+                  discount_type: "$discount_type",
+                  discount_amount: "$discount_amount",
+                  delivery: "$delivery",
+                  delivery_amount: "$delivery_amount",
+                  image: "$image",
+                  vendor_id: "$vendor_id",
+                  vendor_name: "$vendorData.name",
+                  slug: "$slug",
+                  stock: "$stock",
+                  sale_price: "$sale_price",
+                  offer_price: "$offer_price",
+                  return_policy: "$return_policy",
+                  meta_title: "$meta_title",
+                  meta_keywords: "$meta_keywords",
+                  meta_description: "$meta_description",
+                },
+              },
+            ];
+
+            const aggregation = await Product.aggregate(productResultPipeline);
+
+            const productResult = aggregation[0];
+            const productData = await Product.findOne({
+              _id: new mongoose.Types.ObjectId(item.product_id),
+            });
+            if (!productData) {
+              error = true;
+              return resp.status(400).json({ message: "Product not found." });
             }
+            let currentQty = Number(productData?.qty);
+
+            if (item?.isCombination) {
+              productData.combinationData.forEach(
+                (element: any, index: any) => {
+                  element.combinations.forEach((comb: any) => {
+                    let matchVariantAttrId: string[][] =
+                      item?.variant_attribute_id.map((attrId: string) => [
+                        attrId,
+                      ]);
+
+                    if (item?.variant_attribute_id.length > 1) {
+                      for (
+                        let i = 0;
+                        i < item?.variant_attribute_id.length;
+                        i++
+                      ) {
+                        for (
+                          let j = i + 1;
+                          j < item?.variant_attribute_id.length;
+                          j++
+                        ) {
+                          matchVariantAttrId.push([
+                            item?.variant_attribute_id[i],
+                            item?.variant_attribute_id[j],
+                          ]);
+                        }
+                      }
+                    }
+                    matchVariantAttrId.forEach((attrId: any) => {
+                      const attrIdStr = attrId.toString();
+                      const attrIdArray = attrIdStr.split(",");
+
+                      const isMatch =
+                        comb.combIds.length === attrIdArray.length &&
+                        comb.combIds.every((id: string) =>
+                          attrIdArray.includes(id),
+                        );
+
+                      if (isMatch) {
+                        currentQty = comb.qty ? comb.qty : productData.qty;
+                      }
+                    });
+                  });
+                },
+              );
+            }
+            const updatedQty = currentQty - Number(item?.qty);
+            let finalQty = updatedQty.toString();
+            const shippingAmount =
+              item.parentCartData?.vendor_data[0]?.perItem * item.qty +
+              item.parentCartData?.vendor_data[0]?.perOrder /
+                cartResult?.length;
+
+            const couponData = await couponCart.findOne({
+              vendor_id: req.body.vendor_id,
+              user_id: req.user._id,
+            });
+            const couponDatas = couponData ? couponData : null;
+
+            if (couponDatas) {
+              const couponData = await CouponModel.findOne({
+                vendor_id: couponDatas.vendor_id,
+              });
+
+              if (couponData?.discount_type && couponData?.discount_amount) {
+                const allowedProductIds = (couponData.product_id || []).map(
+                  (id: any) => id.toString(),
+                );
+
+                const discountEligibleAmount = allowedProductIds.includes(
+                  item.product_id.toString(),
+                )
+                  ? Number(item.sale_price) * Number(item.qty)
+                  : 0;
+                const type = couponData.discount_type;
+                const value = Number(couponData.discount_amount);
+
+                discountAmount =
+                  type === "percentage"
+                    ? (discountEligibleAmount * value) / 100
+                    : value;
+
+                discountAmount = Math.min(
+                  discountAmount,
+                  discountEligibleAmount,
+                );
+              }
+            }
+
+            const deliveryDataObj = {
+              vendor_id: item.parentCartData?.vendor_id || null,
+              shippingId:
+                item.shipping_id || item.parentCartData?.shipping_id || null,
+              shippingName:
+                item.parentCartData?.vendor_data?.[0]?.shippingName || null,
+              perItem: item.parentCartData?.vendor_data?.[0]?.perItem ?? 0,
+              perOrder: item.parentCartData?.vendor_data?.[0]?.perOrder ?? 0,
+              note: item.parentCartData?.vendor_data?.[0]?.note || "",
+              minDate: item.parentCartData?.vendor_data?.[0]?.minDate || null,
+              maxDate: item.parentCartData?.vendor_data?.[0]?.maxDate || null,
+              shippingTemplateData:
+                item.parentCartData?.shippingData?.[0]?.shippingTemplateData ||
+                null,
+            };
+            let subOrderId = vendorSubOrderMap.get(String(vendorId));
+            if (!subOrderId) {
+              subOrderId = `${orderId}-${vendorId}`;
+              vendorSubOrderMap.set(String(vendorId), subOrderId);
+            }
+            const data: any = {
+              user_id: req.user._id,
+              vendor_id: productResult?.vendor_id,
+              vendor_name: productResult?.vendor_name,
+              sale_id: saleId,
+              order_id: orderId,
+              sub_order_id: subOrderId,
+              product_id: productResult?.product_id,
+              productData: productData ? productData : {},
+              qty: item?.qty,
+              isCombination: item?.isCombination,
+              customize: item?.customize,
+              customizationData: item?.customizationData,
+              sub_total: item?.sale_price * item?.qty,
+              amount: item?.sale_price * item?.qty,
+              variant_id: item?.variant_id,
+              variant_attribute_id: item?.variant_attribute_id,
+              variants: item?.variants || [],
+              affiliate_id: item.affiliate_id ? item.affiliate_id : null,
+              promotional_discount: item.original_price - item.sale_price,
+              shippingId: item.shipping_id,
+              shippingName: item.parentCartData?.vendor_data?.[0]?.shippingName,
+              shippingAmount: shippingAmount,
+              couponData: couponDatas,
+              couponDiscountAmount: discountAmount,
+              deliveryData: deliveryDataObj,
+              original_price: item.original_price,
+            };
+
+            if (item?.isCombination) {
+              productData.combinationData.forEach(
+                (element: any, index: any) => {
+                  element.combinations.forEach((comb: any, ind: any) => {
+                    let matchVariantAttrId: string[][] =
+                      item?.variant_attribute_id.map((attrId: string) => [
+                        attrId,
+                      ]);
+
+                    if (item?.variant_attribute_id.length > 1) {
+                      for (
+                        let i = 0;
+                        i < item?.variant_attribute_id.length;
+                        i++
+                      ) {
+                        for (
+                          let j = i + 1;
+                          j < item?.variant_attribute_id.length;
+                          j++
+                        ) {
+                          matchVariantAttrId.push([
+                            item?.variant_attribute_id[i],
+                            item?.variant_attribute_id[j],
+                          ]);
+                        }
+                      }
+                    }
+
+                    matchVariantAttrId.forEach((attrId: any) => {
+                      const attrIdStr = attrId.toString();
+                      const attrIdArray = attrIdStr.split(",");
+
+                      const isMatch =
+                        comb.combIds.length === attrIdArray.length &&
+                        comb.combIds.every((id: string) =>
+                          attrIdArray.includes(id),
+                        );
+
+                      if (isMatch) {
+                        if (element.combinations[ind].qty == "") {
+                          productData.qty = finalQty;
+                        } else {
+                          element.combinations[ind].qty = finalQty;
+                        }
+                        productData.combinationData[index] = element;
+                      }
+                    });
+                  });
+                },
+              );
+            } else {
+              productData.qty = finalQty;
+            }
+            await productData.save();
+
+            await Salesdetail.create(data);
+          }),
         );
+      }
+      await Cart.deleteMany({ user_id: req.user._id, vendor_id: vendorId });
+      await ParentCartModel.deleteMany(
+        { user_id: req.user._id, vendor_id: vendorId },
+        {
+          $pull: {
+            vendor_data: {
+              vendor_id: new mongoose.Types.ObjectId(vendorId),
+            },
+          },
+        },
+      );
+      await couponCart.deleteOne({
+        user_id: req.user._id,
+        vendor_id: vendorId,
+      });
+      await CartCouponModel.deleteOne({ user_id: req.user._id });
+      await CouponModel.updateOne(
+        { coupon_code: couponCode },
+        { $inc: { total_uses: 1 } },
+      );
 
-        const sales = await Sales.aggregate(pipe);
-        const salesCount = await Sales.countDocuments({ user_id: user_id });
-        const base_url = process.env.ASSET_URL + "/uploads/product/";
-        const shop_base_url = process.env.ASSET_URL + "/uploads/shop-icon/";
-
-        return resp.status(200).json({
-            message: "Sales list fetched successfully.",
-            sales,
-            base_url,
-            shop_base_url,
-            salesCount
-        });
-
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({
-            message: "Something went wrong. Please try again."
+      if (req.body.wallet == "1" && couponCode == "") {
+        const transactionHistorydata = {
+          user_id: req.user._id,
+          transaction_type: "Dr",
+          amount: usedWalletAmount,
+          description: "Used Amount for Shopping",
+        };
+        await User.updateOne(
+          { _id: req.user._id },
+          { $inc: { wallet_balance: -usedWalletAmount } },
+        );
+        await GiftCardTransactionHistoryModel.create(transactionHistorydata);
+      }
+      const updateUser = await User.findOne({ _id: req.user._id });
+      return resp
+        .status(200)
+        .json({
+          message: "Checkout successfully",
+          orderId: orderId,
+          updateUser: updateUser,
         });
     }
+  } catch (error: any) {
+    console.error("vendorWiseCheckout ERROR ", error);
+    return resp.status(500).json({
+      message: "Something went wrong",
+      error: error?.message || error,
+      stack: error?.stack,
+    });
+  }
+};
+
+export const orderList = async (req: CustomRequest, resp: Response) => {
+  try {
+    const user_id = req.user._id;
+    const startDate = req.query.startDate
+      ? resp.locals.currentdate(req.query.startDate).startOf("day").toDate()
+      : null;
+    const endDate = req.query.endDate
+      ? resp.locals.currentdate(req.query.endDate).endOf("day").toDate()
+      : null;
+
+    const offset = parseInt(req.query.offset as string) || 0;
+    const limit = 10;
+
+    let pipe: any[] = [];
+
+    pipe.push(
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(user_id),
+        },
+      },
+      {
+        $lookup: {
+          from: "salesdetails",
+          localField: "_id",
+          foreignField: "sale_id",
+          as: "saleDetaildata",
+          pipeline: [
+            {
+              $lookup: {
+                from: "variants",
+                localField: "variant_id",
+                foreignField: "_id",
+                as: "variantData",
+              },
+            },
+            {
+              $lookup: {
+                from: "variantattributes",
+                localField: "variant_attribute_id",
+                foreignField: "_id",
+                as: "variantAttributeData",
+              },
+            },
+            {
+              $lookup: {
+                from: "variantdetails",
+                localField: "variant_id",
+                foreignField: "variant_id",
+                as: "variantDetail",
+              },
+            },
+            {
+              $unwind: {
+                path: "$variantDetail",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            {
+              $lookup: {
+                from: "vendordetails",
+                localField: "vendor_id",
+                foreignField: "user_id",
+                as: "vendorData",
+              },
+            },
+            {
+              $unwind: {
+                path: "$vendorData",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "user_id",
+          foreignField: "_id",
+          as: "userData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$userData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    );
+
+    if (startDate && endDate) {
+      pipe.push({
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lte: endDate,
+          },
+        },
+      });
+    }
+
+    pipe.push(
+      {
+        $project: {
+          _id: 1,
+          order_id: 1,
+          subtotal: 1,
+          payment_status: 1,
+          state: 1,
+          country: 1,
+          city: 1,
+          address_line1: 1,
+          address_line2: 1,
+          pincode: 1,
+          userName: "$userData.name",
+          userEmail: "$userData.email",
+          saleDetaildata: 1,
+          createdAt: 1,
+        },
+      },
+      {
+        $sort: { createdAt: -1 },
+      },
+      {
+        $skip: offset,
+      },
+      {
+        $limit: limit,
+      },
+    );
+
+    const sales = await Sales.aggregate(pipe);
+    const salesCount = await Sales.countDocuments({ user_id: user_id });
+    const base_url = process.env.ASSET_URL + "/uploads/product/";
+    const shop_base_url = process.env.ASSET_URL + "/uploads/shop-icon/";
+
+    return resp.status(200).json({
+      message: "Sales list fetched successfully.",
+      sales,
+      base_url,
+      shop_base_url,
+      salesCount,
+    });
+  } catch (error) {
+    console.error(error);
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
 };
 
 export const getOrderDetail = async (req: CustomRequest, resp: Response) => {
+  try {
+    const orderId = req.params.orderId;
+    const sales = await Sales.findOne({
+      order_id: orderId,
+      user_id: req.user._id,
+    });
 
-    try {
-        const orderId = req.params.orderId;
-        const sales = await Sales.findOne({ order_id: orderId, user_id: req.user._id });
-
-        if (!sales) {
-            return resp.status(400).json({ message: 'Invalid Order Id.' });
-        }
-
-        const pipeline: any = [
-            {
-                $match: {
-                    sale_id: new mongoose.Types.ObjectId(sales._id)
-                }
-            },
-            {
-                $lookup: {
-                    from: "variants",
-                    localField: "variant_id",
-                    foreignField: "_id",
-                    as: "variantData",
-                },
-            },
-            {
-                $lookup: {
-                    from: "variantattributes",
-                    localField: "variant_attribute_id",
-                    foreignField: "_id",
-                    as: "variantAttributeData",
-                },
-            }
-        ];
-
-        const salesDetails = await SalesDetailsModel.aggregate(pipeline)
-
-        const base_url = process.env.ASSET_URL + '/uploads/product/';
-        const data = {
-            ...sales.toJSON(),
-            sales_details: salesDetails
-        }
-
-        return resp.status(200).json({ message: "Order details fetched successfully.", data, base_url });
-
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-            error: error.message,
-            data: []
-        });
+    if (!sales) {
+      return resp.status(400).json({ message: "Invalid Order Id." });
     }
 
-}
+    const pipeline: any = [
+      {
+        $match: {
+          sale_id: new mongoose.Types.ObjectId(sales._id),
+        },
+      },
+      {
+        $lookup: {
+          from: "variants",
+          localField: "variant_id",
+          foreignField: "_id",
+          as: "variantData",
+        },
+      },
+      {
+        $lookup: {
+          from: "variantattributes",
+          localField: "variant_attribute_id",
+          foreignField: "_id",
+          as: "variantAttributeData",
+        },
+      },
+    ];
+
+    const salesDetails = await SalesDetailsModel.aggregate(pipeline);
+
+    const base_url = process.env.ASSET_URL + "/uploads/product/";
+    const data = {
+      ...sales.toJSON(),
+      sales_details: salesDetails,
+    };
+
+    return resp
+      .status(200)
+      .json({ message: "Order details fetched successfully.", data, base_url });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+      error: error.message,
+      data: [],
+    });
+  }
+};
 function escapeRegexChars(searchStr: string) {
-    return searchStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  return searchStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }
 
 export const searchOrder = async (req: CustomRequest, resp: Response) => {
-    try {
-        const searchParams: any = req.query.searchParams;
-        const escapedSearchParams = escapeRegexChars(searchParams);
+  try {
+    const searchParams: any = req.query.searchParams;
+    const escapedSearchParams = escapeRegexChars(searchParams);
 
-        const pipeline: any[] = [
+    const pipeline: any[] = [
+      {
+        $match: {
+          user_id: req.user._id,
+        },
+      },
+      {
+        $lookup: {
+          from: "salesdetails",
+          localField: "_id",
+          foreignField: "sale_id",
+          as: "saleDetaildata",
+          pipeline: [
             {
-                '$match': {
-                    'user_id': req.user._id,
-                }
+              $lookup: {
+                from: "variants",
+                localField: "variant_id",
+                foreignField: "_id",
+                as: "variantData",
+              },
             },
             {
-                '$lookup': {
-                    'from': 'salesdetails',
-                    'localField': '_id',
-                    'foreignField': 'sale_id',
-                    'as': 'saleDetaildata',
-                    'pipeline': [
-                        {
-                            '$lookup': {
-                                'from': "variants",
-                                'localField': "variant_id",
-                                'foreignField': "_id",
-                                'as': "variantData",
-                            },
-                        },
-                        {
-                            '$lookup': {
-                                'from': "variantattributes",
-                                'localField': "variant_attribute_id",
-                                'foreignField': "_id",
-                                'as': "variantAttributeData",
-                            },
-                        },
-                    ]
-                }
+              $lookup: {
+                from: "variantattributes",
+                localField: "variant_attribute_id",
+                foreignField: "_id",
+                as: "variantAttributeData",
+              },
             },
+          ],
+        },
+      },
+      {
+        $unwind: {
+          path: "$saleDetaildata",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $match: {
+          $or: [
+            { order_id: { $regex: escapedSearchParams, $options: "i" } }, // Search by order_id
             {
-                '$unwind': {
-                    'path': '$saleDetaildata',
-                    'preserveNullAndEmptyArrays': true
-                }
-            },
-            {
-                '$match': {
-                    '$or': [
-                        { 'order_id': { $regex: escapedSearchParams, $options: 'i' } }, // Search by order_id
-                        { 'saleDetaildata.productData.product_title': { $regex: escapedSearchParams, $options: 'i' } }, // Search by product_name
-                    ]
-                }
-            },
-            {
-                '$group': {
-                    '_id': '$order_id',
-                    'user_id': { '$first': '$user_id' },
-                    'order_id': { '$first': '$order_id' },
-                    'createdAt': { '$first': '$createdAt' },
-                    'saleDetaildata': { '$push': '$saleDetaildata' } // Group matching sales details
-                }
-            },
-            {
-                '$project': {
-                    '_id': 0,
-                    'user_id': 1,
-                    'order_id': 1,
-                    'createdAt': 1,
-                    'saleDetaildata': 1,
-                }
-            },
-            {
-                '$sort': {
-                    'createdAt': -1
-                }
-            }
-        ];
+              "saleDetaildata.productData.product_title": {
+                $regex: escapedSearchParams,
+                $options: "i",
+              },
+            }, // Search by product_name
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: "$order_id",
+          user_id: { $first: "$user_id" },
+          order_id: { $first: "$order_id" },
+          createdAt: { $first: "$createdAt" },
+          saleDetaildata: { $push: "$saleDetaildata" }, // Group matching sales details
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          user_id: 1,
+          order_id: 1,
+          createdAt: 1,
+          saleDetaildata: 1,
+        },
+      },
+      {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+    ];
 
-        const base_url = process.env.ASSET_URL + '/uploads/product/';
-        let sales = [];
+    const base_url = process.env.ASSET_URL + "/uploads/product/";
+    let sales = [];
 
-        if (searchParams) {
-            sales = await Sales.aggregate(pipeline);
-        }
-
-        return resp.status(200).json({
-            message: 'Orders retrieved successfully.',
-            data: sales,
-            base_url
-        });
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-            error: error.message,
-            data: []
-        });
+    if (searchParams) {
+      sales = await Sales.aggregate(pipeline);
     }
-}
+
+    return resp.status(200).json({
+      message: "Orders retrieved successfully.",
+      data: sales,
+      base_url,
+    });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+      error: error.message,
+      data: [],
+    });
+  }
+};
 
 export const subOrderList = async (req: CustomRequest, resp: Response) => {
-    try {
-        const pipeline = [
-            {
-                '$match': {
-                    'sale_id': new mongoose.Types.ObjectId(req.body.sale_id)
-                }
-            }, {
-                '$lookup': {
-                    'from': 'variantproducts',
-                    'localField': 'product_id',
-                    'foreignField': '_id',
-                    'as': 'variantProductData'
-                }
-            }, {
-                '$unwind': {
-                    'path': '$variantProductData',
-                    'preserveNullAndEmptyArrays': true
-                }
-            }
-        ]
-        const aggregation = await Salesdetail.aggregate(pipeline);
-        if (aggregation.length === 0) {
-            return resp.status(400).json({ message: 'Order not found.' })
-        } else {
-            return resp.status(200).json({ message: 'Order fetched successfully.', order: aggregation })
-        }
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+  try {
+    const pipeline = [
+      {
+        $match: {
+          sale_id: new mongoose.Types.ObjectId(req.body.sale_id),
+        },
+      },
+      {
+        $lookup: {
+          from: "variantproducts",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "variantProductData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$variantProductData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    ];
+    const aggregation = await Salesdetail.aggregate(pipeline);
+    if (aggregation.length === 0) {
+      return resp.status(400).json({ message: "Order not found." });
+    } else {
+      return resp
+        .status(200)
+        .json({ message: "Order fetched successfully.", order: aggregation });
     }
-}
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const userCancelOrder = async (req: CustomRequest, resp: Response) => {
-    try {
-        const usercancel_remark = req.body.usercancel_remark;
-        const id = req.body.id;
+  try {
+    const usercancel_remark = req.body.usercancel_remark;
+    const id = req.body.id;
 
-        const query = { _id: id }
-        const updateData = { $set: { order_status: '4', usercancel_remark: usercancel_remark } }
-        await Salesdetail.updateOne(query, updateData);
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'user-cancel-order',
-            'Order cancelled successfully with order ID: ' + id
-        );
-        resp.status(200).json({ message: 'Your order is cancelled successfully and your amount is credited in your account soon.' })
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
-    }
-}
+    const query = { _id: id };
+    const updateData = {
+      $set: { order_status: "4", usercancel_remark: usercancel_remark },
+    };
+    await Salesdetail.updateOne(query, updateData);
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "user-cancel-order",
+      "Order cancelled successfully with order ID: " + id,
+    );
+    resp
+      .status(200)
+      .json({
+        message:
+          "Your order is cancelled successfully and your amount is credited in your account soon.",
+      });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const returnProduct = async (req: CustomRequest, resp: Response) => {
-    try {
-        const return_remark = req.body.return_remark;
-        const id = req.body.id;
+  try {
+    const return_remark = req.body.return_remark;
+    const id = req.body.id;
 
-        const query = { _id: id }
-        const updateData = { $set: { order_status: '4', return_remark: return_remark, return_status: 'Pending' } }
-        await Salesdetail.updateOne(query, updateData);
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'return-product',
-            'Return request sent successfully with order ID: ' + id
-        );
-        resp.status(200).json({ message: 'Return request sent successfully so please wait now till admin approval.' })
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
-    }
-}
+    const query = { _id: id };
+    const updateData = {
+      $set: {
+        order_status: "4",
+        return_remark: return_remark,
+        return_status: "Pending",
+      },
+    };
+    await Salesdetail.updateOne(query, updateData);
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "return-product",
+      "Return request sent successfully with order ID: " + id,
+    );
+    resp
+      .status(200)
+      .json({
+        message:
+          "Return request sent successfully so please wait now till admin approval.",
+      });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const orderFeedback = async (req: CustomRequest, resp: Response) => {
-    try {
-        const comment = req.body.comment;
-        const rating = req.body.rating;
-        const product_id = req.body.product_id;
-        const sale_id = req.body.sale_id;
-        const existingComment = await Comment.findOne({ sale_id: sale_id });
+  try {
+    const comment = req.body.comment;
+    const rating = req.body.rating;
+    const product_id = req.body.product_id;
+    const sale_id = req.body.sale_id;
+    const existingComment = await Comment.findOne({ sale_id: sale_id });
 
-        if (existingComment) {
-            return resp.status(400).json({ message: 'You have already give the feedback.' })
-        }
-
-        await Comment.create({ user_id: req.user._id, product_id: product_id, sale_id: sale_id, rating: rating, comment: comment });
-        resp.status(200).json({ message: 'Comment Added Successfully.' })
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' })
+    if (existingComment) {
+      return resp
+        .status(400)
+        .json({ message: "You have already give the feedback." });
     }
-}
+
+    await Comment.create({
+      user_id: req.user._id,
+      product_id: product_id,
+      sale_id: sale_id,
+      rating: rating,
+      comment: comment,
+    });
+    resp.status(200).json({ message: "Comment Added Successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
+};
 
 export const getProfile = async (req: CustomRequest, resp: Response) => {
+  try {
+    const user = await User.findOne({
+      _id: req.user._id,
+      designation_id: { $in: ["1", "4"] },
+    });
 
-    try {
-        const user = await User.findOne({ _id: req.user._id, designation_id: { $in: ['1', '4'] } });
-
-        if (!user) {
-
-            return resp.status(400).json({ message: 'Invalid User.' });
-
-        }
-
-        const country = await CountryModel.findOne({ _id: user.country_id });
-        const state = await StateModel.findOne({ _id: user.state_id });
-        const city = await CityModel.findOne({ _id: user.city_id });
-
-        const userEmailData = await UserEmailModel.findOne({ user_id: user._id, status: { $in: ['Pending', 'Confirmed'] } }).sort({ _id: -1 });
-
-        const image = user.image ? user.image : '';
-        let baseUrl = '';
-
-        if (image.includes("https")) {
-            baseUrl = image
-        } else if (image) {
-            baseUrl = process.env.ASSET_URL + '/uploads/profileImage/' + image;
-        }
-
-        const data = {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            email_verified: userEmailData ? userEmailData.status : 'Pending',
-            phone_code: user.phone_code,
-            mobile: user.mobile,
-            profession: user.profession,
-            dob: user.dob,
-            image: baseUrl,
-            gender: user.gender,
-            country: country ? country.name : '',
-            state: state ? state.name : '',
-            city: city ? city.name : '',
-            wallet_balance: user.wallet_balance,
-            designation_id: user.designation_id,
-            affiliate_code: user.affiliate_code ? user.affiliate_code : '',
-            createdAt: resp.locals.currentdate(user.createdAt).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm:ss'),
-        }
-
-        return resp.status(200).json({ message: 'Profile fetched successfully.', data });
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!user) {
+      return resp.status(400).json({ message: "Invalid User." });
     }
+
+    const country = await CountryModel.findOne({ _id: user.country_id });
+    const state = await StateModel.findOne({ _id: user.state_id });
+    const city = await CityModel.findOne({ _id: user.city_id });
+
+    const userEmailData = await UserEmailModel.findOne({
+      user_id: user._id,
+      status: { $in: ["Pending", "Confirmed"] },
+    }).sort({ _id: -1 });
+
+    const image = user.image ? user.image : "";
+    let baseUrl = "";
+
+    if (image.includes("https")) {
+      baseUrl = image;
+    } else if (image) {
+      baseUrl = process.env.ASSET_URL + "/uploads/profileImage/" + image;
+    }
+
+    const data = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      email_verified: userEmailData ? userEmailData.status : "Pending",
+      phone_code: user.phone_code,
+      mobile: user.mobile,
+      profession: user.profession,
+      dob: user.dob,
+      image: baseUrl,
+      gender: user.gender,
+      country: country ? country.name : "",
+      state: state ? state.name : "",
+      city: city ? city.name : "",
+      wallet_balance: user.wallet_balance,
+      designation_id: user.designation_id,
+      affiliate_code: user.affiliate_code ? user.affiliate_code : "",
+      createdAt: resp.locals
+        .currentdate(user.createdAt)
+        .tz("Asia/Kolkata")
+        .format("DD-MM-YYYY HH:mm:ss"),
+    };
+
+    return resp
+      .status(200)
+      .json({ message: "Profile fetched successfully.", data });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const getEmail = async (req: CustomRequest, resp: Response) => {
+  try {
+    const userEmailData = await UserEmailModel.findOne({
+      user_id: req.user._id,
+      status: { $in: ["Pending", "Confirmed"] },
+    }).sort({ _id: -1 });
 
-    try {
-        const userEmailData = await UserEmailModel.findOne({
-            user_id: req.user._id,
-            status: { $in: ['Pending', 'Confirmed'] }
-        }).sort({ _id: -1 });
-
-        if (!userEmailData) {
-            return resp.status(400).json({ message: 'Email not found.' });
-        }
-        const userEmailChangeCount = await UserEmailModel.countDocuments({ user_id: req.user._id, status: { $in: ['Pending', 'Confirmed'] } });
-
-        let showButton = false;
-        if (userEmailChangeCount > 1) {
-            showButton = true;
-        }
-        const data = {
-            email: userEmailData.email,
-            status: userEmailData.status,
-            showCancelButton: showButton
-        }
-
-        return resp.status(200).json({ message: 'User Email fetched successfully.', data });
-
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!userEmailData) {
+      return resp.status(400).json({ message: "Email not found." });
     }
+    const userEmailChangeCount = await UserEmailModel.countDocuments({
+      user_id: req.user._id,
+      status: { $in: ["Pending", "Confirmed"] },
+    });
+
+    let showButton = false;
+    if (userEmailChangeCount > 1) {
+      showButton = true;
+    }
+    const data = {
+      email: userEmailData.email,
+      status: userEmailData.status,
+      showCancelButton: showButton,
+    };
+
+    return resp
+      .status(200)
+      .json({ message: "User Email fetched successfully.", data });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
-export const sendEmailVerificationLink = async (req: CustomRequest, resp: Response) => {
-    try {
+export const sendEmailVerificationLink = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const email = req.body.email;
+    const user_email = req.user.email;
+    const user = await User.findOne({ email: user_email, designation_id: "1" });
+    const verifyToken = crypto.randomBytes(20).toString("hex");
+    const userEmailData = await UserEmailModel.findOne({
+      user_id: user?._id,
+      email: user?.email,
+    });
 
-        const email = req.body.email
-        const user_email = req.user.email;
-        const user = await User.findOne({ email: user_email, designation_id: '1' });
-        const verifyToken = crypto.randomBytes(20).toString('hex');
-        const userEmailData = await UserEmailModel.findOne({ user_id: user?._id, email: user?.email });
-
-        if (userEmailData) {
-            userEmailData.verifyToken = verifyToken;
-            await userEmailData.save();
-        }
-
-        if (!user) {
-            return resp.status(400).json({ message: 'User not found' });
-        }
-
-        const templatePath = path.join(__dirname, '..', 'views', 'emailVerificationTemplate.ejs');
-        const htmlContent = await ejs.renderFile(templatePath, {
-            frontendUrl: process.env.FRONTEND_URL,
-            resetToken: verifyToken
-        });
-
-        const transporter = nodemailer.createTransport({
-            host: "smtp-relay.brevo.com",
-            port: 2525,
-            secure: false,
-            auth: {
-                user: process.env.BREVO_USER!,
-                pass: process.env.BREVO_PASS!,
-            },
-        });
-
-        const mailOptions = {
-            to: user.email,
-            from: process.env.USEREMAIL_NAME,
-            subject: 'Email Verification',
-            html: htmlContent
-
-        };
-
-        try {
-            await transporter.sendMail(mailOptions);
-            return resp.status(200).json({ message: "Email sent Successfully.", user });
-        } catch (mailError) {
-            console.error('Error sending email:', mailError);
-            return resp.status(500).json({ message: 'Failed to send email. Please try again later.' });
-        }
-
-
-    } catch (err) {
-        resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (userEmailData) {
+      userEmailData.verifyToken = verifyToken;
+      await userEmailData.save();
     }
+
+    if (!user) {
+      return resp.status(400).json({ message: "User not found" });
+    }
+
+    const templatePath = path.join(
+      __dirname,
+      "..",
+      "views",
+      "emailVerificationTemplate.ejs",
+    );
+    const htmlContent = await ejs.renderFile(templatePath, {
+      frontendUrl: process.env.FRONTEND_URL,
+      resetToken: verifyToken,
+    });
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp-relay.brevo.com",
+      port: 2525,
+      secure: false,
+      auth: {
+        user: process.env.BREVO_USER!,
+        pass: process.env.BREVO_PASS!,
+      },
+    });
+
+    const mailOptions = {
+      to: user.email,
+      from: process.env.USEREMAIL_NAME,
+      subject: "Email Verification",
+      html: htmlContent,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      return resp
+        .status(200)
+        .json({ message: "Email sent Successfully.", user });
+    } catch (mailError) {
+      console.error("Error sending email:", mailError);
+      return resp
+        .status(500)
+        .json({ message: "Failed to send email. Please try again later." });
+    }
+  } catch (err) {
+    resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const changeEmail = async (req: CustomRequest, resp: Response) => {
-    try {
+  try {
+    const email = req.body.email;
+    const confirm_email = req.body.confirm_email;
+    const password = req.body.password;
 
-        const email = req.body.email;
-        const confirm_email = req.body.confirm_email;
-        const password = req.body.password;
+    if (email !== confirm_email) {
+      return resp
+        .status(400)
+        .json({ message: "Email and confirm email should be same." });
+    }
 
-        if (email !== confirm_email) {
-            return resp.status(400).json({ message: 'Email and confirm email should be same.' });
+    const user = await User.findOne({ email: req.user.email, type: "manual" });
+
+    if (!user) {
+      return resp.status(400).json({ message: "Invalid Email." });
+    }
+
+    bcrypt.compare(password, user.password, async (err, result) => {
+      if (err) {
+        return resp
+          .status(500)
+          .json({ message: "Something went wrong. Please try again." });
+      }
+
+      if (result) {
+        const userEmailData = await UserEmailModel.findOne({
+          user_id: user._id,
+          status: "Pending",
+        }).sort({ _id: -1 });
+
+        if (userEmailData) {
+          return resp
+            .status(400)
+            .json({
+              message: "You cannot change email. Please verify your email.",
+            });
         }
 
-        const user = await User.findOne({ email: req.user.email, type: 'manual' });
+        const verifyToken = crypto.randomBytes(20).toString("hex");
 
-        if (!user) {
-            return resp.status(400).json({ message: 'Invalid Email.' });
-        }
+        const changeMailData = {
+          user_id: user._id,
+          email: req.body.email,
+          verifyToken: verifyToken,
+        };
 
-        bcrypt.compare(password, user.password, async (err, result) => {
-            if (err) {
-                return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-            }
+        await UserEmailModel.create(changeMailData);
 
-            if (result) {
-                const userEmailData = await UserEmailModel.findOne({
-                    user_id: user._id,
-                    status: 'Pending'
-                }).sort({ _id: -1 });
-
-                if (userEmailData) {
-                    return resp.status(400).json({ message: 'You cannot change email. Please verify your email.' });
-                }
-
-                const verifyToken = crypto.randomBytes(20).toString('hex');
-
-                const changeMailData = {
-                    user_id: user._id,
-                    email: req.body.email,
-                    verifyToken: verifyToken
-                }
-
-                await UserEmailModel.create(changeMailData);
-
-                const templatePath = path.join(__dirname, '..', 'views', 'emailVerificationTemplate.ejs');
-                const htmlContent = await ejs.renderFile(templatePath, {
-                    frontendUrl: process.env.FRONTEND_URL,
-                    resetToken: verifyToken
-                });
-
-                const transporter = nodemailer.createTransport({
-                    host: "smtp-relay.brevo.com",
-                    port: 2525,
-                    secure: false,
-                    auth: {
-                        user: process.env.BREVO_USER!,
-                        pass: process.env.BREVO_PASS!,
-                    },
-                });
-
-                const mailOptions = {
-                    to: req.body.email,
-                    from: process.env.USEREMAIL_NAME,
-                    subject: 'Email Verification',
-                    html: htmlContent
-
-                };
-
-                try {
-                    await transporter.sendMail(mailOptions);
-                    return resp.status(200).json({ message: "Email changed Successfully. Please verify your email", user });
-                } catch (mailError) {
-                    console.error('Error sending email:', mailError);
-                    return resp.status(500).json({ message: 'Failed to send email. Please try again later.' });
-                }
-
-            } else {
-                resp.status(400).json({ message: 'Invalid Password' });
-            }
+        const templatePath = path.join(
+          __dirname,
+          "..",
+          "views",
+          "emailVerificationTemplate.ejs",
+        );
+        const htmlContent = await ejs.renderFile(templatePath, {
+          frontendUrl: process.env.FRONTEND_URL,
+          resetToken: verifyToken,
         });
 
-    } catch (err) {
-        resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+        const transporter = nodemailer.createTransport({
+          host: "smtp-relay.brevo.com",
+          port: 2525,
+          secure: false,
+          auth: {
+            user: process.env.BREVO_USER!,
+            pass: process.env.BREVO_PASS!,
+          },
+        });
+
+        const mailOptions = {
+          to: req.body.email,
+          from: process.env.USEREMAIL_NAME,
+          subject: "Email Verification",
+          html: htmlContent,
+        };
+
+        try {
+          await transporter.sendMail(mailOptions);
+          return resp
+            .status(200)
+            .json({
+              message: "Email changed Successfully. Please verify your email",
+              user,
+            });
+        } catch (mailError) {
+          console.error("Error sending email:", mailError);
+          return resp
+            .status(500)
+            .json({ message: "Failed to send email. Please try again later." });
+        }
+      } else {
+        resp.status(400).json({ message: "Invalid Password" });
+      }
+    });
+  } catch (err) {
+    resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const cancelEmail = async (req: CustomRequest, resp: Response) => {
-    try {
+  try {
+    const email = req.body.email;
 
-        const email = req.body.email;
+    const userEmailData = await UserEmailModel.findOne({
+      user_id: req.user._id,
+      email: email,
+    }).sort({ _id: -1 });
 
-        const userEmailData = await UserEmailModel.findOne({
-            user_id: req.user._id,
-            email: email,
-        }).sort({ _id: -1 });
-
-        if (!userEmailData) {
-            return resp.status(400).json({ message: 'Invalid Email.' });
-        }
-
-        userEmailData.status = 'Failed';
-        userEmailData.verifyToken = '';
-        await userEmailData.save();
-
-        return resp.status(200).json({ message: 'Email cancelled successfully.' });
-
-    } catch (err) {
-        resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!userEmailData) {
+      return resp.status(400).json({ message: "Invalid Email." });
     }
+
+    userEmailData.status = "Failed";
+    userEmailData.verifyToken = "";
+    await userEmailData.save();
+
+    return resp.status(200).json({ message: "Email cancelled successfully." });
+  } catch (err) {
+    resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const updateProfile = async (req: CustomRequest, resp: Response) => {
+  try {
+    const user = await User.findOne({ _id: req.user._id, designation_id: "1" });
 
-    try {
-        const user = await User.findOne({ _id: req.user._id, designation_id: "1" });
-
-        if (!user) {
-            return resp.status(400).json({ message: 'Invalid User.' });
-        }
-
-        const { email, mobile, name, dob, phone_code } = req.body;
-
-        // if (email !== user.email) {
-        //     const emailExists = await User.findOne({ email: email });
-        //     if (emailExists) {
-        //         return resp.status(400).json({ message: 'Email already exists' });
-        //     }
-        // }
-
-        // if (mobile !== user.mobile) {
-        //     const mobileExists = await User.findOne({ mobile: mobile });
-        //     if (mobileExists) {
-        //         return resp.status(400).json({ message: 'Mobile number already exists' });
-        //     }
-        // }
-
-        user.name = name;
-        user.dob = dob;
-        user.email = email;
-        user.mobile = mobile;
-        user.phone_code = phone_code;
-        user.country_id = req.body.country_id;
-        user.state_id = req.body.state_id;
-        user.city_id = req.body.city_id;
-        user.gender = req.body.gender;
-        user.occupation = req.body.occupation;
-        user.profession = req.body.profession;
-        await user.save();
-
-        return resp.status(200).json({ message: 'Profile updated successfully.' });
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!user) {
+      return resp.status(400).json({ message: "Invalid User." });
     }
+
+    const { email, mobile, name, dob, phone_code } = req.body;
+
+    // if (email !== user.email) {
+    //     const emailExists = await User.findOne({ email: email });
+    //     if (emailExists) {
+    //         return resp.status(400).json({ message: 'Email already exists' });
+    //     }
+    // }
+
+    // if (mobile !== user.mobile) {
+    //     const mobileExists = await User.findOne({ mobile: mobile });
+    //     if (mobileExists) {
+    //         return resp.status(400).json({ message: 'Mobile number already exists' });
+    //     }
+    // }
+
+    user.name = name;
+    user.dob = dob;
+    user.email = email;
+    user.mobile = mobile;
+    user.phone_code = phone_code;
+    user.country_id = req.body.country_id;
+    user.state_id = req.body.state_id;
+    user.city_id = req.body.city_id;
+    user.gender = req.body.gender;
+    user.occupation = req.body.occupation;
+    user.profession = req.body.profession;
+    await user.save();
+
+    return resp.status(200).json({ message: "Profile updated successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
-
-export const updateProfileImage = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = await User.findOne({ _id: req.user._id, designation_id: "1" });
-        if (!user) {
-            return resp.status(400).json({ message: 'Invalid User.' });
-        }
-
-        // Check if a file is provided
-        if (!req.file) {
-            return resp.status(400).json({ message: 'Profile image is required' });
-        }
-
-        // Validate file type
-        if (!req.file.mimetype.startsWith('image/')) {
-            return resp.status(400).json({ message: 'Invalid file type. Only images are allowed.' });
-        }
-
-        const ext = path.extname(req.file.originalname);
-        const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
-
-        const uploadsDir = path.join('uploads', 'profileImage');
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-
-        const destinationPath = path.join(uploadsDir, fileName);
-
-        await convertToWebP(req.file.buffer, destinationPath);
-        // Delete the old image if it exists
-        if (user.image) {
-            const oldImagePath = path.join('uploads', 'profileImage', user.image);
-            if (fs.existsSync(oldImagePath)) {
-                await fs.promises.unlink(oldImagePath);
-            }
-        }
-
-        user.image = fileName;
-        await user.save();
-
-        return resp.status(200).json({ message: 'Profile image updated successfully.' });
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+export const updateProfileImage = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const user = await User.findOne({ _id: req.user._id, designation_id: "1" });
+    if (!user) {
+      return resp.status(400).json({ message: "Invalid User." });
     }
+
+    // Check if a file is provided
+    if (!req.file) {
+      return resp.status(400).json({ message: "Profile image is required" });
+    }
+
+    // Validate file type
+    if (!req.file.mimetype.startsWith("image/")) {
+      return resp
+        .status(400)
+        .json({ message: "Invalid file type. Only images are allowed." });
+    }
+
+    const ext = path.extname(req.file.originalname);
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+
+    const uploadsDir = path.join("uploads", "profileImage");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const destinationPath = path.join(uploadsDir, fileName);
+
+    await convertToWebP(req.file.buffer, destinationPath);
+    // Delete the old image if it exists
+    if (user.image) {
+      const oldImagePath = path.join("uploads", "profileImage", user.image);
+      if (fs.existsSync(oldImagePath)) {
+        await fs.promises.unlink(oldImagePath);
+      }
+    }
+
+    user.image = fileName;
+    await user.save();
+
+    return resp
+      .status(200)
+      .json({ message: "Profile image updated successfully." });
+  } catch (error) {
+    console.error(error);
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
-export const uploadProfileImage = async (req: CustomRequest, resp: Response) => {
-    try {
-
-        if (!req.file) {
-            return resp.status(400).json({ message: 'Profile image is required' });
-        }
-
-        const categoryImageFile = req.file;
-        const validImageTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif'];
-        if (!validImageTypes.includes(categoryImageFile.mimetype)) {
-            return resp.status(400).json({ message: 'Invalid file type. Only .jpg, .gif, .png are allowed.' });
-        }
-        if (categoryImageFile.size > 10 * 1024 * 1024) {
-            return resp.status(400).json({ message: 'File size must be smaller than 10 MB.' });
-        }
-        let fileName = (Date.now() + '-' + Math.round(Math.random() * 1E9)) + '.webp';
-        const uploadDir = path.join('uploads/profileImage');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
-        const destinationPath = path.join(uploadDir, fileName);
-
-        await convertToWebP(categoryImageFile.buffer, destinationPath)
-        const query = { _id: req.user._id };
-        const updateData = { $set: { image: fileName } };
-        await User.updateOne(query, updateData);
-
-        return resp.status(200).json({ message: 'Image uploaded and converted to WebP successfully.' });
-
-    } catch (err) {
-        console.error('Error during image upload:', err);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+export const uploadProfileImage = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    if (!req.file) {
+      return resp.status(400).json({ message: "Profile image is required" });
     }
+
+    const categoryImageFile = req.file;
+    const validImageTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "image/gif",
+    ];
+    if (!validImageTypes.includes(categoryImageFile.mimetype)) {
+      return resp
+        .status(400)
+        .json({
+          message: "Invalid file type. Only .jpg, .gif, .png are allowed.",
+        });
+    }
+    if (categoryImageFile.size > 10 * 1024 * 1024) {
+      return resp
+        .status(400)
+        .json({ message: "File size must be smaller than 10 MB." });
+    }
+    let fileName = Date.now() + "-" + Math.round(Math.random() * 1e9) + ".webp";
+    const uploadDir = path.join("uploads/profileImage");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const destinationPath = path.join(uploadDir, fileName);
+
+    await convertToWebP(categoryImageFile.buffer, destinationPath);
+    const query = { _id: req.user._id };
+    const updateData = { $set: { image: fileName } };
+    await User.updateOne(query, updateData);
+
+    return resp
+      .status(200)
+      .json({ message: "Image uploaded and converted to WebP successfully." });
+  } catch (err) {
+    console.error("Error during image upload:", err);
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const changePassword = async (req: CustomRequest, resp: Response) => {
-    try {
-        const oldPassword = req.body.oldPassword;
-        const newPassword = req.body.newPassword;
-        const confirmPassword = req.body.confirmPassword;
-        const user = await User.findOne({ _id: req.user._id });
+  try {
+    const oldPassword = req.body.oldPassword;
+    const newPassword = req.body.newPassword;
+    const confirmPassword = req.body.confirmPassword;
+    const user = await User.findOne({ _id: req.user._id });
 
-        if (!user) {
-            return resp.status(400).json({ message: 'Invalid User.' });
-        }
-
-        if (!bcrypt.compareSync(oldPassword, user.password)) {
-            return resp.status(400).json({ message: 'Old password is incorrect.' });
-        }
-
-        if (newPassword !== confirmPassword) {
-            return resp.status(400).json({ message: 'New password and confirm password does not match.' });
-        }
-        if (!bcrypt.compareSync(oldPassword, user.password)) {
-            return resp.status(400).json({ message: 'Old password does not match.' });
-        }
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
-        user.multipleTokens = [];
-        await user.save();
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'reset-password',
-            'User changed password successfully',
-        );
-        return resp.status(200).json({ status: true, message: 'Password changed successfully.' });
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!user) {
+      return resp.status(400).json({ message: "Invalid User." });
     }
+
+    if (!bcrypt.compareSync(oldPassword, user.password)) {
+      return resp.status(400).json({ message: "Old password is incorrect." });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return resp
+        .status(400)
+        .json({ message: "New password and confirm password does not match." });
+    }
+    if (!bcrypt.compareSync(oldPassword, user.password)) {
+      return resp.status(400).json({ message: "Old password does not match." });
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.multipleTokens = [];
+    await user.save();
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "reset-password",
+      "User changed password successfully",
+    );
+    return resp
+      .status(200)
+      .json({ status: true, message: "Password changed successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const getWishlist = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = req.user._id
-        let pipeline: any = [
+  try {
+    const user = req.user._id;
+    let pipeline: any = [
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(user),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_id",
+          pipeline: [
             {
-                $match: {
-                    user_id: new mongoose.Types.ObjectId(user)
-                }
+              $project: {
+                product_title: 1,
+                sku_code: 1,
+                qty: 1,
+                image: 1,
+                combinationData: 1,
+                isCombination: 1,
+                price: 1,
+                original_price: 1,
+                vendor_id: 1,
+                sale_price: 1,
+                customize: 1,
+                customizationData: 1,
+                product_bedge: 1,
+              },
             },
-            {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "product_id",
-                    pipeline: [
-                        {
-                            $project: {
-                                product_title: 1,
-                                sku_code: 1,
-                                qty: 1,
-                                image: 1,
-                                combinationData: 1,
-                                isCombination: 1,
-                                price: 1,
-                                original_price: 1,
-                                vendor_id: 1,
-                                sale_price: 1,
-                                customize: 1,
-                                customizationData: 1,
-                                product_bedge: 1
-                            }
-                        }
-                    ]
-                }
-            },
-            {
-                $unwind: {
-                    path: "$product_id",
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $lookup: {
-                    from: "variants",
-                    localField: "variant_id",
-                    foreignField: "_id",
-                    as: "variantDetails",
-                },
-            },
-            {
-                $lookup: {
-                    from: "variantattributes",
-                    localField: "variant_attribute_id",
-                    foreignField: "_id",
-                    as: "variantAttributeDetails",
-                },
-            },
-        ]
-        let wishlist = await wishlistModel.aggregate(pipeline)
+          ],
+        },
+      },
+      {
+        $unwind: {
+          path: "$product_id",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "variants",
+          localField: "variant_id",
+          foreignField: "_id",
+          as: "variantDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "variantattributes",
+          localField: "variant_attribute_id",
+          foreignField: "_id",
+          as: "variantAttributeDetails",
+        },
+      },
+    ];
+    let wishlist = await wishlistModel.aggregate(pipeline);
 
-        let base_url = process.env.ASSET_URL + '/uploads/product/';
-        return resp.status(200).json({ message: 'Fetched successfully.', wishlist, base_url });
-    }
-    catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+    let base_url = process.env.ASSET_URL + "/uploads/product/";
+    return resp
+      .status(200)
+      .json({ message: "Fetched successfully.", wishlist, base_url });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const addDeleteWishlist = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = req.user._id
-        const { product_id, price, original_price, isCombination, variant_id, variant_attribute_id } = req.body;
-        let wishlist = await wishlistModel.findOne({ user_id: user, product_id: product_id, isCombination: isCombination, variant_id: variant_id, variant_attribute_id: variant_attribute_id, price: price, original_price: original_price })
-        if (wishlist) {
-            await wishlistModel.findOneAndDelete({ user_id: user, product_id: product_id, isCombination: isCombination, variant_id: variant_id, variant_attribute_id: variant_attribute_id, price: price, original_price: original_price })
-        }
-        else {
-            await wishlistModel.create({ user_id: user, product_id: product_id, isCombination: isCombination, variant_id: variant_id, variant_attribute_id: variant_attribute_id, price: price, original_price: original_price })
-        }
-        const productData = await ProductModel.findOne({ _id: product_id });
-        await activity(
-            req.user._id,
-            req.body.product_id,
-            null,
-            'Wishlist',
-            `${wishlist ? 'Deleted' : 'Added'} product to wishlist`,
-        );
-        await vandorAndProductActivity(
-            req.user._id,
-            req.body.product_id,
-            null,
-            "product",
-            "wishlist",
-            `${wishlist ? 'Deleted' : 'Added'} product to wishlist`,
-        )
-        return resp.status(200).json({ message: 'Data added successfully..' });
+  try {
+    const user = req.user._id;
+    const {
+      product_id,
+      price,
+      original_price,
+      isCombination,
+      variant_id,
+      variant_attribute_id,
+    } = req.body;
+    let wishlist = await wishlistModel.findOne({
+      user_id: user,
+      product_id: product_id,
+      isCombination: isCombination,
+      variant_id: variant_id,
+      variant_attribute_id: variant_attribute_id,
+      price: price,
+      original_price: original_price,
+    });
+    if (wishlist) {
+      await wishlistModel.findOneAndDelete({
+        user_id: user,
+        product_id: product_id,
+        isCombination: isCombination,
+        variant_id: variant_id,
+        variant_attribute_id: variant_attribute_id,
+        price: price,
+        original_price: original_price,
+      });
+    } else {
+      await wishlistModel.create({
+        user_id: user,
+        product_id: product_id,
+        isCombination: isCombination,
+        variant_id: variant_id,
+        variant_attribute_id: variant_attribute_id,
+        price: price,
+        original_price: original_price,
+      });
     }
-    catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+    const productData = await ProductModel.findOne({ _id: product_id });
+    await activity(
+      req.user._id,
+      req.body.product_id,
+      null,
+      "Wishlist",
+      `${wishlist ? "Deleted" : "Added"} product to wishlist`,
+    );
+    await vandorAndProductActivity(
+      req.user._id,
+      req.body.product_id,
+      null,
+      "product",
+      "wishlist",
+      `${wishlist ? "Deleted" : "Added"} product to wishlist`,
+    );
+    return resp.status(200).json({ message: "Data added successfully.." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const addViewedProducts = async (req: CustomRequest, resp: Response) => {
-    try {
-        const data: any = {
-            user_id: req.user._id,
-            product_id: req.body.product_id
-        }
-        const vendor = await ProductModel.findOne({ _id: data.product_id });
-        data.vendor_id = vendor?.vendor_id
+  try {
+    const data: any = {
+      user_id: req.user._id,
+      product_id: req.body.product_id,
+    };
+    const vendor = await ProductModel.findOne({ _id: data.product_id });
+    data.vendor_id = vendor?.vendor_id;
 
-        const userView = await UserProductViewModel.findOne(data);
-        if (!userView) {
-            await UserProductViewModel.create(data);
-        }
-
-        return resp.status(200).json({
-            message: 'Product viewed successfully.',
-        });
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Error fetching product.',
-            error: error.message,
-            data: []
-        });
+    const userView = await UserProductViewModel.findOne(data);
+    if (!userView) {
+      await UserProductViewModel.create(data);
     }
+
+    return resp.status(200).json({
+      message: "Product viewed successfully.",
+    });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Error fetching product.",
+      error: error.message,
+      data: [],
+    });
+  }
 };
 
-export const recentlyViewedProducts = async (req: CustomRequest, resp: Response) => {
-    try {
-        const data = await UserProductViewModel.find({ user_id: req.user._id });
+export const recentlyViewedProducts = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const data = await UserProductViewModel.find({ user_id: req.user._id });
 
-        const productIds = data.map((item) => item.product_id);
+    const productIds = data.map((item) => item.product_id);
 
-        const products = await ProductModel.find({ _id: { $in: productIds } }).populate('vendor_id')
-            .populate('category')
-            .populate('brand_id')
-            .populate('variant_id')
-            .populate('variant_attribute_id');
+    const products = await ProductModel.find({ _id: { $in: productIds } })
+      .populate("vendor_id")
+      .populate("category")
+      .populate("brand_id")
+      .populate("variant_id")
+      .populate("variant_attribute_id");
 
-        let base_url = process.env.ASSET_URL + '/uploads/product/';
+    let base_url = process.env.ASSET_URL + "/uploads/product/";
 
-        return resp.status(200).json({
-            message: 'Product fetched successfully.',
-            data: products,
-            base_url
-        });
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Error fetching product.',
-            error: error.message,
-            data: []
-        });
-    }
+    return resp.status(200).json({
+      message: "Product fetched successfully.",
+      data: products,
+      base_url,
+    });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Error fetching product.",
+      error: error.message,
+      data: [],
+    });
+  }
 };
 
-export const becauseViewedProducts = async (req: CustomRequest, resp: Response) => {
-    try {
+export const becauseViewedProducts = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const data = await UserProductViewModel.find({ user_id: req.user._id });
 
-        const data = await UserProductViewModel.find({ user_id: req.user._id });
+    const productIds = data.map((item) => item.product_id);
 
-        const productIds = data.map((item) => item.product_id);
+    const products = await ProductModel.find({
+      _id: { $in: productIds },
+    }).select("search_terms");
 
-        const products = await ProductModel.find({ _id: { $in: productIds } }).select('search_terms');
+    const uniqueSearchTerms = [
+      ...new Set(products.flatMap((item: any) => item.search_terms)),
+    ];
 
-        const uniqueSearchTerms = [
-            ...new Set(products.flatMap((item: any) => item.search_terms))
-        ];
+    const productData = await ProductModel.find({
+      search_terms: { $in: uniqueSearchTerms },
+      _id: { $nin: productIds },
+    });
+    let base_url = process.env.ASSET_URL + "/uploads/product/";
 
-        const productData = await ProductModel.find({ search_terms: { $in: uniqueSearchTerms }, _id: { $nin: productIds } });
-        let base_url = process.env.ASSET_URL + '/uploads/product/';
-
-        return resp.status(200).json({
-            message: 'Product fetched successfully.',
-            productData: productData,
-            base_url
-        })
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Error fetching product.',
-            error: error.message,
-            data: []
-        });
-    }
+    return resp.status(200).json({
+      message: "Product fetched successfully.",
+      productData: productData,
+      base_url,
+    });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Error fetching product.",
+      error: error.message,
+      data: [],
+    });
+  }
 };
 
 export const getCartDetails = async (req: CustomRequest, resp: Response) => {
-    try {
-        let errorMessage;
+  try {
+    let errorMessage;
 
-        const pipeline = [
+    const pipeline = [
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(req.user._id),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_data",
+        },
+      },
+      {
+        $unwind: {
+          path: "$product_data",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "parentcarts",
+          localField: "vendor_id",
+          foreignField: "vendor_id",
+          pipeline: [
             {
-                $match: {
-                    user_id: new mongoose.Types.ObjectId(req.user._id),
-                },
+              $match: {
+                user_id: new mongoose.Types.ObjectId(req.user._id),
+              },
             },
             {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "product_data",
-                },
-            },
-            {
-                $unwind: {
-                    path: "$product_data",
-                    preserveNullAndEmptyArrays: true,
-                },
-            },
-            {
-                $lookup: {
-                    from: "parentcarts",
-                    localField: "vendor_id",
-                    foreignField: "vendor_id",
-                    pipeline: [
+              $lookup: {
+                from: "users",
+                localField: "vendor_id",
+                foreignField: "_id",
+                pipeline: [
+                  {
+                    $project: {
+                      _id: 1,
+                    },
+                  },
+                  {
+                    $lookup: {
+                      from: "vendordetails",
+                      localField: "_id",
+                      foreignField: "user_id",
+                      pipeline: [
                         {
-                            $match: {
-                                user_id: new mongoose.Types.ObjectId(req.user._id),
-                            },
+                          $project: {
+                            shop_name: 1,
+                          },
                         },
-                        {
-                            $lookup: {
-                                from: "users",
-                                localField: "vendor_id",
-                                foreignField: "_id",
-                                pipeline: [
-                                    {
-                                        $project: {
-                                            _id: 1,
-                                        },
-                                    },
-                                    {
-                                        $lookup: {
-                                            from: "vendordetails",
-                                            localField: "_id",
-                                            foreignField: "user_id",
-                                            pipeline: [
-                                                {
-                                                    $project: {
-                                                        shop_name: 1,
-                                                    },
-                                                },
-                                            ],
-                                            as: "vendorprofile",
-                                        },
-                                    },
-                                ],
-                                as: "vendorDetails",
-                            },
-                        },
-                        {
-                            $lookup: {
-                                from: "shippings",
-                                localField: "shipping_id",
-                                foreignField: "_id",
-                                as: "shippingData",
-                            },
-                        },
-                    ],
-                    as: "parentCartData",
-                },
+                      ],
+                      as: "vendorprofile",
+                    },
+                  },
+                ],
+                as: "vendorDetails",
+              },
             },
-            {
-                $unwind: {
-                    path: "$parentCartData",
-                    preserveNullAndEmptyArrays: true,
-                },
-            },
-            {
-                $project: {
-                    qty: 1,
-                    product_id: 1,
-                    vendor_id: 1,
-                    delivery_amount: "$product_data.delivery_amount",
-                    delivery: "$product_data.delivery_type",
-                    sale_price: "$price",
-                    offer_price: "$offer_price",
-                    discount_type: "$product_data.discount_type",
-                    discount_amount: "$product_data.discount_amount",
-                    parentCartData: 1,
-                },
-            },
-        ];
+            // {
+            //     $lookup: {
+            //         from: "shippings",
+            //         localField: "shipping_id",
+            //         foreignField: "_id",
+            //         as: "shippingData",
+            //     },
+            // },
+          ],
+          as: "parentCartData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$parentCartData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          qty: 1,
+          product_id: 1,
+          vendor_id: 1,
+          delivery_amount: "$product_data.delivery_amount",
+          delivery: "$product_data.delivery_type",
+          sale_price: "$price",
+          offer_price: "$offer_price",
+          discount_type: "$product_data.discount_type",
+          discount_amount: "$product_data.discount_amount",
+          parentCartData: 1,
+        },
+      },
+    ];
 
-        const cartResult = await Cart.aggregate(pipeline);
+    const cartResult = await Cart.aggregate(pipeline);
 
-        let subTotal = 0;
-        let discount = 0;
-        let netAmount = 0;
-        let delivery = 0;
-        let discountAmount = 0;
-        let usedWalletAmount = 0;
-        let voucherDiscount = Number(req.query.voucher_discount) || 0;
-        let parentCartData: any = {};
+    let subTotal = 0;
+    let discount = 0;
+    let netAmount = 0;
+    let delivery = 0;
+    let discountAmount = 0;
+    let usedWalletAmount = 0;
+    let voucherDiscount = Number(req.query.voucher_discount) || 0;
+    let parentCartData: any = {};
+const vendorShippingMap: Record<
+  string,
+  Record<
+    string,
+    {
+      qty: number;
+      perOrder: number;
+      perItem: number;
+    }
+  >
+> = {};
 
-        const cartCoupons = await couponCart.find({ user_id: req.user._id });
+    const cartCoupons = await couponCart.find({ user_id: req.user._id });
 
-let addressData: any = null;
-let country: string | null = null;
-let isAddressProvided = false;
+    let addressData: any = null;
+    let country: string | null = null;
+    let isAddressProvided = false;
 
-if (req.query.address_id && mongoose.Types.ObjectId.isValid(req.query.address_id.toString())) {
-    const addressQuery = await Address.findById(req.query.address_id);
-    if (addressQuery?.country) {
+    if (
+      req.query.address_id &&
+      mongoose.Types.ObjectId.isValid(req.query.address_id.toString())
+    ) {
+      const addressQuery = await Address.findById(req.query.address_id);
+      if (addressQuery?.country) {
         addressData = addressQuery;
         country = addressQuery.country;
         isAddressProvided = true;
+      }
     }
-}
-
-if (!country && typeof req.query.country === "string" && req.query.country.trim()) {
-    country = req.query.country.trim();
-}
-
-if (!country) {
-    return resp.status(400).json({
-        status: false,
-        message: "Either address or country is required to calculate delivery.",
-    });
-}
-
-
-        await Promise.all(cartResult.map(async (item) => {
-            const offerPrice = getOfferProductPrice(item.sale_price, item.discount_type, item.discount_amount);
-            const shippingAmount = item.delivery_amount;
-
-            subTotal += item.sale_price * item.qty;
-            discount += (item.sale_price - offerPrice) * item.qty;
-
-            const shippingName = item.parentCartData?.vendor_data?.[0]?.shippingName;
-            const shippingTemplateData = item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
-
-            const shippingOptions = {
-                standardShipping: shippingTemplateData?.standardShipping,
-                expedited: shippingTemplateData?.expedited,
-                twoDays: shippingTemplateData?.twoDays,
-                oneDay: shippingTemplateData?.oneDay,
-            };
-
-            const selectedShipping = shippingOptions[shippingName as keyof typeof shippingOptions] || [];
-            let perOrderFee = 0;
-            let regionMatched = false;
-            for (const option of selectedShipping) {
-                if (option?.region?.includes(country)) {
-                    regionMatched = true;
-                    delivery += (option?.shippingFee?.perItem || 0) * item.qty;
-                    perOrderFee = option?.shippingFee?.perOrder || 0;
-                    break;
-                }
-            }
-
-            const parentCartVendorData = item.parentCartData;
-            if (parentCartVendorData?.vendor_data?.[0]) {
-                parentCartVendorData.vendor_data[0].regionMatched = regionMatched;
-                parentCartVendorData.vendor_data[0].perOrder = parseFloat(perOrderFee.toString());
-                parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
-            }
-        }));
-
-       for (const vendorId in parentCartData) {
-    const data = parentCartData[vendorId];
 
     if (
-        isAddressProvided &&
-        data.vendor_data[0]?.regionMatched === false
+      !country &&
+      typeof req.query.country === "string" &&
+      req.query.country.trim()
     ) {
-        errorMessage =
-            `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow delivery to ${country}`;
-        break;
+      country = req.query.country.trim();
     }
 
-    delivery += data.vendor_data[0]?.perOrder || 0;
+    if (!country) {
+      return resp.status(400).json({
+        status: false,
+        message: "Either address or country is required to calculate delivery.",
+      });
+    }
+
+    await Promise.all(
+      cartResult.map(async (item) => {
+        const offerPrice = getOfferProductPrice(
+          item.sale_price,
+          item.discount_type,
+          item.discount_amount,
+        );
+        const shippingAmount = item.delivery_amount;
+
+        subTotal += item.sale_price * item.qty;
+        discount += (item.sale_price - offerPrice) * item.qty;
+
+const shippingList = item.parentCartData?.vendor_data?.filter(
+  (v: any) => v.product_id?.toString() === item.product_id.toString()
+);
+
+if (!shippingList || shippingList.length === 0) return;
+
+// 1️⃣ Prefer non-standard (user-selected)
+const shippingInfo =
+  shippingList.find((v: any) => v.shippingName !== "standardShipping") ||
+  shippingList.find((v: any) => v.shippingName === "standardShipping");
+
+if (!shippingInfo) return;
+
+if (
+  isAddressProvided &&
+  Array.isArray(shippingInfo.region) &&
+  !shippingInfo.region.includes(country)
+) {
+  errorMessage =
+    "Selected shipping does not support the new delivery address. Please reselect shipping.";
+  return;
 }
 
 
-        // ✅ Apply accurate coupon discount logic
-        if (cartCoupons?.length > 0) {
-            for (const coupon of cartCoupons) {
-                const couponData = await CouponModel.findOne({
-                    vendor_id: coupon?.vendor_id
-                });
+        // const shippingName = shippingInfo.shippingName;
+        // const shippingTemplate = await Shipping.findById(
+        //   shippingInfo.shipping_id,
+        // );
+        // const shippingTemplateData = shippingTemplate?.shippingTemplateData;
 
-                if (!couponData) continue;
+        // const shippingOptions = {
+        //   standardShipping: shippingTemplateData?.standardShipping,
+        //   expedited: shippingTemplateData?.expedited,
+        //   twoDays: shippingTemplateData?.twoDays,
+        //   oneDay: shippingTemplateData?.oneDay,
+        // };
 
-                const eligibleProductIds = (couponData.product_id || []).map((id: any) => id.toString());
-                const vendorCartItems = cartResult.filter(
-                    (item) => item.vendor_id.toString() === coupon?.vendor_id.toString()
-                );
-                const eligibleAmount = vendorCartItems.reduce((sum, item) => {
-                    return eligibleProductIds.includes(item.product_id.toString())
-                        ? sum + Number(item.sale_price) * Number(item.qty)
-                        : sum;
-                }, 0);
+        // const selectedShipping =
+        //   shippingOptions[shippingName as keyof typeof shippingOptions] || [];
+        // let matchedOption: any = null;
 
-                let vendorDiscount = 0;
+        // for (const option of selectedShipping) {
+        //   if (option?.region?.includes(country)) {
+        //     matchedOption = option;
+        //     break;
+        //   }
+        // }
 
-                if (couponData.discount_type === "percentage") {
-                    vendorDiscount = (eligibleAmount * couponData.discount_amount) / 100;
-                } else {
-                    vendorDiscount = couponData.discount_amount;
-                }
+        // if (!matchedOption) {
+        //   // region not supported
+        //   const shippingKey = JSON.stringify({
+        //     shippingName,
+        //     region: country,
+        //   });
 
-                discountAmount += Math.min(vendorDiscount, eligibleAmount);
-            }
-        }
+        //   shippingMap[shippingKey] = {
+        //     qty: 0,
+        //     perOrder: 0,
+        //     perItem: 0,
+        //     regionMatched: false,
+        //   };
 
-        netAmount = subTotal - discountAmount - voucherDiscount + delivery;
+        //   return;
+        // }
+         // ✅ TRUST SAVED SHIPPING (NO REGION CHECK, NO TEMPLATE LOOKUP)
+const perOrderFee = Number(shippingInfo.perOrder || 0);
+const perItemFee = Number(shippingInfo.perItem || 0);
 
-        if (req.query.wallet === "1") {
-            const user = await User.findOne({ _id: req.user._id });
-            const walletBalance = user?.wallet_balance || 0;
+// 🔑 unique identity per shipping template + fee
+const vendorId = item.vendor_id.toString();
 
-            if (walletBalance > netAmount) {
-                usedWalletAmount = netAmount;
-                netAmount = 0;
-            } else {
-                usedWalletAmount = walletBalance;
-                netAmount -= walletBalance;
-            }
-        }
+if (!vendorShippingMap[vendorId]) {
+  vendorShippingMap[vendorId] = {};
+}
 
-        const data = {
-            subTotal,
-            couponDiscount: discountAmount,
-            discount,
-            voucherDiscount,
-            delivery,
-            netAmount,
-            walletAmount: usedWalletAmount,
-        };
+const selectedShipping = shippingInfo.shippingName;
+const shippingKey = `${selectedShipping}_${shippingInfo.shipping_id}`;
 
-        if (errorMessage) {
-            return resp.status(200).json({
-                status: false,
-                message: errorMessage,
-                data,
-                cartResult,
-            });
-        }
 
-        return resp.status(200).json({
-            status: true,
-            message: "Cart details fetched successfully.",
-            data,
-            cartResult,
-        });
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: "Error fetching Cart Details.",
-            error: error.message,
-            data: [],
-        });
+if (!vendorShippingMap[vendorId][shippingKey]) {
+  vendorShippingMap[vendorId][shippingKey] = {
+    qty: 0,
+    perOrder: perOrderFee,
+    perItem: perItemFee,
+  };
+}
+
+vendorShippingMap[vendorId][shippingKey].qty += item.qty;
+
+
+        // const perOrderFee = Number(matchedOption.shippingFee?.perOrder || 0);
+        // const perItemFee = Number(matchedOption.shippingFee?.perItem || 0);
+
+        // // 🔑 UNIQUE SHIPPING COST IDENTITY
+        // const shippingKey = JSON.stringify({
+        //   shippingName,
+        //   perOrder: perOrderFee,
+        //   perItem: perItemFee,
+        //   region: country,
+        // });
+
+        // // initialize if first time
+        // if (!shippingMap[shippingKey]) {
+        //   shippingMap[shippingKey] = {
+        //     qty: 0,
+        //     perOrder: perOrderFee,
+        //     perItem: perItemFee,
+        //     regionMatched: true,
+        //   };
+        // }
+
+        // // accumulate quantity
+        // shippingMap[shippingKey].qty += item.qty;
+      }),
+    );
+    const vendorDeliveryMap: Record<string, number> = {};
+for (const vendorId in vendorShippingMap) {
+  const vendorMap = vendorShippingMap[vendorId];
+  let vendorDelivery = 0;
+
+  for (const key in vendorMap) {
+    const d = vendorMap[key];
+    vendorDelivery += d.perOrder;
+    if (d.qty > 1) {
+      vendorDelivery += d.perItem * (d.qty - 1);
     }
+  }
+
+  vendorDeliveryMap[vendorId] = vendorDelivery;
+  delivery += vendorDelivery;
+}
+
+
+
+    // ✅ Apply accurate coupon discount logic
+    if (cartCoupons?.length > 0) {
+      for (const coupon of cartCoupons) {
+        const couponData = await CouponModel.findOne({
+          vendor_id: coupon?.vendor_id,
+        });
+
+        if (!couponData) continue;
+
+        const eligibleProductIds = (couponData.product_id || []).map(
+          (id: any) => id.toString(),
+        );
+        const vendorCartItems = cartResult.filter(
+          (item) => item.vendor_id.toString() === coupon?.vendor_id.toString(),
+        );
+        const eligibleAmount = vendorCartItems.reduce((sum, item) => {
+          return eligibleProductIds.includes(item.product_id.toString())
+            ? sum + Number(item.sale_price) * Number(item.qty)
+            : sum;
+        }, 0);
+
+        let vendorDiscount = 0;
+
+        if (couponData.discount_type === "percentage") {
+          vendorDiscount = (eligibleAmount * couponData.discount_amount) / 100;
+        } else {
+          vendorDiscount = couponData.discount_amount;
+        }
+
+        discountAmount += Math.min(vendorDiscount, eligibleAmount);
+      }
+    }
+
+    netAmount = subTotal - discountAmount - voucherDiscount + delivery;
+
+    if (req.query.wallet === "1") {
+      const user = await User.findOne({ _id: req.user._id });
+      const walletBalance = user?.wallet_balance || 0;
+
+      if (walletBalance > netAmount) {
+        usedWalletAmount = netAmount;
+        netAmount = 0;
+      } else {
+        usedWalletAmount = walletBalance;
+        netAmount -= walletBalance;
+      }
+    }
+
+    const data = {
+      subTotal,
+      couponDiscount: discountAmount,
+      discount,
+      voucherDiscount,
+      delivery,
+      vendorDeliveryMap,
+      netAmount,
+      walletAmount: usedWalletAmount,
+    };
+
+    if (errorMessage) {
+      return resp.status(200).json({
+        status: false,
+        message: errorMessage,
+        data,
+        cartResult,
+      });
+    }
+
+    return resp.status(200).json({
+      status: true,
+      message: "Cart details fetched successfully.",
+      data,
+      cartResult,
+    });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Error fetching Cart Details.",
+      error: error.message,
+      data: [],
+    });
+  }
 };
 
-export const getVendorCartDetails = async (req: CustomRequest, resp: Response) => {
-    try {
-        let errorMessage;
-        const vendor_id = req.params.id;
-        const pipeline = [
+export const getVendorCartDetails = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    let errorMessage;
+    const vendor_id = req.params.id;
+    const pipeline = [
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(req.user._id),
+          vendor_id: new mongoose.Types.ObjectId(vendor_id),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_data",
+        },
+      },
+      {
+        $unwind: {
+          path: "$product_data",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "parentcarts",
+          localField: "vendor_id",
+          foreignField: "vendor_id",
+          pipeline: [
             {
-                $match: {
-                    'user_id': new mongoose.Types.ObjectId(req.user._id),
-                    'vendor_id': new mongoose.Types.ObjectId(vendor_id)
-                }
+              $match: {
+                user_id: new mongoose.Types.ObjectId(req.user._id),
+              },
             },
             {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "product_data"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$product_data",
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $lookup: {
-                    from: "parentcarts",
-                    localField: "vendor_id",
-                    foreignField: "vendor_id",
-                    pipeline: [
+              $lookup: {
+                from: "users",
+                localField: "vendor_id",
+                foreignField: "_id",
+                pipeline: [
+                  {
+                    $project: {
+                      _id: 1,
+                    },
+                  },
+                  {
+                    $lookup: {
+                      from: "vendordetails",
+                      localField: "_id",
+                      foreignField: "user_id",
+                      pipeline: [
                         {
-                            $match: {
-                                user_id: new mongoose.Types.ObjectId(req.user._id)
-                            }
+                          $project: {
+                            shop_name: 1,
+                          },
                         },
-                        {
-                            $lookup: {
-                                from: 'users',
-                                localField: 'vendor_id',
-                                foreignField: '_id',
-                                pipeline: [
-                                    {
-                                        $project: {
-                                            _id: 1
-                                        }
-                                    },
-                                    {
-                                        $lookup: {
-                                            from: 'vendordetails',
-                                            localField: "_id",
-                                            foreignField: "user_id",
-                                            pipeline: [
-                                                {
-                                                    $project: {
-                                                        shop_name: 1
-                                                    }
-                                                }
-                                            ],
-                                            as: 'vendorprofile'
-                                        }
-                                    }
-                                ],
-                                as: 'vendorDetails'
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "shippings",
-                                localField: "shipping_id",
-                                foreignField: "_id",
-                                as: "shippingData"
-                            }
-                        }
-                    ],
-                    as: "parentCartData"
-                }
+                      ],
+                      as: "vendorprofile",
+                    },
+                  },
+                ],
+                as: "vendorDetails",
+              },
             },
             {
-                $unwind: {
-                    path: "$parentCartData",
-                    preserveNullAndEmptyArrays: true
-                }
+              $lookup: {
+                from: "shippings",
+                localField: "shipping_id",
+                foreignField: "_id",
+                as: "shippingData",
+              },
             },
-            {
-                $project: {
-                    qty: 1,
-                    product_id: 1,
-                    vendor_id: 1,
-                    delivery_amount:
-                        "$product_data.delivery_amount",
-                    delivery:
-                        "$product_data.delivery_type",
-                    sale_price: "$price",
-                    offer_price: "$offer_price",
-                    discount_type: "$product_data.discount_type",
-                    discount_amount: "$product_data.discount_amount",
-                    parentCartData: 1
-                    // parentCartData: {
-                    //     $cond: {
-                    //         if: { $isArray: "$parentCartData.vendor_data" },
-                    //         then: "$parentCartData.vendor_data",
-                    //         else: []
-                    //     }
-                    // }
+          ],
+          as: "parentCartData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$parentCartData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          qty: 1,
+          product_id: 1,
+          vendor_id: 1,
+          delivery_amount: "$product_data.delivery_amount",
+          delivery: "$product_data.delivery_type",
+          sale_price: "$price",
+          offer_price: "$offer_price",
+          discount_type: "$product_data.discount_type",
+          discount_amount: "$product_data.discount_amount",
+          parentCartData: 1,
+          // parentCartData: {
+          //     $cond: {
+          //         if: { $isArray: "$parentCartData.vendor_data" },
+          //         then: "$parentCartData.vendor_data",
+          //         else: []
+          //     }
+          // }
+        },
+      },
+    ];
 
-                }
+    const cartResult = await Cart.aggregate(pipeline);
+    // return resp.status(200).json({ message: 'Cart fetched successfully.', cartResult });
+    let subTotal = 0;
+    let totalShipping = 0;
+    let discount = 0;
+    let netAmount = 0;
+    let delivery = 0;
+    let discountAmount = 0;
+    let usedWalletAmount = 0;
+    let parentCartData: any = {};
+
+    // if (cartResult.length !== 0) {
+
+    const cartCoupon = await couponCart.find({ user_id: req.user._id });
+
+    let addressData;
+    if (
+      req.query.address_id &&
+      mongoose.Types.ObjectId.isValid(req.query.address_id.toString())
+    ) {
+      addressData = await Address.findOne({
+        _id: new mongoose.Types.ObjectId(req.query.address_id.toString()),
+      });
+    }
+
+    if (!addressData || (addressData && addressData?.country === "")) {
+      return resp.status(400).json({
+        status: false,
+        message: "User selected address country not found.",
+      });
+    }
+
+    await Promise.all(
+      cartResult.map(async (item) => {
+        const offerPrice = getOfferProductPrice(
+          item.sale_price,
+          item.discount_type,
+          item.discount_amount,
+        );
+        const shippingAmount = item.delivery_amount;
+        subTotal += item.sale_price * item.qty;
+
+        if (item.delivery === "paid") {
+          totalShipping += shippingAmount * item.qty;
+        }
+
+        discount += (item.sale_price - offerPrice) * item.qty;
+
+        const shippingName =
+          item.parentCartData?.vendor_data?.[0]?.shippingName;
+        const shippingTemplateData =
+          item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
+        const shippingOptions = {
+          standardShipping: shippingTemplateData?.standardShipping,
+          expedited: shippingTemplateData?.expedited,
+          twoDays: shippingTemplateData?.twoDays,
+          oneDay: shippingTemplateData?.oneDay,
+        };
+
+        const selectedShipping =
+          shippingOptions[shippingName as keyof typeof shippingOptions] || [];
+
+        let perOrderFee = 0;
+        for (const option of selectedShipping) {
+          if (option?.region?.includes(addressData?.country)) {
+            if (item.parentCartData) {
+              delivery += (option?.shippingFee?.perItem || 0) * item.qty;
+              perOrderFee = option?.shippingFee?.perOrder || 0;
             }
-        ]
-
-
-        const cartResult = await Cart.aggregate(pipeline);
-        // return resp.status(200).json({ message: 'Cart fetched successfully.', cartResult });
-        let subTotal = 0;
-        let totalShipping = 0;
-        let discount = 0;
-        let netAmount = 0;
-        let delivery = 0;
-        let discountAmount = 0;
-        let usedWalletAmount = 0;
-        let parentCartData: any = {};
-
-        // if (cartResult.length !== 0) {
-
-        const cartCoupon = await couponCart.find({ user_id: req.user._id });
-
-        let addressData;
-        if (req.query.address_id && mongoose.Types.ObjectId.isValid((req.query.address_id).toString())) {
-
-            addressData = await Address.findOne({ _id: new mongoose.Types.ObjectId((req.query.address_id).toString()) });
+            break; // exit after first match
+          }
         }
 
-        if (!addressData || (addressData && addressData?.country === "")) {
+        const parentCartVendorData = item.parentCartData;
+        parentCartVendorData.vendor_data[0].perOrder = parseFloat(
+          perOrderFee.toString(),
+        );
+        parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
+      }),
+    );
 
-            return resp.status(400).json({
-                status: false,
-                message: 'User selected address country not found.'
-            });
+    for (const vendorId in parentCartData) {
+      const data = parentCartData[vendorId];
 
+      if (data.vendor_data[0]?.perOrder <= 0) {
+        errorMessage = `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`;
+      }
+      delivery += data.vendor_data[0]?.perOrder;
+    }
+
+    netAmount = subTotal;
+
+    // const couponDoc = await CouponModel.findOne({ vendor_id: req.params.id });
+
+    // if (couponDoc) {
+    //     if (couponDoc.discount_type == 'percentage') {
+    //         discountAmount = (netAmount * couponDoc.discount_amount) / 100;
+    //     } else {
+    //         discountAmount = Number(couponDoc.discount_amount);
+    //     }
+    // }
+    const appliedCoupon = await CouponCartModel.findOne({
+      user_id: req.user._id,
+      vendor_id: req.params.id,
+    });
+
+    if (appliedCoupon?.coupon_data?.discount_amount) {
+      discountAmount = appliedCoupon.coupon_data.discount_amount;
+    }
+
+    netAmount = netAmount - discountAmount;
+
+    if (req.query.wallet == "1") {
+      const user = await User.findOne({ _id: req.user._id });
+      let walletAmount = 0;
+      if (user) {
+        walletAmount = user.wallet_balance;
+        if (walletAmount > netAmount) {
+          usedWalletAmount = netAmount;
+          netAmount = 0;
+        } else if (walletAmount < netAmount) {
+          usedWalletAmount = walletAmount;
+          netAmount -= walletAmount;
         }
+      }
+    }
 
-        await Promise.all(cartResult.map(async (item) => {
-            const offerPrice = getOfferProductPrice(item.sale_price, item.discount_type, item.discount_amount);
-            const shippingAmount = item.delivery_amount;
-            subTotal += item.sale_price * item.qty;
+    // } else {
+    //     return resp.status(200).json({ message: 'No items in your cart.' })
+    // }
 
-            if (item.delivery === 'paid') {
-                totalShipping += shippingAmount * item.qty;
-            }
+    netAmount += totalShipping;
+    netAmount += delivery;
 
-            discount += (item.sale_price - offerPrice) * item.qty;
+    const data = {
+      subTotal: subTotal,
+      couponDiscount: discountAmount,
+      discount: discount,
+      delivery: delivery,
+      netAmount: netAmount,
+      walletAmount: usedWalletAmount,
+    };
 
-            const shippingName = item.parentCartData?.vendor_data?.[0]?.shippingName;
-            const shippingTemplateData = item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
-            const shippingOptions = {
-                standardShipping: shippingTemplateData?.standardShipping,
-                expedited: shippingTemplateData?.expedited,
-                twoDays: shippingTemplateData?.twoDays,
-                oneDay: shippingTemplateData?.oneDay,
-            };
-
-            const selectedShipping = shippingOptions[shippingName as keyof typeof shippingOptions] || [];
-
-            let perOrderFee = 0;
-            for (const option of selectedShipping) {
-                if (option?.region?.includes(addressData?.country)) {
-                    if (item.parentCartData) {
-                        delivery += (option?.shippingFee?.perItem || 0) * item.qty;
-                        perOrderFee = (option?.shippingFee?.perOrder || 0)
-                    }
-                    break; // exit after first match
-                }
-            }
-
-            const parentCartVendorData = item.parentCartData;
-            parentCartVendorData.vendor_data[0].perOrder = parseFloat(perOrderFee.toString());
-            parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
-        }));
-
-
-        for (const vendorId in parentCartData) {
-            const data = parentCartData[vendorId];
-
-
-            if (data.vendor_data[0]?.perOrder <= 0) {
-
-                errorMessage = `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`;
-
-            }
-            delivery += data.vendor_data[0]?.perOrder;
-        }
-
-        netAmount = subTotal;
-
-        // const couponDoc = await CouponModel.findOne({ vendor_id: req.params.id });
-
-        // if (couponDoc) {
-        //     if (couponDoc.discount_type == 'percentage') {
-        //         discountAmount = (netAmount * couponDoc.discount_amount) / 100;
-        //     } else {
-        //         discountAmount = Number(couponDoc.discount_amount);
-        //     }
-        // }
-        const appliedCoupon = await CouponCartModel.findOne({
-        user_id: req.user._id,
-        vendor_id: req.params.id
-        });
-
-       if (appliedCoupon?.coupon_data?.discount_amount) {
-         discountAmount = appliedCoupon.coupon_data.discount_amount;
-        }
-
-
-
-
-        netAmount = netAmount - discountAmount;
-
-        if (req.query.wallet == '1') {
-            const user = await User.findOne({ _id: req.user._id });
-            let walletAmount = 0;
-            if (user) {
-                walletAmount = user.wallet_balance;
-                if (walletAmount > netAmount) {
-                    usedWalletAmount = netAmount;
-                    netAmount = 0;
-                } else if (walletAmount < netAmount) {
-                    usedWalletAmount = walletAmount;
-                    netAmount -= walletAmount;
-                }
-            }
-        }
-
-        // } else {
-        //     return resp.status(200).json({ message: 'No items in your cart.' })
-        // }
-
-        netAmount += totalShipping;
-        netAmount += delivery;
-
-        const data = {
-            subTotal: subTotal,
-            couponDiscount: discountAmount,
-            discount: discount,
-            delivery: delivery,
-            netAmount: netAmount,
-            walletAmount: usedWalletAmount
-        }
-
-        if (errorMessage) {
-
-            return resp.status(200).json({ status: false, message: errorMessage, data })
-        } else {
-            return resp.status(200).json({ status: true, message: "Cart details fetched successfully.", data })
-        }
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Error fetching Cart Details.',
-            error: error.message,
-            data: []
+    if (errorMessage) {
+      return resp
+        .status(200)
+        .json({ status: false, message: errorMessage, data });
+    } else {
+      return resp
+        .status(200)
+        .json({
+          status: true,
+          message: "Cart details fetched successfully.",
+          data,
         });
     }
-}
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Error fetching Cart Details.",
+      error: error.message,
+      data: [],
+    });
+  }
+};
 
-export const getOrderDetailsById = async (req: CustomRequest, resp: Response) => {
-    try {
-        const orderId = req.params.orderId;
-        const sales = await Sales.findOne({ order_id: orderId, user_id: req.user._id });
+export const getOrderDetailsById = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const orderId = req.params.orderId;
+    const sales = await Sales.findOne({
+      order_id: orderId,
+      user_id: req.user._id,
+    });
 
-        if (!sales) {
-            return resp.status(400).json({ message: 'Invalid Order Id.' });
-        }
-
-        const salesDetails = await SalesDetailsModel.find({ sale_id: sales._id, order_status: { $in: ['new', 'unshipped'] } }).populate('product_id', 'product_title image').populate('variant_id').populate('variant_attribute_id');
-        const base_url = process.env.ASSET_URL + '/uploads/product/';
-        const data = {
-            ...sales.toJSON(),
-            sales_details: salesDetails
-        }
-
-        return resp.status(200).json({ message: "Order details fetched successfully.", data, base_url });
-
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-            error: error.message,
-            data: []
-        });
+    if (!sales) {
+      return resp.status(400).json({ message: "Invalid Order Id." });
     }
-}
+
+    const salesDetails = await SalesDetailsModel.find({
+      sale_id: sales._id,
+      order_status: { $in: ["new", "unshipped"] },
+    })
+      .populate("product_id", "product_title image")
+      .populate("variant_id")
+      .populate("variant_attribute_id");
+    const base_url = process.env.ASSET_URL + "/uploads/product/";
+    const data = {
+      ...sales.toJSON(),
+      sales_details: salesDetails,
+    };
+
+    return resp
+      .status(200)
+      .json({ message: "Order details fetched successfully.", data, base_url });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+      error: error.message,
+      data: [],
+    });
+  }
+};
 
 export const sendRating = async (req: CustomRequest, resp: Response) => {
-    try {
-        const delivery_rating = req.body.delivery_rating;
-        const item_rating = req.body.item_rating;
-        const additional_comment = req.body.additional_comment;
-        const recommended = req.body.recommended;
-        const saleDetailId = req.body.saleDetailId;
-        const vendor_id = req.body.vendor_id;
+  try {
+    const delivery_rating = req.body.delivery_rating;
+    const item_rating = req.body.item_rating;
+    const additional_comment = req.body.additional_comment;
+    const recommended = req.body.recommended;
+    const saleDetailId = req.body.saleDetailId;
+    const vendor_id = req.body.vendor_id;
 
-        const saleDetailData = await SalesDetailsModel.findOne({ _id: saleDetailId });
-        if (!saleDetailData) {
-            return resp.status(400).json({ message: 'Invalid Sale Detail Id.' });
-        }
-
-        const checkExistRating = await RatingModel.findOne({ user_id: req.user._id, saledetail_id: saleDetailId });
-        if (checkExistRating) {
-            return resp.status(400).json({ message: 'Already rated.' });
-        }
-
-        const data = {
-            delivery_rating: delivery_rating,
-            item_rating: item_rating,
-            additional_comment: additional_comment,
-            recommended: recommended,
-            saledetail_id: saleDetailId,
-            user_id: req.user._id,
-            product_id: saleDetailData.product_id,
-            vendor_id: vendor_id
-        }
-        saleDetailData.ratingStatus = true;
-
-        await saleDetailData.save();
-        await RatingModel.create(data);
-
-        return resp.status(200).json({ message: "Rating sent successfully." });
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-            error: error.message,
-            data: []
-        });
+    const saleDetailData = await SalesDetailsModel.findOne({
+      _id: saleDetailId,
+    });
+    if (!saleDetailData) {
+      return resp.status(400).json({ message: "Invalid Sale Detail Id." });
     }
-}
+
+    const checkExistRating = await RatingModel.findOne({
+      user_id: req.user._id,
+      saledetail_id: saleDetailId,
+    });
+    if (checkExistRating) {
+      return resp.status(400).json({ message: "Already rated." });
+    }
+
+    const data = {
+      delivery_rating: delivery_rating,
+      item_rating: item_rating,
+      additional_comment: additional_comment,
+      recommended: recommended,
+      saledetail_id: saleDetailId,
+      user_id: req.user._id,
+      product_id: saleDetailData.product_id,
+      vendor_id: vendor_id,
+    };
+    saleDetailData.ratingStatus = true;
+
+    await saleDetailData.save();
+    await RatingModel.create(data);
+
+    return resp.status(200).json({ message: "Rating sent successfully." });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+      error: error.message,
+      data: [],
+    });
+  }
+};
 
 export const followVendor = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = req.user._id;
-        const vendorId = req.body.vendorId
-        let follow = await followModel.findOne({ user_id: user, vendor_id: vendorId })
-        if (follow) {
-            await followModel.findOneAndDelete({ user_id: user, vendor_id: vendorId })
-        }
-        else {
-            await followModel.create({ user_id: user, vendor_id: vendorId })
-        }
-        await activity(
-            req.user._id,
-            null,
-            req.body.vendorId,
-            'follow',
-            follow ? 'Unfollow' : 'Follow' + ' vendor',
-        )
-        await vandorAndProductActivity(
-            req.user._id,
-            null,
-            req.body.vendorId,
-            "vendor",
-            "follow",
-            `${follow ? 'Unfollowed' : 'Followed'} vendor`,
-        )
-        return resp.status(200).json({ message: 'Vendor followed successfully.' });
+  try {
+    const user = req.user._id;
+    const vendorId = req.body.vendorId;
+    let follow = await followModel.findOne({
+      user_id: user,
+      vendor_id: vendorId,
+    });
+    if (follow) {
+      await followModel.findOneAndDelete({
+        user_id: user,
+        vendor_id: vendorId,
+      });
+    } else {
+      await followModel.create({ user_id: user, vendor_id: vendorId });
     }
-    catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+    await activity(
+      req.user._id,
+      null,
+      req.body.vendorId,
+      "follow",
+      follow ? "Unfollow" : "Follow" + " vendor",
+    );
+    await vandorAndProductActivity(
+      req.user._id,
+      null,
+      req.body.vendorId,
+      "vendor",
+      "follow",
+      `${follow ? "Unfollowed" : "Followed"} vendor`,
+    );
+    return resp.status(200).json({ message: "Vendor followed successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const getFollowVendor = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = req.user._id;
-        let follow = await followModel.find({ user_id: user })
-        const data = await Promise.all(follow.map(async (item) => {
-            const vendor = await User.findOne({ _id: item.vendor_id });
-            const shop = await VendorModel.findOne({ user_id: vendor?._id });
-            let base_url = process.env.ASSET_URL + '/uploads/shop-icon/';
-            return {
-                ...item.toJSON(),
-                vendor_name: vendor?.name,
-                slug: shop?.slug,
-                shop_icon: shop?.shop_icon ? base_url + shop?.shop_icon : null
-            }
-
-        }))
-        return resp.status(200).json({ message: 'Followed Vendor fetched successfully.', data: data });
-    }
-    catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+  try {
+    const user = req.user._id;
+    let follow = await followModel.find({ user_id: user });
+    const data = await Promise.all(
+      follow.map(async (item) => {
+        const vendor = await User.findOne({ _id: item.vendor_id });
+        const shop = await VendorModel.findOne({ user_id: vendor?._id });
+        let base_url = process.env.ASSET_URL + "/uploads/shop-icon/";
+        return {
+          ...item.toJSON(),
+          vendor_name: vendor?.name,
+          slug: shop?.slug,
+          shop_icon: shop?.shop_icon ? base_url + shop?.shop_icon : null,
+        };
+      }),
+    );
+    return resp
+      .status(200)
+      .json({ message: "Followed Vendor fetched successfully.", data: data });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const sendMessageID = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = req.user._id;
-        const message_id = req.body.message_id;
-        const alreadyExistMessage = await MessageModel.findOne({ user_id: user });
-        const data = {
-            user_id: user,
-            message_id: message_id
-        }
+  try {
+    const user = req.user._id;
+    const message_id = req.body.message_id;
+    const alreadyExistMessage = await MessageModel.findOne({ user_id: user });
+    const data = {
+      user_id: user,
+      message_id: message_id,
+    };
 
-        if (alreadyExistMessage) {
-            await MessageModel.findByIdAndUpdate(alreadyExistMessage._id, data);
-        }
-
-        const senderMessage = await MessageModel.create(data);
-
-        return resp.status(200).json({ message: "Added successfully.", senderMessage });
+    if (alreadyExistMessage) {
+      await MessageModel.findByIdAndUpdate(alreadyExistMessage._id, data);
     }
-    catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+
+    const senderMessage = await MessageModel.create(data);
+
+    return resp
+      .status(200)
+      .json({ message: "Added successfully.", senderMessage });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const getMessageId = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user = req.user._id;
-        let senderMessage: any = [];
-        const data = await MessageModel.findOne({ user_id: user }).populate('user_id', 'name email mobile');
-        if (data != null) {
-            senderMessage = data
-        }
-        return resp.status(200).json({ message: "Message fetched successfully.", senderMessage });
+  try {
+    const user = req.user._id;
+    let senderMessage: any = [];
+    const data = await MessageModel.findOne({ user_id: user }).populate(
+      "user_id",
+      "name email mobile",
+    );
+    if (data != null) {
+      senderMessage = data;
     }
-    catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+    return resp
+      .status(200)
+      .json({ message: "Message fetched successfully.", senderMessage });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const purchaseGiftCard = async (req: CustomRequest, resp: Response) => {
-    const {
-        gift_card_id,
-        amount,
-        email,
-        name,
-        message,
-        qty,
-        delivery_date,
-    } = req.body;
-    const user_id = req.user._id;
+  const { gift_card_id, amount, email, name, message, qty, delivery_date } =
+    req.body;
+  const user_id = req.user._id;
 
-    try {
-        const currentDate = new Date();
-        const year = currentDate.getFullYear();
-        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-        const date = String(currentDate.getDate()).padStart(2, '0');
-        let hours = currentDate.getHours();
-        let minutes = currentDate.getMinutes();
-        let milliseconds = currentDate.getMilliseconds();
+  try {
+    const currentDate = new Date();
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+    const date = String(currentDate.getDate()).padStart(2, "0");
+    let hours = currentDate.getHours();
+    let minutes = currentDate.getMinutes();
+    let milliseconds = currentDate.getMilliseconds();
 
-        const orderId = `gord${year}${month}${date}${hours}${minutes}${milliseconds}`;
-        let gift_code = await generateUniqueGiftCode();
-        const giftCard = await GiftCardModel.findOne({ _id: gift_card_id }) as any;
-        const purchaseGiftCardInstance = new PurchaseGiftCardModel({
-            user_id,
-            amount,
-            email,
-            gift_code: gift_code,
-            gift_card_id,
-            name,
-            message,
-            qty,
-            delivery_date,
-            orderId: orderId,
-            expiry_date: moment(delivery_date).add(giftCard.validity, 'days').format('YYYY-MM-DD HH:mm:ss'),
-        });
+    const orderId = `gord${year}${month}${date}${hours}${minutes}${milliseconds}`;
+    let gift_code = await generateUniqueGiftCode();
+    const giftCard = (await GiftCardModel.findOne({
+      _id: gift_card_id,
+    })) as any;
+    const purchaseGiftCardInstance = new PurchaseGiftCardModel({
+      user_id,
+      amount,
+      email,
+      gift_code: gift_code,
+      gift_card_id,
+      name,
+      message,
+      qty,
+      delivery_date,
+      orderId: orderId,
+      expiry_date: moment(delivery_date)
+        .add(giftCard.validity, "days")
+        .format("YYYY-MM-DD HH:mm:ss"),
+    });
 
-        let giftCardData = await GiftCardModel.findOne({ _id: gift_card_id });
-        await purchaseGiftCardInstance.save();
+    let giftCardData = await GiftCardModel.findOne({ _id: gift_card_id });
+    await purchaseGiftCardInstance.save();
 
-        if (resp.locals.currentdate(delivery_date).format('YYYY-MM-DD') == resp.locals.currentdate().format('YYYY-MM-DD')) {
-            const subject = "Gift Card Code";
-            const expiryDateFormatted = moment(delivery_date).add(giftCardData?.validity, 'days').format('DD-MMM-YYYY');
+    if (
+      resp.locals.currentdate(delivery_date).format("YYYY-MM-DD") ==
+      resp.locals.currentdate().format("YYYY-MM-DD")
+    ) {
+      const subject = "Gift Card Code";
+      const expiryDateFormatted = moment(delivery_date)
+        .add(giftCardData?.validity, "days")
+        .format("DD-MMM-YYYY");
 
-            const body = `
+      const body = `
             <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
                 
                 <div style="text-align: center;">
@@ -4317,47 +5053,52 @@ export const purchaseGiftCard = async (req: CustomRequest, resp: Response) => {
             </div>
             `;
 
-            const user = await User.findOne({ _id: user_id });
-            if (!user) {
-                return resp.status(400).json({ message: 'User not found' });
-            }
-            await sendToEmail(email, subject, body, user.email);
-        }
-
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'gift-card',
-            'Purchased a Gift Card',
-        );
-
-        return resp.status(200).json({
-            message: 'Gift card purchased successfully',
-            giftCard: purchaseGiftCardInstance,
-        });
-
-    } catch (error) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-        });
+      const user = await User.findOne({ _id: user_id });
+      if (!user) {
+        return resp.status(400).json({ message: "User not found" });
+      }
+      await sendToEmail(email, subject, body, user.email);
     }
+
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "gift-card",
+      "Purchased a Gift Card",
+    );
+
+    return resp.status(200).json({
+      message: "Gift card purchased successfully",
+      giftCard: purchaseGiftCardInstance,
+    });
+  } catch (error) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
 };
 
-export const resendMailForGiftCardCode = async (req: CustomRequest, resp: Response) => {
+export const resendMailForGiftCardCode = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  const user_id = req.user._id;
+  const _id = req.body._id;
+  const email = req.body.email;
 
-    const user_id = req.user._id;
-    const _id = req.body._id;
-    const email = req.body.email;
+  try {
+    let gift_code = await generateUniqueGiftCode();
+    const purchaseGiftCardInstance =
+      await PurchaseGiftCardModel.findOneAndUpdate(
+        { _id: _id },
+        { gift_code: gift_code },
+      ).populate("gift_card_id");
+    const giftcardData = purchaseGiftCardInstance?.gift_card_id as any;
 
-    try {
-        let gift_code = await generateUniqueGiftCode();
-        const purchaseGiftCardInstance = await PurchaseGiftCardModel.findOneAndUpdate({ _id: _id }, { gift_code: gift_code }).populate('gift_card_id');
-        const giftcardData = purchaseGiftCardInstance?.gift_card_id as any;
-
-        if (purchaseGiftCardInstance) {
-            const subject = "Gift Card Code";
-            const body = `
+    if (purchaseGiftCardInstance) {
+      const subject = "Gift Card Code";
+      const body = `
             <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
                 
                 <div style="text-align: center;">
@@ -4398,532 +5139,650 @@ export const resendMailForGiftCardCode = async (req: CustomRequest, resp: Respon
                 <p style="text-align: center; color: #aaa; font-size: 12px; margin-top: 30px;">Thank you for choosing us. Happy gifting!</p>
             </div>
             `;
-            const user = await User.findOne({ _id: user_id });
-            if (!user) {
-                return resp.status(400).json({ message: 'User not found' });
-            }
-            await sendToEmail(email, subject, body, user.email);
-        }
-
-        return resp.status(200).json({
-            message: 'Gift card email sent successfully',
-            giftCard: purchaseGiftCardInstance,
-        });
-    } catch (error) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-        });
+      const user = await User.findOne({ _id: user_id });
+      if (!user) {
+        return resp.status(400).json({ message: "User not found" });
+      }
+      await sendToEmail(email, subject, body, user.email);
     }
+
+    return resp.status(200).json({
+      message: "Gift card email sent successfully",
+      giftCard: purchaseGiftCardInstance,
+    });
+  } catch (error) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
 };
 
 export const redeemGiftCard = async (req: CustomRequest, res: Response) => {
-    try {
-        const { gift_code } = req.body;
-        const user_id = req.user._id;
-        const purchase_gift = await PurchaseGiftCardModel.findOne({ gift_code: gift_code, isRedeemed: "0" });
+  try {
+    const { gift_code } = req.body;
+    const user_id = req.user._id;
+    const purchase_gift = await PurchaseGiftCardModel.findOne({
+      gift_code: gift_code,
+      isRedeemed: "0",
+    });
 
-        if (!purchase_gift) {
-            return res.status(404).json({ message: 'Gift card not found.' });
-        }
-        const gift_card = await GiftCardModel.findById(purchase_gift.gift_card_id);
-        if (!gift_card) {
-            return res.status(404).json({ message: 'Gift card details not found' });
-        }
-
-        const user: any = await User.findById(user_id);
-        user.wallet_balance += purchase_gift.amount;
-        await user.save();
-        await PurchaseGiftCardModel.updateOne({ _id: purchase_gift._id }, { isRedeemed: "1", redeemedAt: new Date() });
-
-        const transaction = new GiftCardTransactionHistoryModel({
-            user_id,
-            purchase_gift_id: purchase_gift._id,
-            transaction_type: 'Cr',
-            amount: purchase_gift.amount,
-            description: gift_card.title,
-            gift_card_image: gift_card.image,
-        });
-        await transaction.save();
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'radeem-gift-card',
-            'Redeemed a Gift Card',
-        )
-        return res.status(200).json({
-            message: 'Gift card redeemed successfully and wallet updated',
-            user: user,
-            transaction: transaction
-        });
-    } catch (error) {
-        return res.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!purchase_gift) {
+      return res.status(404).json({ message: "Gift card not found." });
     }
+    const gift_card = await GiftCardModel.findById(purchase_gift.gift_card_id);
+    if (!gift_card) {
+      return res.status(404).json({ message: "Gift card details not found" });
+    }
+
+    const user: any = await User.findById(user_id);
+    user.wallet_balance += purchase_gift.amount;
+    await user.save();
+    await PurchaseGiftCardModel.updateOne(
+      { _id: purchase_gift._id },
+      { isRedeemed: "1", redeemedAt: new Date() },
+    );
+
+    const transaction = new GiftCardTransactionHistoryModel({
+      user_id,
+      purchase_gift_id: purchase_gift._id,
+      transaction_type: "Cr",
+      amount: purchase_gift.amount,
+      description: gift_card.title,
+      gift_card_image: gift_card.image,
+    });
+    await transaction.save();
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "radeem-gift-card",
+      "Redeemed a Gift Card",
+    );
+    return res.status(200).json({
+      message: "Gift card redeemed successfully and wallet updated",
+      user: user,
+      transaction: transaction,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
-export const listUserGiftCardTransactions = async (req: CustomRequest, res: Response) => {
-    try {
-        const user_id = req.user._id;
-        const type = req.params.type;
-        const base_url = `${process.env.ASSET_URL}/uploads/giftcard-images/`;
+export const listUserGiftCardTransactions = async (
+  req: CustomRequest,
+  res: Response,
+) => {
+  try {
+    const user_id = req.user._id;
+    const type = req.params.type;
+    const base_url = `${process.env.ASSET_URL}/uploads/giftcard-images/`;
 
-        let data: any = [];
-        if (type === "redeemed") {
-            const transactions = await GiftCardTransactionHistoryModel.find({ user_id: user_id }).sort({ _id: -1 });
+    let data: any = [];
+    if (type === "redeemed") {
+      const transactions = await GiftCardTransactionHistoryModel.find({
+        user_id: user_id,
+      }).sort({ _id: -1 });
 
-            data = transactions.map((transaction) => {
-                const giftTransaction = transaction.toObject();
-                const GiftCardTransaction = {
-                    _id: giftTransaction._id,
-                    user_id: giftTransaction.user_id,
-                    transaction_type: giftTransaction.transaction_type,
-                    amount: giftTransaction.amount,
-                    description: giftTransaction.description,
-                    createdAt: moment(giftTransaction.createdAt).format('YYYY-MM-DD HH:mm:ss'),
-                    gift_card_image: giftTransaction.gift_card_image
-                        ? `${base_url}${giftTransaction.gift_card_image}`
-                        : '',
-                };
-                return GiftCardTransaction;
-            });
-        }
-
-        if (type === "purchased") {
-            const transactions = await PurchaseGiftCardModel.find({ user_id: user_id }).sort({ _id: -1 }).populate('gift_card_id');
-
-            data = transactions.map((transaction) => {
-                const purchaseTransaction = transaction.toObject();
-                const giftCard = purchaseTransaction.gift_card_id as any;
-                const purchaseGiftCardTransaction = {
-                    _id: purchaseTransaction._id,
-                    orderId: purchaseTransaction.orderId,
-                    user_id: purchaseTransaction.user_id,
-                    transaction_type: 'Dr',
-                    amount: purchaseTransaction.amount,
-                    description: giftCard.title,
-                    gift_card_image: giftCard.image
-                        ? `${base_url}${giftCard.image}`
-                        : '',
-                    isRedeemed: purchaseTransaction.isRedeemed,
-                    delivery_date: purchaseTransaction.delivery_date ? moment(purchaseTransaction.delivery_date).format('YYYY-MM-DD HH:mm:ss') : null,
-                    redeemedAt: purchaseTransaction.redeemedAt ? moment(purchaseTransaction.redeemedAt).format('YYYY-MM-DD HH:mm:ss') : null,
-                    createdAt: moment(purchaseTransaction.createdAt).format('YYYY-MM-DD HH:mm:ss'),
-                    expiryDate: moment(purchaseTransaction.delivery_date).add(giftCard.validity, 'days').format('YYYY-MM-DD HH:mm:ss'),
-                };
-                return purchaseGiftCardTransaction;
-            });
-
-        }
-
-        if (type == "admin") {
-            const transactions = await transactionModel.find({ user_id: user_id }).sort({ _id: -1 });
-            data = transactions.map((transaction) => {
-                const giftTransaction = transaction.toObject();
-                const GiftCardTransaction = {
-                    _id: giftTransaction._id,
-                    user_id: giftTransaction.user_id,
-                    transaction_type: giftTransaction.transaction_type,
-                    amount: giftTransaction.amount,
-                    transaction_id: giftTransaction.transaction_id,
-                    createdAt: moment(giftTransaction.createdAt).format('YYYY-MM-DD HH:mm:ss'),
-                };
-                return GiftCardTransaction;
-            });
-        }
-
-        return res.status(200).json({ message: 'Transactions fetched successfully for user', transactions: data });
-    } catch (error) {
-        return res.status(500).json({ message: 'Something went wrong. Please try again.' });
+      data = transactions.map((transaction) => {
+        const giftTransaction = transaction.toObject();
+        const GiftCardTransaction = {
+          _id: giftTransaction._id,
+          user_id: giftTransaction.user_id,
+          transaction_type: giftTransaction.transaction_type,
+          amount: giftTransaction.amount,
+          description: giftTransaction.description,
+          createdAt: moment(giftTransaction.createdAt).format(
+            "YYYY-MM-DD HH:mm:ss",
+          ),
+          gift_card_image: giftTransaction.gift_card_image
+            ? `${base_url}${giftTransaction.gift_card_image}`
+            : "",
+        };
+        return GiftCardTransaction;
+      });
     }
+
+    if (type === "purchased") {
+      const transactions = await PurchaseGiftCardModel.find({
+        user_id: user_id,
+      })
+        .sort({ _id: -1 })
+        .populate("gift_card_id");
+
+      data = transactions.map((transaction) => {
+        const purchaseTransaction = transaction.toObject();
+        const giftCard = purchaseTransaction.gift_card_id as any;
+        const purchaseGiftCardTransaction = {
+          _id: purchaseTransaction._id,
+          orderId: purchaseTransaction.orderId,
+          user_id: purchaseTransaction.user_id,
+          transaction_type: "Dr",
+          amount: purchaseTransaction.amount,
+          description: giftCard.title,
+          gift_card_image: giftCard.image ? `${base_url}${giftCard.image}` : "",
+          isRedeemed: purchaseTransaction.isRedeemed,
+          delivery_date: purchaseTransaction.delivery_date
+            ? moment(purchaseTransaction.delivery_date).format(
+                "YYYY-MM-DD HH:mm:ss",
+              )
+            : null,
+          redeemedAt: purchaseTransaction.redeemedAt
+            ? moment(purchaseTransaction.redeemedAt).format(
+                "YYYY-MM-DD HH:mm:ss",
+              )
+            : null,
+          createdAt: moment(purchaseTransaction.createdAt).format(
+            "YYYY-MM-DD HH:mm:ss",
+          ),
+          expiryDate: moment(purchaseTransaction.delivery_date)
+            .add(giftCard.validity, "days")
+            .format("YYYY-MM-DD HH:mm:ss"),
+        };
+        return purchaseGiftCardTransaction;
+      });
+    }
+
+    if (type == "admin") {
+      const transactions = await transactionModel
+        .find({ user_id: user_id })
+        .sort({ _id: -1 });
+      data = transactions.map((transaction) => {
+        const giftTransaction = transaction.toObject();
+        const GiftCardTransaction = {
+          _id: giftTransaction._id,
+          user_id: giftTransaction.user_id,
+          transaction_type: giftTransaction.transaction_type,
+          amount: giftTransaction.amount,
+          transaction_id: giftTransaction.transaction_id,
+          createdAt: moment(giftTransaction.createdAt).format(
+            "YYYY-MM-DD HH:mm:ss",
+          ),
+        };
+        return GiftCardTransaction;
+      });
+    }
+
+    return res
+      .status(200)
+      .json({
+        message: "Transactions fetched successfully for user",
+        transactions: data,
+      });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
-export const checkCouponForProduct = async (req: CustomRequest, resp: Response) => {
-    try {
-        let userStatus = 'all';
-        const userData = await User.findOne({ _id: req.user._id });
+export const checkCouponForProduct = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    let userStatus = "all";
+    const userData = await User.findOne({ _id: req.user._id });
 
-        if (userData) {
-            const sales = await Sales.find({ user_id: req.user._id });
-            if (sales.length > 0) {
-                userStatus = 'old user';
+    if (userData) {
+      const sales = await Sales.find({ user_id: req.user._id });
+      if (sales.length > 0) {
+        userStatus = "old user";
+      } else {
+        userStatus = "new user";
+      }
+    }
+
+    const { coupon_code, vendor_id } = req.body;
+
+    if (!coupon_code) {
+      return resp.status(400).json({ message: "Coupon code is required" });
+    }
+
+    const pipiline = [
+      {
+        $match: {
+          vendor_id: new mongoose.Types.ObjectId(vendor_id),
+          coupon_code: coupon_code,
+          start_date: { $lte: new Date() },
+          expiry_date: { $gte: new Date() },
+          status: true,
+        },
+      },
+    ];
+    const coupon = await CouponModel.aggregate(pipiline);
+
+    if (!coupon || coupon.length === 0) {
+      return resp.status(400).json({ message: "Coupon not applicable." });
+    }
+
+    const couponData = coupon[0];
+
+    if (couponData.no_of_times > 0) {
+      if (couponData.no_of_times <= couponData.total_uses) {
+        return resp.status(400).json({ message: "Coupon not applicable." });
+      }
+    }
+
+    if (couponData.valid_for != "all") {
+      if (userStatus != couponData.valid_for) {
+        return resp
+          .status(400)
+          .json({ message: "Coupon not applicable for your account." });
+      }
+    }
+
+    const cartData = await Cart.find({
+      vendor_id: vendor_id,
+      user_id: req.user._id,
+    });
+
+    const cartIds = cartData.map((item) => String(item._id));
+
+    const product_ids = cartData.map((item) => String(item.product_id));
+    const couponProductId = couponData.product_id.map((id: any) => String(id));
+
+    const matchingProductIds = product_ids.filter((productId) =>
+      couponProductId.includes(productId),
+    );
+
+    if (matchingProductIds.length > 0) {
+      const productPromises = matchingProductIds.map((productId) =>
+        Product.findById(productId),
+      );
+      const products = await Promise.all(productPromises);
+      const promotionalAmount = await getPromotionAmount(req, resp);
+
+      let couponAmount = 0;
+      matchingProductIds.forEach(async (productId, index) => {
+        const cartItem = cartData.find(
+          (item) =>
+            String(item.product_id) === productId &&
+            String(item._id) === cartIds[index],
+        );
+        const productData = products[index];
+        const productPrice =
+          Number(cartItem?.price) * Number(cartItem?.qty) || 0;
+        let finalPrice = productPrice - (promotionalAmount || 0);
+        if (cartItem) {
+          if (couponData.discount_type === "percentage") {
+            couponAmount += couponData.discount_amount * cartItem.qty;
+          } else {
+            if (finalPrice > couponData.discount_amount) {
+              couponAmount += couponData.discount_amount;
             } else {
-                userStatus = 'new user';
+              couponAmount += finalPrice;
             }
+          }
+
+          if (couponAmount > couponData.max_discount) {
+            couponAmount = couponData.max_discount;
+          }
         }
+      });
 
-        const { coupon_code, vendor_id } = req.body;
+      const existingCoupon = await couponCart.findOne({
+        user_id: req.user._id,
+        vendor_id: vendor_id,
+      });
 
-        if (!coupon_code) {
-            return resp.status(400).json({ message: 'Coupon code is required' });
-        }
+      if (existingCoupon) {
+        return {
+          message: "Already applied",
+          existingCoupon,
+          couponAmount,
+        };
+      }
 
-        const pipiline = [
-            {
-                $match: {
-                    vendor_id: new mongoose.Types.ObjectId(vendor_id),
-                    coupon_code: coupon_code,
-                    start_date: { $lte: new Date() },
-                    expiry_date: { $gte: new Date() },
-                    status: true,
-                }
-            }
-        ]
-        const coupon = await CouponModel.aggregate(pipiline);
+      await couponCart.create({
+        user_id: req.user._id,
+        vendor_id: vendor_id,
+        coupon_data: {
+          coupon_code: couponData.coupon_code,
+          discount_amount: couponAmount,
+        },
+      });
 
-        if (!coupon || coupon.length === 0) {
-            return resp.status(400).json({ message: 'Coupon not applicable.' });
-        }
-
-        const couponData = coupon[0];
-
-        if (couponData.no_of_times > 0) {
-            if (couponData.no_of_times <= couponData.total_uses) {
-                return resp.status(400).json({ message: 'Coupon not applicable.' });
-            }
-        }
-
-        if (couponData.valid_for != 'all') {
-            if (userStatus != couponData.valid_for) {
-                return resp.status(400).json({ message: 'Coupon not applicable for your account.' });
-            }
-        }
-
-        const cartData = await Cart.find({ vendor_id: vendor_id, user_id: req.user._id });
-
-        const cartIds = cartData.map((item) => String(item._id));
-
-        const product_ids = cartData.map((item) => String(item.product_id));
-        const couponProductId = couponData.product_id.map((id: any) => String(id));
-
-        const matchingProductIds = product_ids.filter((productId) =>
-            couponProductId.includes(productId)
-        );
-
-        if (matchingProductIds.length > 0) {
-            const productPromises = matchingProductIds.map((productId) => Product.findById(productId));
-            const products = await Promise.all(productPromises);
-            const promotionalAmount = await getPromotionAmount(req, resp);
-
-            let couponAmount = 0;
-            matchingProductIds.forEach(async (productId, index) => {
-                const cartItem = cartData.find((item) => String(item.product_id) === productId && String(item._id) === cartIds[index]);
-                const productData = products[index];
-                const productPrice = (Number(cartItem?.price) * Number(cartItem?.qty)) || 0;
-                let finalPrice = productPrice - (promotionalAmount || 0);
-                if (cartItem) {
-                    if (couponData.discount_type === 'percentage') {
-                        couponAmount += (couponData.discount_amount) * cartItem.qty;
-                    } else {
-
-                        if (finalPrice > couponData.discount_amount) {
-                            couponAmount += couponData.discount_amount;
-                        } else {
-                            couponAmount += finalPrice;
-                        }
-                    }
-
-                    if (couponAmount > couponData.max_discount) {
-
-                        couponAmount = couponData.max_discount;
-                    }
-
-                }
-            });
-
-            const existingCoupon = await couponCart.findOne({ user_id: req.user._id, vendor_id: vendor_id });
-
-            if (existingCoupon) {
-                return {
-                    message: 'Already applied',
-                    existingCoupon,
-                    couponAmount
-                }
-            }
-
-            await couponCart.create(
-                {
-                    user_id: req.user._id, vendor_id: vendor_id,
-                    coupon_data: {
-                        coupon_code: couponData.coupon_code,
-                        discount_amount: couponAmount,
-                    }
-                }
-            );
-
-            return resp.status(200).json({ message: 'Coupon applied successfully.', couponAmount });
-        } else {
-            return resp.status(400).json({ message: 'Coupon not applicable for these products.' });
-        }
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-        });
+      return resp
+        .status(200)
+        .json({ message: "Coupon applied successfully.", couponAmount });
+    } else {
+      return resp
+        .status(400)
+        .json({ message: "Coupon not applicable for these products." });
     }
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
 };
 
+export const removeCouponForProduct = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const { coupon_code, vendor_id } = req.body;
 
-export const removeCouponForProduct = async (req: CustomRequest, resp: Response) => {
-    try {
-
-        const { coupon_code, vendor_id } = req.body;
-
-        if (!coupon_code) {
-            return resp.status(400).json({ message: 'Coupon code is required' });
-        }
-
-        const coupon = await couponCart.findOneAndDelete(
-            { user_id: req.user._id, vendor_id: req.body.vendor_id }
-
-        );
-        return resp.status(200).json({ message: 'Coupon removed successfully.' });
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-        });
+    if (!coupon_code) {
+      return resp.status(400).json({ message: "Coupon code is required" });
     }
+
+    const coupon = await couponCart.findOneAndDelete({
+      user_id: req.user._id,
+      vendor_id: req.body.vendor_id,
+    });
+    return resp.status(200).json({ message: "Coupon removed successfully." });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
 };
 
-export const getPromotionAmount = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user_id = req.user._id;
-        const userObjectId = new mongoose.Types.ObjectId(user_id);
+export const getPromotionAmount = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    const user_id = req.user._id;
+    const userObjectId = new mongoose.Types.ObjectId(user_id);
 
-        const pipeline: any = [
-            {
-                $match: {
-                    user_id: userObjectId,
-                },
+    const pipeline: any = [
+      {
+        $match: {
+          user_id: userObjectId,
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "productData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$productData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "productData.vendor_id",
+          foreignField: "_id",
+          as: "vendorData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$vendorData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "vendordetails",
+          localField: "vendorData._id",
+          foreignField: "user_id",
+          as: "vendorDetails",
+        },
+      },
+      {
+        $unwind: {
+          path: "$vendorDetails",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            vendor_id: "$productData.vendor_id",
+          },
+          vendorItems: {
+            $push: {
+              cart_id: "$_id",
+              qty: "$qty",
+              product_id: "$product_id",
+              price: "$price",
+              product_image: "$productData.image",
+              product_name: "$productData.product_title",
+              sale_price: "$productData.sale_price",
+              discount_amount: "$productData.discount_amount",
+              short_description: "$productData.description",
+              stock: "$productData.stock",
+              slug: "$productData.slug",
+              delivery_amount: "$productData.delivery_amount",
+              delivery: "$productData.delivery_type",
             },
-            {
-                $lookup: {
-                    from: "products",
-                    localField: "product_id",
-                    foreignField: "_id",
-                    as: "productData",
-                },
+          },
+          vendorCoupon: { $first: "$vendorCoupon" },
+        },
+      },
+      {
+        $sort: {
+          "_id.vendor_id": 1,
+        },
+      },
+      {
+        $addFields: {
+          products: {
+            $map: {
+              input: "$vendorItems",
+              as: "item",
+              in: {
+                cart_id: "$$item.cart_id",
+                qty: "$$item.qty",
+                product_id: "$$item.product_id",
+                product_name: "$$item.product_name",
+                sale_price: "$$item.sale_price",
+                slug: "$$item.slug",
+                price: "$$item.price",
+              },
             },
-            {
-                $unwind: {
-                    path: "$productData",
-                    preserveNullAndEmptyArrays: true,
-                },
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "productData.vendor_id",
-                    foreignField: "_id",
-                    as: "vendorData",
-                },
-            },
-            {
-                $unwind: {
-                    path: "$vendorData",
-                    preserveNullAndEmptyArrays: true,
-                },
-            }, {
-                $lookup: {
-                    from: "vendordetails",
-                    localField: "vendorData._id",
-                    foreignField: "user_id",
-                    as: "vendorDetails",
-                },
-            },
-            {
-                $unwind: {
-                    path: "$vendorDetails",
-                    preserveNullAndEmptyArrays: true,
-                },
-            },
-            {
-                $group: {
-                    _id: {
-                        vendor_id: "$productData.vendor_id",
-                    },
-                    vendorItems: {
-                        $push: {
-                            cart_id: "$_id",
-                            qty: "$qty",
-                            product_id: "$product_id",
-                            price: "$price",
-                            product_image: "$productData.image",
-                            product_name: "$productData.product_title",
-                            sale_price: "$productData.sale_price",
-                            discount_amount: "$productData.discount_amount",
-                            short_description: "$productData.description",
-                            stock: "$productData.stock",
-                            slug: "$productData.slug",
-                            delivery_amount: "$productData.delivery_amount",
-                            delivery: "$productData.delivery_type",
-                        },
-                    },
-                    vendorCoupon: { $first: "$vendorCoupon" },
-                },
-            },
-            {
-                $sort: {
-                    "_id.vendor_id": 1,
-                },
-            },
-            {
-                $addFields: {
-                    products: {
-                        $map: {
-                            input: "$vendorItems",
-                            as: "item",
-                            in: {
-                                cart_id: "$$item.cart_id",
-                                qty: "$$item.qty",
-                                product_id: "$$item.product_id",
-                                product_name: "$$item.product_name",
-                                sale_price: "$$item.sale_price",
-                                slug: "$$item.slug",
-                                price: "$$item.price",
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                $project: {
-                    _id: 0,
-                    vendor_id: "$_id.vendor_id",
-                    products: 1,
-                },
-            },
-        ];
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          vendor_id: "$_id.vendor_id",
+          products: 1,
+        },
+      },
+    ];
 
-        const cartResult = await CartModel.aggregate(pipeline);
+    const cartResult = await CartModel.aggregate(pipeline);
 
-        let promoAmount = 0;
+    let promoAmount = 0;
+
+    await Promise.all(
+      cartResult.map(async (item: any) => {
+        const productIds = item.products.map(
+          (product: any) => product.product_id,
+        );
+
+        const promotionalData = await PromotionalOfferModel.find({
+          vendor_id: item.vendor_id,
+          status: true,
+          product_id: { $in: productIds },
+          start_date: { $lte: new Date() },
+          expiry_date: { $gte: new Date() },
+        });
 
         await Promise.all(
-            cartResult.map(async (item: any) => {
-                const productIds = item.products.map((product: any) => product.product_id);
+          promotionalData.map(async (promo: any) => {
+            const cartData = await Cart.aggregate([
+              {
+                $match: {
+                  product_id: { $in: promo.product_id },
+                  user_id: req.user._id,
+                },
+              },
+              {
+                $lookup: {
+                  from: "products",
+                  localField: "product_id",
+                  foreignField: "_id",
+                  as: "productData",
+                },
+              },
+              {
+                $unwind: {
+                  path: "$productData",
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalSum: { $sum: { $multiply: ["$price", "$qty"] } },
+                  totalQty: { $sum: "$qty" },
+                },
+              },
+            ]);
 
-                const promotionalData = await PromotionalOfferModel.find({
-                    vendor_id: item.vendor_id,
-                    status: true,
-                    product_id: { $in: productIds },
-                    start_date: { $lte: new Date() },
-                    expiry_date: { $gte: new Date() },
-                });
-
-                await Promise.all(
-                    promotionalData.map(async (promo: any) => {
-
-                        const cartData = await Cart.aggregate([
-                            {
-                                $match: {
-                                    product_id: { $in: promo.product_id },
-                                    user_id: req.user._id,
-                                },
-                            },
-                            {
-                                $lookup: {
-                                    from: "products",
-                                    localField: "product_id",
-                                    foreignField: "_id",
-                                    as: "productData",
-                                },
-                            },
-                            {
-                                $unwind: {
-                                    path: "$productData",
-                                    preserveNullAndEmptyArrays: true,
-                                },
-                            },
-                            {
-                                $group: {
-                                    _id: null,
-                                    totalSum: { $sum: { $multiply: ["$price", "$qty"] } },
-                                    totalQty: { $sum: "$qty" },
-                                },
-                            },
-                        ]);
-
-                        cartData.forEach((item) => {
-
-                            if (item.totalQty >= promo.qty) {
-                                if (promo.offer_type == 'percentage') {
-                                    promoAmount += (item.totalSum * promo.discount_amount) / 100;
-                                } else if (promo.offer_type == 'flat') {
-                                    promoAmount += (promo.discount_amount < item.totalSum ? promo.discount_amount : item.totalSum);
-                                }
-                            }
-                        });
-
-                    })
-                );
-            })
+            cartData.forEach((item) => {
+              if (item.totalQty >= promo.qty) {
+                if (promo.offer_type == "percentage") {
+                  promoAmount += (item.totalSum * promo.discount_amount) / 100;
+                } else if (promo.offer_type == "flat") {
+                  promoAmount +=
+                    promo.discount_amount < item.totalSum
+                      ? promo.discount_amount
+                      : item.totalSum;
+                }
+              }
+            });
+          }),
         );
+      }),
+    );
 
-        return promoAmount;
-
-
-    } catch (error) {
-
-    }
-}
+    return promoAmount;
+  } catch (error) {}
+};
 
 export const logout = async (req: CustomRequest, resp: Response) => {
-
-    try {
-        await LoginHistoryModel.findOneAndUpdate({ ip_address: req.ip, user_id: req.user._id }, { $set: { logout_time: new Date() } });
-        await User.updateOne({ _id: req.user._id }, { $set: { auth_key: '' }, $pull: { multipleTokens: { token: req.token } } });
-        await activity(
-            req.user._id,
-            null,
-            null,
-            'logout',
-            `User with name ${req.user.name} logged out`
-        );
-        return resp.status(200).json({ message: 'Logout successfully.' });
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+  try {
+    await LoginHistoryModel.findOneAndUpdate(
+      { ip_address: req.ip, user_id: req.user._id },
+      { $set: { logout_time: new Date() } },
+    );
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $set: { auth_key: "" },
+        $pull: { multipleTokens: { token: req.token } },
+      },
+    );
+    await activity(
+      req.user._id,
+      null,
+      null,
+      "logout",
+      `User with name ${req.user.name} logged out`,
+    );
+    return resp.status(200).json({ message: "Logout successfully." });
+  } catch (error) {
+    return resp
+      .status(500)
+      .json({ message: "Something went wrong. Please try again." });
+  }
 };
 
 export const addParentCart = async (req: CustomRequest, resp: Response) => {
-    try {
-        const { vendor_data, note } = req.body;
-        const user_id = req.user._id;
+  try {
+    const { vendor_data, note } = req.body;
+    const user_id = req.user._id;
 
-        const cartData = await ParentCartModel.findOne({ user_id: user_id, vendor_id: new mongoose.Types.ObjectId(vendor_data.vendor_id) });
-
-        vendor_data.note = note;
-
-        if (cartData) {
-            const existingVendorIndex = cartData.vendor_data.findIndex(
-                (v: any) => v.vendor_id.toString() === vendor_data.vendor_id.toString()
-            );
-
-            if (existingVendorIndex !== -1) {
-                cartData.vendor_data[existingVendorIndex] = vendor_data;
-            } else {
-                cartData.vendor_data.push(vendor_data);
-            }
-
-            if (vendor_data?.shipping_id) {
-
-                cartData.shipping_id = new mongoose.Types.ObjectId(vendor_data.shipping_id);
-            }
-
-            await cartData.save();
-            return resp.status(200).json({ message: 'Cart updated successfully.' });
-        } else {
-            await ParentCartModel.create({ user_id: user_id, vendor_id: new mongoose.Types.ObjectId(vendor_data.vendor_id), shipping_id: new mongoose.Types.ObjectId(vendor_data.shipping_id), vendor_data: [vendor_data] });
-            return resp.status(200).json({ message: 'Cart created successfully.' });
-        }
-    } catch (error) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (!vendor_data?.product_id) {
+      return resp.status(400).json({
+        message: "product_id is required",
+      });
     }
+
+    if (!vendor_data?.shipping_id) {
+      return resp.status(400).json({
+        message: "shipping_id is required",
+      });
+    }
+
+    const vendorDataToSave = {
+      vendor_id: new mongoose.Types.ObjectId(vendor_data.vendor_id),
+      product_id: new mongoose.Types.ObjectId(vendor_data.product_id),
+      shipping_id: new mongoose.Types.ObjectId(vendor_data.shipping_id),
+
+      shippingName: vendor_data.shippingName || "",
+
+      minDate: vendor_data.minDate
+        ? new Date(vendor_data.minDate)
+        : new Date(0),
+
+      maxDate: vendor_data.maxDate
+        ? new Date(vendor_data.maxDate)
+        : new Date(0),
+
+      perOrder: Number(vendor_data.perOrder || 0),
+      perItem: Number(vendor_data.perItem || 0),
+      region: Array.isArray(vendor_data.region) ? vendor_data.region : [],
+      note: note || "",
+      seller_note: vendor_data.seller_note || "",
+    };
+
+    const cartData = await ParentCartModel.findOne({
+      user_id,
+      vendor_id: vendorDataToSave.vendor_id,
+    });
+
+    if (cartData) {
+      // 🔥 FIX OLD ENTRIES WITHOUT product_id
+      cartData.vendor_data = cartData.vendor_data.map((v: any) => {
+        if (!v.product_id) {
+          return {
+            ...v,
+            product_id: vendorDataToSave.product_id,
+          };
+        }
+        return v;
+      });
+
+      const existingIndex = cartData.vendor_data.findIndex(
+        (v: any) =>
+          v.vendor_id?.toString() === vendorDataToSave.vendor_id.toString() &&
+          v.product_id?.toString() === vendorDataToSave.product_id.toString(),
+      );
+
+      if (existingIndex !== -1) {
+        cartData.vendor_data[existingIndex] = vendorDataToSave;
+      } else {
+        cartData.vendor_data.push(vendorDataToSave);
+      }
+
+      await cartData.save();
+      return resp.status(200).json({ message: "Cart updated successfully." });
+    } else {
+      await ParentCartModel.create({
+        user_id,
+        vendor_id: vendorDataToSave.vendor_id,
+        vendor_data: [vendorDataToSave],
+      });
+
+      return resp.status(200).json({ message: "Cart created successfully." });
+    }
+  } catch (error: any) {
+    console.error("addParentCart error:", error); // 🔥 SEE REAL ERROR
+    return resp.status(500).json({ message: error.message });
+  }
 };
 
 export const saveNote = async (req: CustomRequest, resp: Response) => {
   try {
-    const {_id, vendor_id, buyer_note, cart_id } = req.body;
+    const { _id, vendor_id, buyer_note, cart_id } = req.body;
     const user_id = req.user._id;
 
     if (!buyer_note) {
@@ -4933,15 +5792,15 @@ export const saveNote = async (req: CustomRequest, resp: Response) => {
     let buyerNote;
     if (_id) {
       buyerNote = await BuyerNoteModel.findOneAndUpdate(
-        { _id:_id, user_id },
+        { _id: _id, user_id },
         { buyer_note },
-        { new: true }
+        { new: true },
       );
 
       if (!buyerNote) {
         return resp.status(404).json({ message: "Buyer note not found" });
       }
-    }else {
+    } else {
       if (!vendor_id || !cart_id) {
         return resp
           .status(400)
@@ -4952,287 +5811,332 @@ export const saveNote = async (req: CustomRequest, resp: Response) => {
         user_id,
         vendor_id,
         cart_id,
-        buyer_note
+        buyer_note,
       });
     }
 
     return resp.status(200).json({
       message: "Buyer note saved successfully.",
-      buyerNote
+      buyerNote,
     });
-
   } catch (error) {
     console.error(error);
     return resp.status(500).json({
-      message: "Something went wrong. Please try again."
+      message: "Something went wrong. Please try again.",
     });
   }
 };
 
 export const getUserOrders = async (req: CustomRequest, resp: Response) => {
-    try {
-        const user_id = req.user._id;
+  try {
+    const user_id = req.user._id;
 
-        const orders = await SalesModel.find({ user_id: new mongoose.Types.ObjectId(user_id) });
+    const orders = await SalesModel.find({
+      user_id: new mongoose.Types.ObjectId(user_id),
+    });
 
-        const followedShops = await followModel.find({ user_id: new mongoose.Types.ObjectId(user_id) });
+    const followedShops = await followModel.find({
+      user_id: new mongoose.Types.ObjectId(user_id),
+    });
 
-        const wishlist = await wishlistModel.find({ user_id: new mongoose.Types.ObjectId(user_id) });
+    const wishlist = await wishlistModel.find({
+      user_id: new mongoose.Types.ObjectId(user_id),
+    });
 
-        return resp.status(200).json({
-            totalorders: orders?.length,
-            followedShops: followedShops?.length,
-            wishlist: wishlist?.length
-        });
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({ success: false, message: 'Internal server error.' });
-    }
-}
-
+    return resp.status(200).json({
+      totalorders: orders?.length,
+      followedShops: followedShops?.length,
+      wishlist: wishlist?.length,
+    });
+  } catch (error) {
+    console.error(error);
+    return resp
+      .status(500)
+      .json({ success: false, message: "Internal server error." });
+  }
+};
 
 export const createReport = async (req: CustomRequest, resp: Response) => {
-    try {
-        const { type, reporttype } = req.body;
+  try {
+    const { type, reporttype } = req.body;
 
-        if (!type || !reporttype) {
-            return resp.status(400).json({ error: 'type and reporttype are required' });
-        }
-
-        const user_id = req.user._id;
-
-        const now = moment();
-        const random = Math.floor(1000 + Math.random() * 9000);
-        const report_id = `REP${now.format('DDMMYYYY')}${random}`;
-
-        const reportData = {
-            ...req.body,
-            report_id,
-            user_id,
-        };
-
-        const report = await ReportModel.create(reportData);
-
-        resp.status(200).json({
-            success: true,
-            message: 'Report created successfully',
-            report_id: report.report_id,
-            report
-        });
-
-    } catch (err: any) {
-        console.error(err);
-        resp.status(500).json({ error: err.message || 'Internal server error' });
+    if (!type || !reporttype) {
+      return resp
+        .status(400)
+        .json({ error: "type and reporttype are required" });
     }
+
+    const user_id = req.user._id;
+
+    const now = moment();
+    const random = Math.floor(1000 + Math.random() * 9000);
+    const report_id = `REP${now.format("DDMMYYYY")}${random}`;
+
+    const reportData = {
+      ...req.body,
+      report_id,
+      user_id,
+    };
+
+    const report = await ReportModel.create(reportData);
+
+    resp.status(200).json({
+      success: true,
+      message: "Report created successfully",
+      report_id: report.report_id,
+      report,
+    });
+  } catch (err: any) {
+    console.error(err);
+    resp.status(500).json({ error: err.message || "Internal server error" });
+  }
 };
 
 export const verifyToken = async (req: Request, resp: Response) => {
-    try {
-        const token = req.headers.authorization?.replace('Bearer ', '').trim();
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "").trim();
 
-        if (!token) {
-            return resp.status(400).json({ success: false, message: 'Authorization token is required.' });
-        }
-
-        const user = await User.findOne({ 'multipleTokens.token': token });
-
-        if (!user) {
-            return resp.status(404).json({ success: false, message: 'Token not found or invalid.' });
-        }
-
-        return resp.status(200).json({ success: true, message: 'Token verified successfully.', user });
-    } catch (err: any) {
-        console.error('Error verifying token:', err);
-        return resp.status(500).json({ success: false, message: 'Internal server error.' });
+    if (!token) {
+      return resp
+        .status(400)
+        .json({ success: false, message: "Authorization token is required." });
     }
+
+    const user = await User.findOne({ "multipleTokens.token": token });
+
+    if (!user) {
+      return resp
+        .status(404)
+        .json({ success: false, message: "Token not found or invalid." });
+    }
+
+    return resp
+      .status(200)
+      .json({ success: true, message: "Token verified successfully.", user });
+  } catch (err: any) {
+    console.error("Error verifying token:", err);
+    return resp
+      .status(500)
+      .json({ success: false, message: "Internal server error." });
+  }
 };
 
-export const checkVoucherForProduct = async (req: CustomRequest, resp: Response) => {
-    try {
-        let userStatus = 'all';
-        const userData = await User.findOne({ _id: req.user._id });
+export const checkVoucherForProduct = async (
+  req: CustomRequest,
+  resp: Response,
+) => {
+  try {
+    let userStatus = "all";
+    const userData = await User.findOne({ _id: req.user._id });
 
-        if (userData) {
-            const sales = await Sales.find({ user_id: req.user._id });
-            if (sales.length > 0) {
-                userStatus = 'old user';
-            } else {
-                userStatus = 'new user';
-            }
-        }
+    if (userData) {
+      const sales = await Sales.find({ user_id: req.user._id });
+      if (sales.length > 0) {
+        userStatus = "old user";
+      } else {
+        userStatus = "new user";
+      }
+    }
 
-        const { voucher_code } = req.body;
+    const { voucher_code } = req.body;
 
-        if (!voucher_code) {
-            return resp.status(400).json({ message: 'Voucher code is required' });
-        }
+    if (!voucher_code) {
+      return resp.status(400).json({ message: "Voucher code is required" });
+    }
 
-        const voucher = await voucherModel.findOne({ claim_code: voucher_code });
+    const voucher = await voucherModel.findOne({ claim_code: voucher_code });
 
-        if (!voucher) {
-            return resp.status(404).json({ message: 'Voucher not found' });
-        }
+    if (!voucher) {
+      return resp.status(404).json({ message: "Voucher not found" });
+    }
 
-        if (voucher.type_of_users !== 'all' && voucher.type_of_users !== userStatus) {
-            return resp.status(400).json({ message: 'Voucher is not valid for you' });
-        }
+    if (
+      voucher.type_of_users !== "all" &&
+      voucher.type_of_users !== userStatus
+    ) {
+      return resp.status(400).json({ message: "Voucher is not valid for you" });
+    }
 
-        const currentDate = moment().utc();
+    const currentDate = moment().utc();
 
-        if (voucher.startDate && currentDate.isBefore(moment(voucher.startDate))) {
-            return resp.status(400).json({ message: 'Voucher is not yet valid' });
-        }
+    if (voucher.startDate && currentDate.isBefore(moment(voucher.startDate))) {
+      return resp.status(400).json({ message: "Voucher is not yet valid" });
+    }
 
-        if (voucher.endDate && currentDate.isAfter(moment(voucher.endDate))) {
-            return resp.status(400).json({ message: 'Voucher has expired' });
-        }
+    if (voucher.endDate && currentDate.isAfter(moment(voucher.endDate))) {
+      return resp.status(400).json({ message: "Voucher has expired" });
+    }
 
-        if (!voucher.status) {
-            return resp.status(400).json({ message: 'Voucher is no longer active' });
-        }
+    if (!voucher.status) {
+      return resp.status(400).json({ message: "Voucher is no longer active" });
+    }
 
-        let userCartData = await CartModel.find({ user_id: req.user._id });
+    let userCartData = await CartModel.find({ user_id: req.user._id });
 
-        if (!userCartData || userCartData.length === 0) {
-            return resp.status(400).json({ message: 'User cart not found or empty' });
-        }
+    if (!userCartData || userCartData.length === 0) {
+      return resp.status(400).json({ message: "User cart not found or empty" });
+    }
 
-        const productIdsInCart = userCartData.flatMap((cartItem: any) => cartItem.product_id);
+    const productIdsInCart = userCartData.flatMap(
+      (cartItem: any) => cartItem.product_id,
+    );
 
-        const vendorInCart = userCartData.flatMap((cartItem: any) => cartItem.vendor_id);
+    const vendorInCart = userCartData.flatMap(
+      (cartItem: any) => cartItem.vendor_id,
+    );
 
-        const cartTotal = userCartData.reduce((total: number, item: any) => total + item.price * item.qty, 0);
+    const cartTotal = userCartData.reduce(
+      (total: number, item: any) => total + item.price * item.qty,
+      0,
+    );
 
-        let discount = 0;
+    let discount = 0;
 
-        if (voucher.type === 'product') {
-            const products = await ProductModel.find({ '_id': { $in: productIdsInCart } });
-            if (voucher.wiseType === 'all') {
-                const excludedProducts = products.filter((product: any) =>
-                    voucher.product_skus.includes(product.sku_code)
-                );
+    if (voucher.type === "product") {
+      const products = await ProductModel.find({
+        _id: { $in: productIdsInCart },
+      });
+      if (voucher.wiseType === "all") {
+        const excludedProducts = products.filter((product: any) =>
+          voucher.product_skus.includes(product.sku_code),
+        );
 
-                if (excludedProducts.length > 0) {
-                    return resp.status(400).json({ message: 'Voucher cannot be applied to certain products in your cart' });
-                }
-
-            } else if (voucher.wiseType === 'select wise') {
-                const eligibleProducts = products.filter((product: any) =>
-                    voucher.product_skus.includes(product.sku_code)
-                );
-
-                if (eligibleProducts.length === 0) {
-                    return resp.status(400).json({ message: 'No eligible products in your cart for this voucher' });
-                }
-            }
-
-            const discountAmount = voucher.discount_amount;
-            if (voucher.discount_type === 'percentage') {
-                discount = (cartTotal * discountAmount) / 100;
-                if (voucher.max_amount && discount > voucher.max_amount) {
-                    discount = voucher.max_amount;
-                }
-            } else if (voucher.discount_type === 'flat') {
-                discount = discountAmount;
-                if (voucher.max_amount && discount > voucher.max_amount) {
-                    discount = voucher.max_amount;
-                }
-            }
-        }
-
-        if (voucher.type == "shop") {
-            const stores = await VendorModel.find({ 'user_id': { $in: vendorInCart } });
-            if (voucher.wiseType === 'all') {
-                const excludedStores = stores.filter((store: any) =>
-                    voucher.shop_ids.includes(store.user_id)
-                );
-
-                if (excludedStores.length > 0) {
-                    return resp.status(400).json({ message: 'Voucher cannot be applied to certain stores in your cart' });
-                }
-
-            } else if (voucher.wiseType === 'select wise') {
-                const eligibleStores = stores.filter((store: any) =>
-                    voucher.shop_ids.includes(store.user_id)
-                );
-
-                if (eligibleStores.length === 0) {
-                    return resp.status(400).json({ message: 'No eligible stores in your cart for this voucher' });
-                }
-            }
-
-            const discountAmount = voucher.discount_amount;
-            if (voucher.discount_type === 'percentage') {
-                discount = (cartTotal * discountAmount) / 100;
-                if (voucher.max_amount && discount > voucher.max_amount) {
-                    discount = voucher.max_amount;
-                }
-            } else if (voucher.discount_type === 'flat') {
-                discount = discountAmount;
-                if (voucher.max_amount && discount > voucher.max_amount) {
-                    discount = voucher.max_amount;
-                }
-            }
-        }
-
-        const pipeline: any = [
-            {
-                $lookup: {
-                    from: "salesdetails",
-                    localField: "_id",
-                    foreignField: "sale_id",
-                    as: "salesdata",
-                    pipeline: [
-                        {
-                            $match: {
-                                order_status: {
-                                    $ne: "cancelled",
-                                },
-                            },
-                        },
-                    ],
-                },
-            },
-            {
-                $match: {
-                    salesdata: {
-                        $ne: [],
-                    },
-                },
-            },
-        ]
-
-        let checkTotalLimitOfVoucher = await Sales.aggregate(pipeline);
-
-        // if (voucher.voucher_limit < checkTotalLimitOfVoucher.length) {
-        //     return resp.status(400).json({ message: 'Voucher limit reached' });
-        // }
-
-        let hasVoucherBeenUsed = 0;
-
-        if (checkTotalLimitOfVoucher.length > 0) {
-            checkTotalLimitOfVoucher.forEach((usage: any) => {
-                if (usage.user_id === req.user._id) {
-                    hasVoucherBeenUsed++;
-                }
+        if (excludedProducts.length > 0) {
+          return resp
+            .status(400)
+            .json({
+              message:
+                "Voucher cannot be applied to certain products in your cart",
             });
         }
+      } else if (voucher.wiseType === "select wise") {
+        const eligibleProducts = products.filter((product: any) =>
+          voucher.product_skus.includes(product.sku_code),
+        );
 
-        if (voucher.usage_limits >= checkTotalLimitOfVoucher.length) {
-            return resp.status(400).json({ message: 'You have already used this voucher' });
+        if (eligibleProducts.length === 0) {
+          return resp
+            .status(400)
+            .json({
+              message: "No eligible products in your cart for this voucher",
+            });
         }
+      }
 
-        return resp.status(200).json({
-            message: 'Voucher is valid for you',
-            discount: discount,
-            voucherDetails: voucher
-        });
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            message: 'Something went wrong. Please try again.',
-        });
+      const discountAmount = voucher.discount_amount;
+      if (voucher.discount_type === "percentage") {
+        discount = (cartTotal * discountAmount) / 100;
+        if (voucher.max_amount && discount > voucher.max_amount) {
+          discount = voucher.max_amount;
+        }
+      } else if (voucher.discount_type === "flat") {
+        discount = discountAmount;
+        if (voucher.max_amount && discount > voucher.max_amount) {
+          discount = voucher.max_amount;
+        }
+      }
     }
+
+    if (voucher.type == "shop") {
+      const stores = await VendorModel.find({ user_id: { $in: vendorInCart } });
+      if (voucher.wiseType === "all") {
+        const excludedStores = stores.filter((store: any) =>
+          voucher.shop_ids.includes(store.user_id),
+        );
+
+        if (excludedStores.length > 0) {
+          return resp
+            .status(400)
+            .json({
+              message:
+                "Voucher cannot be applied to certain stores in your cart",
+            });
+        }
+      } else if (voucher.wiseType === "select wise") {
+        const eligibleStores = stores.filter((store: any) =>
+          voucher.shop_ids.includes(store.user_id),
+        );
+
+        if (eligibleStores.length === 0) {
+          return resp
+            .status(400)
+            .json({
+              message: "No eligible stores in your cart for this voucher",
+            });
+        }
+      }
+
+      const discountAmount = voucher.discount_amount;
+      if (voucher.discount_type === "percentage") {
+        discount = (cartTotal * discountAmount) / 100;
+        if (voucher.max_amount && discount > voucher.max_amount) {
+          discount = voucher.max_amount;
+        }
+      } else if (voucher.discount_type === "flat") {
+        discount = discountAmount;
+        if (voucher.max_amount && discount > voucher.max_amount) {
+          discount = voucher.max_amount;
+        }
+      }
+    }
+
+    const pipeline: any = [
+      {
+        $lookup: {
+          from: "salesdetails",
+          localField: "_id",
+          foreignField: "sale_id",
+          as: "salesdata",
+          pipeline: [
+            {
+              $match: {
+                order_status: {
+                  $ne: "cancelled",
+                },
+              },
+            },
+          ],
+        },
+      },
+      {
+        $match: {
+          salesdata: {
+            $ne: [],
+          },
+        },
+      },
+    ];
+
+    let checkTotalLimitOfVoucher = await Sales.aggregate(pipeline);
+
+    // if (voucher.voucher_limit < checkTotalLimitOfVoucher.length) {
+    //     return resp.status(400).json({ message: 'Voucher limit reached' });
+    // }
+
+    let hasVoucherBeenUsed = 0;
+
+    if (checkTotalLimitOfVoucher.length > 0) {
+      checkTotalLimitOfVoucher.forEach((usage: any) => {
+        if (usage.user_id === req.user._id) {
+          hasVoucherBeenUsed++;
+        }
+      });
+    }
+
+    if (voucher.usage_limits >= checkTotalLimitOfVoucher.length) {
+      return resp
+        .status(400)
+        .json({ message: "You have already used this voucher" });
+    }
+
+    return resp.status(200).json({
+      message: "Voucher is valid for you",
+      discount: discount,
+      voucherDetails: voucher,
+    });
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
 };
-
-

@@ -24,6 +24,11 @@ const parentCartSchema = new Schema(
                     ref: 'User',
                     required: true,
                 },
+                product_id: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'Product',
+                    required: true,
+                },
                 shipping_id: {
                     type: mongoose.Schema.Types.ObjectId,
                     ref: 'Shipping',
@@ -49,6 +54,10 @@ const parentCartSchema = new Schema(
                     type: Number,
                     default: 0,
                 }, 
+                region: {
+                    type: [String],
+                    default: []
+                },
                 note: {
                     type: String,
                     default: '',
