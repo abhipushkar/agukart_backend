@@ -5729,7 +5729,7 @@ export const addParentCart = async (req: CustomRequest, resp: Response) => {
 
       perOrder: Number(vendor_data.perOrder || 0),
       perItem: Number(vendor_data.perItem || 0),
-      region: Array.isArray(vendor_data.region) ? vendor_data.region : [],
+      region: Array.isArray(vendor_data.region) ? vendor_data.region : vendor_data.region ? [vendor_data.region] : [],
       note: note || "",
       seller_note: vendor_data.seller_note || "",
     };
