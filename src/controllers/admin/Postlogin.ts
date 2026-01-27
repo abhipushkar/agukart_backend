@@ -85,6 +85,8 @@ import { paginate } from "../../utils/pagination";
 import _ from 'lodash';
 import { main } from "ts-node/dist/bin";
 import { error } from "console";
+import { RefundModel } from "../../models/Refund";
+import { RefundItemModel } from "../../models/RefundItem";
 dayjs.extend(duration);
 
 interface CustomRequest extends Request {
@@ -5745,6 +5747,210 @@ export const returnReject = async (req: Request, resp: Response) => {
     }
 
 };
+
+export const getRefundContext = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { sub_order_id } = req.params;
+
+        if(![2,3].includes(req.user.designation_id)){
+            return resp.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const items = await SalesDetailsModel.find({ sub_order_id: sub_order_id }).populate("user_id", "name").lean();
+        if(!items.length) {
+            return resp.status(400).json({ message: 'Suborder not found' });
+        }
+
+        if(req.user.designation_id === 3 && items.some(i => i.vendor_id.toString() !== req.user._id.toString())){
+            return resp.status(403).json({ message: 'Unauthorized access.' });
+        }
+
+        return resp.json({
+            order_id: items[0].order_id,
+            sub_order_id,
+            currency: "USD",
+            customer_name: (items[0].user_id as any)?.name || "",
+            items: items.map(i => ({
+                item_id: i.item_id,
+                title: i.productData?.product_title || "",
+                image: i.productData?.image?.length ? i.productData.image[0] : "",
+                quantity: i.qty,
+                amount: i.amount,
+                refunded_cash_amount: i.refunded_cash_amount,
+                refunded_voucher_amount: i.refunded_voucher_amount,
+            })),
+            shipping: {
+                paid: items[0].shippingAmount || 0,
+                refunded: items[0].shipping_refunded_amount || 0
+            }
+        });
+    } catch (error) {
+        return resp.status(500).json({ message: "Failed to load refund context", error });
+    }
+};
+
+export const refundSuborder = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { sub_order_id } = req.params;
+        const { items, shipping_refund = 0, notes = "" } = req.body;
+
+        if(![2,3].includes(req.user.designation_id)){
+            return resp.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const orderItems = await SalesDetailsModel.find({ sub_order_id }).lean();
+        if(!orderItems.length) {
+            return resp.status(404).json({ message: 'Suborder not found' });
+        }
+
+        if(req.user.designation_id === 3 && orderItems.some(i => i.vendor_id.toString() !== req.user._id.toString())){
+            return resp.status(403).json({ message: 'Unauthorized access.' });
+        }
+
+        for(const r of items) {
+            const item = orderItems.find(i => i.item_id === r.item_id);
+            if(!item) {
+                throw new Error(`Invalid item id: ${r.item_id}`);
+            }
+
+            const maxCash = item.amount - item.refunded_cash_amount;
+            if(r.net_refund_amount > maxCash) {
+                throw new Error(`Refund amount exceeds for item id: ${r.item_id}`);
+            }
+
+            const maxVoucher = item.couponDiscountAmount - item.refunded_voucher_amount;
+            if (r.voucher_adjustment_amount > maxVoucher) {
+                throw new Error(`Voucher refund exceeds for item: ${r.item_id}`);
+            }
+        }
+         
+        const shippingPaid = orderItems[0].shippingAmount || 0;
+        const shippingRefunded = orderItems[0].shipping_refunded_amount || 0;
+        const maxShippingRefund = shippingPaid - shippingRefunded;
+        if ( shipping_refund > maxShippingRefund ) {
+            throw new Error('Shipping refund exceeds remaining shipping amount.');
+        }
+
+        const existingRefund = await RefundModel.findOne({
+            sub_order_id,
+            status: { $in: ["Processed"] },
+            createdAt: { $gte: new Date(Date.now() - 2 * 60 * 1000) }
+        });
+
+        if (existingRefund) {
+            throw new Error('Refund already exists for this suborder.');
+        }
+        const refund = await RefundModel.create([{
+            sale_id: orderItems[0].sale_id,
+            order_id: orderItems[0].order_id,
+            sub_order_id,
+            status: "Processed",
+            performed_by: req.user._id,
+            performed_role: req.user.designation_id === 2 ? "Admin" : "Vendor",
+            notes,
+        }]
+    );
+
+    const refundItems = [];
+
+    for (const r of items) {
+        refundItems.push({
+            refund_id: refund[0]._id,
+            item_id: r.item_id,
+            type: "Item",
+            entered_refund_amount: r.entered_refund_amount,
+            voucher_adjustment_amount: r.voucher_adjustment_amount,
+            net_refund_amount: r.net_refund_amount,
+            reason_code: r.reason_code,
+            currency: "USD",
+        });
+
+        await SalesDetailsModel.updateOne(
+            { item_id: r.item_id },
+            {
+                $inc: {
+                    refunded_cash_amount: r.net_refund_amount,
+                    refunded_voucher_amount: r.voucher_adjustment_amount,
+                }
+            }
+        );
+    }
+
+    if(shipping_refund > 0 ) {
+        refundItems.push({
+            refund_id: refund[0]._id,
+            item_id: null,
+            type:  "Shipping",
+            entered_refund_amount: shipping_refund,
+            voucher_adjustment_amount: 0,
+            net_refund_amount: shipping_refund,
+            reason_code: "Shipping Refund",
+            currency: "USD",
+        });
+    }
+
+    await RefundItemModel.insertMany(refundItems);
+
+    if (shipping_refund > 0) {
+        await SalesDetailsModel.updateMany(
+            { sub_order_id },
+            {
+                $inc: {
+                    shipping_refunded_amount: shipping_refund,
+                }
+            }
+        )
+    }
+
+    return resp.json({
+        message: "Refund processed successfully.",
+        refund_id: refund[0]._id,
+    })
+    } catch (error) {
+        return resp.status(500).json({ message: "Failed to process refund", error });
+    }
+}
+
+export const cancelSuborder = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { sub_order_id } = req.params;
+        
+        if (![2, 3].includes(req.user.designation_id)) {
+            return resp.status(403).json({ message: "Unauthorized" });
+        }
+
+        const items = await SalesDetailsModel.find({ sub_order_id: sub_order_id });
+        if(!items.length) {
+            return resp.status(400).json({ message: 'Suborder not found' });
+        }
+
+        if(req.user.designation_id === 3 && items.some(i => i.vendor_id.toString() !== req.user._id.toString())){
+            return resp.status(403).json({ message: 'Unauthorized access.' });
+        }
+
+        if ( items.some(i => i.order_status === "cancelled" || i.delivery_status === "Delivered")) {
+            return resp.status(400).json({ message: "Suborder cannot be cancelled in current state." });
+        }
+
+        if ( req.user.designation_id === 3 && items.some(i => i.shipped_date )) {
+            return resp.status(400).json({ message: "Vendor cannot cancel after shipment." });
+        }
+
+        await SalesDetailsModel.updateMany(
+            { sub_order_id},
+            {
+                $set: {
+                    order_status: "cancelled",
+                    delivery_status: "Cancelled",
+                }
+            }
+        );
+
+        return resp.json({ message: "Suborder cancelled successfully." });
+    } catch (error) {
+        return resp.status(500).json({ message: "Failed to cancel suborder", error });
+    }
+}
 
 export const changePassword = async (req: CustomRequest, resp: Response) => {
 

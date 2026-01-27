@@ -239,7 +239,10 @@ import {
     getCategoryFullDetails,
     deleteShopBanner,
     addShopBanner,
-    getShopBanner
+    getShopBanner,
+    getRefundContext,
+    refundSuborder,
+    cancelSuborder
 } from "../controllers/admin/Postlogin";
 
 
@@ -368,6 +371,10 @@ routes.post('/getOrderInvoice', getOrderInvoice)
 // routes.post('/order-ready', orderReady)
 // routes.post('/return-approve', returnApprove)
 
+// Refund and Cancel ApI's
+routes.get('/refund-context/:sub_order_id', getRefundContext);
+routes.post('/refund/:sub_order_id', refundSuborder);
+routes.post('/cancel/:sub_order_id', cancelSuborder);
 // Occassion API's
 routes.post('/add-occassion', addOccasion);
 routes.post('/add-occassion-image', multer().single('file'), uploadOccassionImage);

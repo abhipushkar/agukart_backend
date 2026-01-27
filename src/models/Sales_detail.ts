@@ -184,6 +184,18 @@ const salesDetailsSchema = new Schema(
             type: Object,
             default: {}
         },
+        refunded_cash_amount: {
+            type: Number,
+            default: 0
+        },
+        refunded_voucher_amount: {
+            type: Number, 
+            default: 0
+        },
+        shipping_refunded_amount: {
+            type: Number,
+            default: 0
+        },
         couponDiscountAmount: {
             type: Number,
             default: 0
