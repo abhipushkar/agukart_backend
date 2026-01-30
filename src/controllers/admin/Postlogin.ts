@@ -1535,7 +1535,7 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
            const existingAttr = await VariantAttribute.findById(id);
            if (existingAttr) {
            let correctVariantName = existingVariant?.variant_name;
-           const sampleProduct = await Product.findOne({ variant_id: variantId }, { variations_data: 1 });
+           const sampleProduct = await Product.findOne({ variant_id: variantId }, { variations_data: 1 }).lean();
            if (sampleProduct) {
            const match = sampleProduct.variations_data.find(v =>
            v.values.includes(existingAttr?.attribute_value)
@@ -1548,6 +1548,10 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
            value: existingAttr?.attribute_value,
            variantName: correctVariantName
         });
+
+           eventBus.emit("variantAttributeSoftDeleted", {
+            attributeId: id,
+           });
        }
      }
 
@@ -1567,6 +1571,14 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
             if (attr._id && attr._id !== "new") {
             const existingAttr = await VariantAttribute.findById(attr._id);
+
+            if (existingAttr && existingAttr.attribute_value !== attr.attr_name) {
+                eventBus.emit("variantAttributeValueUpdated", {
+                    attributeId: existingAttr._id.toString(),
+                    oldValue: existingAttr.attribute_value,
+                    newValue: attr.attr_name
+                });
+            }
 
             // find correct variantName from Product
             let correctVariantName = existingVariant?.variant_name;
@@ -1646,9 +1658,6 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
         .json({ message: "Something went wrong. Please try again." });
     }
     };
-
-
-
 
 export const variantList = async (req: CustomRequest, resp: Response) => {
     try {
@@ -3466,47 +3475,51 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
                       },
                       parent_sku: "$seller_sku",
                       shop_name: { $ifNull: ["$$pd.shop_name", "$shop_name"] },
-// ✅ Compute totalQty once and derive status simply
-totalQty: {
-  $add: [
+effectiveQty: {
+  $cond: [
+    { $gt: [{ $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } }, 0] },
+    { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
+
+    // product.qty == 0
     {
-      $convert: {
-        input: "$$pd.qty",
-        to: "double",
-        onError: 0,
-        onNull: 0,
-      },
-    },
-    {
-      $sum: {
-        $map: {
-          input: {
-            $reduce: {
+      $cond: [
+        { $eq: ["$$pd.form_values.isCheckedQuantity", true] },
+
+        // allowed → sum combination qty
+        {
+          $sum: {
+            $map: {
               input: {
-                $map: {
-                  input: { $ifNull: ["$$pd.combinationData", []] },
-                  as: "cd",
-                  in: { $ifNull: ["$$cd.combinations", []] },
-                },
+                $reduce: {
+                  input: {
+                    $map: {
+                      input: { $ifNull: ["$$pd.combinationData", []] },
+                      as: "cd",
+                      in: { $ifNull: ["$$cd.combinations", []] }
+                    }
+                  },
+                  initialValue: [],
+                  in: { $concatArrays: ["$$value", "$$this"] }
+                }
               },
-              initialValue: [],
-              in: { $concatArrays: ["$$value", "$$this"] },
-            },
-          },
-          as: "comb",
-          in: {
-            $convert: {
-              input: "$$comb.qty",
-              to: "double",
-              onError: 0,
-              onNull: 0,
-            },
-          },
+              as: "comb",
+              in: {
+                $convert: {
+                  input: "$$comb.qty",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0
+                }
+              }
+            }
+          }
         },
-      },
-    },
-  ],
+        0
+      ]
+    }
+  ]
 },
+
 productStatus: {
   $cond: [
     { $eq: ["$$pd.isDeleted", true] }, // 🧠 check this FIRST
@@ -3521,44 +3534,45 @@ productStatus: {
             "inactive",
             {
               $cond: [
-                {
-                  $gt: [
-                    {
-                      $add: [
-                        { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
-                        {
-                          $sum: {
-                            $map: {
-                              input: {
-                                $reduce: {
-                                  input: {
-                                    $map: {
-                                      input: { $ifNull: ["$$pd.combinationData", []] },
-                                      as: "cd",
-                                      in: { $ifNull: ["$$cd.combinations", []] },
-                                    },
-                                  },
-                                  initialValue: [],
-                                  in: { $concatArrays: ["$$value", "$$this"] },
-                                },
-                              },
-                              as: "comb",
-                              in: {
-                                $convert: {
-                                  input: "$$comb.qty",
-                                  to: "double",
-                                  onError: 0,
-                                  onNull: 0,
-                                },
-                              },
-                            },
-                          },
-                        },
-                      ],
-                    },
-                    0,
-                  ],
-                },
+                // {
+                //   $gt: [
+                //     {
+                //       $add: [
+                //         { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
+                //         {
+                //           $sum: {
+                //             $map: {
+                //               input: {
+                //                 $reduce: {
+                //                   input: {
+                //                     $map: {
+                //                       input: { $ifNull: ["$$pd.combinationData", []] },
+                //                       as: "cd",
+                //                       in: { $ifNull: ["$$cd.combinations", []] },
+                //                     },
+                //                   },
+                //                   initialValue: [],
+                //                   in: { $concatArrays: ["$$value", "$$this"] },
+                //                 },
+                //               },
+                //               as: "comb",
+                //               in: {
+                //                 $convert: {
+                //                   input: "$$comb.qty",
+                //                   to: "double",
+                //                   onError: 0,
+                //                   onNull: 0,
+                //                 },
+                //               },
+                //             },
+                //           },
+                //         },
+                //       ],
+                //     },
+                //     0,
+                //   ],
+                // }
+                { $gt: ["$effectiveQty", 0] },
                 "active",
                 "sold-out",
               ],
@@ -3645,46 +3659,7 @@ if (type === "active") {
               $map: {
                 input: "$productData",
                 as: "pd",
-                in: {
-                  $add: [
-                    {
-                      $convert: {
-                        input: "$$pd.qty",
-                        to: "double",
-                        onError: 0,
-                        onNull: 0,
-                      },
-                    },
-                    {
-                      $sum: {
-                        $map: {
-                          input: {
-                            $reduce: {
-                              input: {
-                                $map: {
-                                  input: { $ifNull: ["$$pd.combinationData", []] },
-                                  as: "cd",
-                                  in: { $ifNull: ["$$cd.combinations", []] },
-                                },
-                              },
-                              initialValue: [],
-                              in: { $concatArrays: ["$$value", "$$this"] },
-                            },
-                          },
-                          as: "comb",
-                          in: {
-                            $convert: {
-                              input: "$$comb.qty",
-                              to: "double",
-                              onError: 0,
-                              onNull: 0,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  ],
-                },
+                in: "$$pd.effectiveQty"
               },
             },
           },
@@ -3694,6 +3669,28 @@ if (type === "active") {
     },
   });
 }
+
+if (type === "sold-out") {
+  pipeline.push({
+    $match: {
+      $expr: {
+        $eq: [
+          {
+            $sum: {
+              $map: {
+                input: "$productData",
+                as: "pd",
+                in: "$$pd.effectiveQty"
+              }
+            }
+          },
+          0
+        ]
+      }
+    }
+  });
+}
+
 
 
     if (designation_id == 3) {
@@ -3816,44 +3813,57 @@ if (["active", "sold-out", "draft", "inactive"].includes(type || "")) {
 
 
 if (!["sold-out", "delete", "deleteByAdmin"].includes(type || "")) {
-  productMatch.$expr = {
-    $gt: [
-      {
-        $add: [
-          { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
-          {
-            $sum: {
-              $map: {
-                input: {
-                  $ifNull: [
-                    {
-                      $reduce: {
-                        input: {
-                          $map: {
-                            input: { $ifNull: ["$combinationData", []] },
-                            as: "cd",
-                            in: "$$cd.combinations",
-                          },
-                        },
-                        initialValue: [],
-                        in: { $concatArrays: ["$$value", "$$this"] },
+productMatch.$expr = {
+  $gt: [
+    {
+      $cond: [
+        // qty > 0 → active
+        { $gt: [{ $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } }, 0] },
+        1,
+
+        // qty == 0 → check isCheckedQuantity
+        {
+          $cond: [
+            { $eq: [
+                {$ifNull: ["$form_values.isCheckedQuantity", false] }, true
+            ] },
+            {
+              $sum: {
+                $map: {
+                  input: {
+                    $reduce: {
+                      input: {
+                        $map: {
+                          input: { $ifNull: ["$combinationData", []] },
+                          as: "cd",
+                          in: "$$cd.combinations"
+                        }
                       },
-                    },
-                    [],
-                  ],
-                },
-                as: "comb",
-                in: {
-                  $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
-                },
-              },
+                      initialValue: [],
+                      in: { $concatArrays: ["$$value", "$$this"] }
+                    }
+                  },
+                  as: "comb",
+                  in: {
+                    $convert: {
+                      input: "$$comb.qty",
+                      to: "double",
+                      onError: 0,
+                      onNull: 0
+                    }
+                  }
+                }
+              }
             },
-          },
-        ],
-      },
-      0,
-    ],
-  };
+            0
+          ]
+        }
+      ]
+    },
+    0
+  ]
+};
+
 }
 
     const unionPipeline: any[] = [{ $match: productMatch }];
@@ -3861,60 +3871,55 @@ if (!["sold-out", "delete", "deleteByAdmin"].includes(type || "")) {
 if (type === "sold-out") {
   unionPipeline.push({
     $match: {
-      $and: [
-        { status: true },
-        {
-          $expr: {
-            $and: [
-              // main product qty = 0
-              {
-                $eq: [
-                  { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
-                  0,
-                ],
-              },
-              // check all combinationData.combinations.qty are also 0 or empty
-              {
-                $eq: [
-                  {
-              $sum: {
-  $map: {
-    input: {
-      $ifNull: [
-        {
-          $reduce: {
-            input: {
-              $map: {
-                input: { $ifNull: ["$combinationData", []] },
-                as: "cd",
-                in: "$$cd.combinations",
-              },
-            },
-            initialValue: [],
-            in: { $concatArrays: ["$$value", "$$this"] },
-          },
-        },
-        [],
-      ],
-    },
-    as: "comb",
-    in: {
-      $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0 },
-    },
-  },
-},
+      status: true,
+      $expr: {
+        $eq: [
+          {
+            $cond: [
+              // qty > 0 → active
+              { $gt: [{ $convert: { input: "$qty", to: "double", onError: 0, onNull: 0}}, 0] },
+              1,
 
+              // qty == 0 → check isCheckedQuantity
+              {
+                $cond: [
+                  { $eq: [
+                    { $ifNull: ["$form_values.isCheckedQuantity", false] }, true
+                  ] },
+                  {
+                    $sum: {
+                      $map: {
+                        input: {
+                          $reduce: {
+                            input: {
+                              $map: {
+                                input: { $ifNull: ["$combinationData", []] },
+                                as: "cd",
+                                in: { $ifNull: ["$$cd.combinations", []] }
+                              }
+                            },
+                            initialValue: [],
+                            in: { $concatArrays: ["$$value", "$$this"] }
+                          }
+                        },
+                        as: "comb",
+                        in: { $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0}}
+                      }
+                    }
                   },
-                  0,
-                ],
-              },
-            ],
+                  0
+                ]
+              }
+            ]
           },
-        },
-      ],
-    },
+          0
+        ]
+      }
+    }
   });
 }
+
+
     
 // ✅ Lookup vendor info in union pipeline (for single products)
 unionPipeline.push({

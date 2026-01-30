@@ -8,6 +8,7 @@ import methodOverride from 'method-override';
 import bodyParser  from 'body-parser';
 import flash from 'express-flash'; 
 import "./listeners/product.listener";
+import "./listeners/variantAttribute.listener";
 // import crypto from 'crypto';
 import cors from 'cors';
 
