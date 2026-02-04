@@ -9,6 +9,9 @@ const bootstrap = async (app:any) => {
     // Connect Database
        dbConnect();
     // Start Web Server
+    await import("./listeners/product.listener");
+    await import("./listeners/variantAttribute.listener");
+    
     app.listen(port,ip, () => {
       console.log(`Web Server Running on http://${ip}:${port}`);
     });
