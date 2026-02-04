@@ -1,6 +1,7 @@
 // global imports
 import mongoose from 'mongoose'; 
  
+mongoose.set("bufferCommands", false);
 const dbConnect= ()=>{
 
     const DB = {
