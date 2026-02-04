@@ -1,28 +1,65 @@
-- name: Deploy Backend on AWS
-  run: |
-    ssh -o StrictHostKeyChecking=no ubuntu@65.1.111.83 << 'EOF'
-      set -e
+name: Deploy Backend to AWS EC2
 
-      echo "🚀 Deploying Backend on AWS..."
+on:
+  push:
+    branches:
+      - main   # deploy only on main
 
-      node -v
-      npm -v
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-      cd /var/www/html/backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      git remote set-url origin git@github.com:<YOUR_ORG>/<YOUR_REPO>.git
-      git fetch origin
-      git checkout main
-      git reset --hard origin/main
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.AWS_SSH_KEY }}
 
-      npm install
-      npm run build || true
+      # OPTIONAL: GitHub host (safe to keep)
+      - name: Add GitHub to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-      pm2 describe agukart-backend > /dev/null \
-        && pm2 restart agukart-backend --update-env \
-        || pm2 start dist/app.js --name agukart-backend --update-env
+      # 🔥 AWS EC2 (NO ssh-keyscan issues)
+      - name: Add AWS EC2 to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 65.1.111.83 >> ~/.ssh/known_hosts || true
 
-      pm2 save
+      - name: Set deploy variables
+        run: |
+          echo "BRANCH=main" >> $GITHUB_ENV
+          echo "DEPLOY_PATH=/var/www/html/backend" >> $GITHUB_ENV
 
-      echo "✅ Backend deployed successfully on AWS"
-    EOF
+      - name: Deploy Backend on AWS
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@65.1.111.83 << 'EOF'
+            set -e
+
+            echo "🚀 Deploying Backend on AWS..."
+
+            node -v
+            npm -v
+
+            cd /var/www/html/backend
+            
+            git remote set-url origin git@github.com:abhipushkar/agukart_backend.git
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
+
+            npm install
+            npm run build || true
+
+            pm2 describe agukart-backend > /dev/null \
+              && pm2 restart agukart-backend --update-env \
+              || pm2 start dist/app.js --name agukart-backend --update-env
+
+            pm2 save
+
+            echo "✅ Backend deployed successfully on AWS"
+          EOF
