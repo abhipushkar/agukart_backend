@@ -37,7 +37,7 @@ jobs:
             cd /var/www/html/backend
 
             git fetch origin
-            git reset --hard origin/production
+            git reset --hard origin/main
 
             npm install --legacy-peer-deps
 
