@@ -2,6 +2,7 @@
 import mongoose from 'mongoose'; 
  
 mongoose.set("bufferCommands", false);
+mongoose.set("debug", true);
 const dbConnect= ()=>{
 
     const DB = {
