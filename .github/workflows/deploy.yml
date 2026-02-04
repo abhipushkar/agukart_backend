@@ -1,9 +1,9 @@
-name: Deploy to DigitalOcean
+name: Deploy Backend to AWS EC2
 
 on:
   push:
     branches:
-      - main   # Only deploy when code is pushed to main
+      - main
 
 jobs:
   deploy:
@@ -11,51 +11,38 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
+      # 🔐 Load AWS SSH private key
       - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.5.3
+        uses: webfactory/ssh-agent@v0.7.0
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+          ssh-private-key: ${{ secrets.AWS_SSH_KEY }}
 
-      - name: Add GitHub to known_hosts (ensure SSH connection to GitHub)
+      # 🔐 Add GitHub & AWS EC2 to known_hosts
+      - name: Add hosts to known_hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-keyscan -H 65.1.111.83 >> ~/.ssh/known_hosts
 
-      - name: Add DigitalOcean server to known_hosts
+      # 🚀 Deploy Backend on AWS
+      - name: Deploy Backend
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan 165.22.9.131 >> ~/.ssh/known_hosts
+          ssh ubuntu@65.1.111.83 << 'EOF'
+            set -e
 
-      - name: Determine the branch to deploy
-        id: deploy_branch
-        run: |
-          echo "Deploying to branch: $GITHUB_REF"
-          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
-            echo "BRANCH=main" >> $GITHUB_ENV
-            echo "DEPLOY_PATH=/var/www/html/backend" >> $GITHUB_ENV
-          elif [[ "$GITHUB_REF" == "refs/heads/staging" ]]; then
-            echo "BRANCH=staging" >> $GITHUB_ENV
-            echo "DEPLOY_PATH=/mnt/volume_fra1_01/project.imgglobal.in/ecommercereact/backend" >> $GITHUB_ENV
-          elif [[ "$GITHUB_REF" == "refs/heads/production" ]]; then
-            echo "BRANCH=production" >> $GITHUB_ENV
-            echo "DEPLOY_PATH=/var/www/html/backend" >> $GITHUB_ENV
-          fi
+            echo "🚀 Deploying Backend to AWS..."
 
-      - name: Pull latest code on DigitalOcean server and Install dependencies
-        run: |
-          ssh root@165.22.9.131 '
-            node -v &&
-            npm -v &&
-            cd ${{ env.DEPLOY_PATH }} &&
-            git fetch origin &&
-            git checkout ${{ env.BRANCH }} &&
-            git reset --hard &&
-            git pull origin ${{ env.BRANCH }} &&
-            npm install &&
-            npm run build &&
-            pm2 describe backend > /dev/null \
-            && pm2 restart backend --update-env \
-            || pm2 start dist/app.js --name backend --update-env
-          '
+            cd /var/www/html/backend
+
+            git fetch origin
+            git reset --hard origin/production
+
+            npm install --legacy-peer-deps
+
+            pm2 restart agukart-backend || pm2 start npm --name agukart-backend -- start
+            pm2 save
+
+            echo "✅ Backend deployed successfully"
+          EOF
