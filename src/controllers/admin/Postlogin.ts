@@ -4628,7 +4628,7 @@ export const getVariantDataByCategoryId = async (req: Request, resp: Response) =
                 guide_type: data.guide_type
             };
 
-            const variantAttr = await VariantAttribute.find({ variant: data._id, status: true });
+            const variantAttr = await VariantAttribute.find({ variant: data._id, status: true, deleted_status: false }).sort({ sort_order: 1 });
 
             if (variantAttr) {
                 final['variant_attribute'] = variantAttr;
