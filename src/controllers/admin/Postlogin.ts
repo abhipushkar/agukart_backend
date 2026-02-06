@@ -1298,7 +1298,7 @@ export const brandList = async (req: CustomRequest, resp: Response) => {
         }
         const checkUser: any = await User.findOne({ _id: req.user._id });
 
-        const brand = await Brand.find(query).sort({ _id: -1 });
+        const brand = await Brand.find(query).collation({ locale: 'en', strength: 2 }).sort({ title: 1 });
         return resp.status(200).json({ message: 'Brand retrieved successfully.', success: true, brand });
 
     } catch (err) {
