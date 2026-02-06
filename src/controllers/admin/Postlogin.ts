@@ -3461,7 +3461,7 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
                     { $ne: [type, "draft"] },
                   ],
                 },
-                then: {},
+                then: "$$REMOVE",
                 else: {
                   $mergeObjects: [
                     "$$pd",
@@ -3520,69 +3520,69 @@ effectiveQty: {
   ]
 },
 
-productStatus: {
-  $cond: [
-    { $eq: ["$$pd.isDeleted", true] }, // 🧠 check this FIRST
-    "delete",
-    {
-      $cond: [
-        { $eq: ["$$pd.draft_status", true] },
-        "draft",
-        {
-          $cond: [
-            { $eq: ["$$pd.status", false] }, // only check inactive if not deleted or draft
-            "inactive",
-            {
-              $cond: [
-                // {
-                //   $gt: [
-                //     {
-                //       $add: [
-                //         { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
-                //         {
-                //           $sum: {
-                //             $map: {
-                //               input: {
-                //                 $reduce: {
-                //                   input: {
-                //                     $map: {
-                //                       input: { $ifNull: ["$$pd.combinationData", []] },
-                //                       as: "cd",
-                //                       in: { $ifNull: ["$$cd.combinations", []] },
-                //                     },
-                //                   },
-                //                   initialValue: [],
-                //                   in: { $concatArrays: ["$$value", "$$this"] },
-                //                 },
-                //               },
-                //               as: "comb",
-                //               in: {
-                //                 $convert: {
-                //                   input: "$$comb.qty",
-                //                   to: "double",
-                //                   onError: 0,
-                //                   onNull: 0,
-                //                 },
-                //               },
-                //             },
-                //           },
-                //         },
-                //       ],
-                //     },
-                //     0,
-                //   ],
-                // }
-                { $gt: ["$effectiveQty", 0] },
-                "active",
-                "sold-out",
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ],
-},
+// productStatus: {
+//   $cond: [
+//     { $eq: ["$$pd.isDeleted", true] }, // 🧠 check this FIRST
+//     "delete",
+//     {
+//       $cond: [
+//         { $eq: ["$$pd.draft_status", true] },
+//         "draft",
+//         {
+//           $cond: [
+//             { $eq: ["$$pd.status", false] }, // only check inactive if not deleted or draft
+//             "inactive",
+//             {
+//               $cond: [
+//                 // {
+//                 //   $gt: [
+//                 //     {
+//                 //       $add: [
+//                 //         { $convert: { input: "$$pd.qty", to: "double", onError: 0, onNull: 0 } },
+//                 //         {
+//                 //           $sum: {
+//                 //             $map: {
+//                 //               input: {
+//                 //                 $reduce: {
+//                 //                   input: {
+//                 //                     $map: {
+//                 //                       input: { $ifNull: ["$$pd.combinationData", []] },
+//                 //                       as: "cd",
+//                 //                       in: { $ifNull: ["$$cd.combinations", []] },
+//                 //                     },
+//                 //                   },
+//                 //                   initialValue: [],
+//                 //                   in: { $concatArrays: ["$$value", "$$this"] },
+//                 //                 },
+//                 //               },
+//                 //               as: "comb",
+//                 //               in: {
+//                 //                 $convert: {
+//                 //                   input: "$$comb.qty",
+//                 //                   to: "double",
+//                 //                   onError: 0,
+//                 //                   onNull: 0,
+//                 //                 },
+//                 //               },
+//                 //             },
+//                 //           },
+//                 //         },
+//                 //       ],
+//                 //     },
+//                 //     0,
+//                 //   ],
+//                 // }
+//                 { $gt: ["$$pd.effectiveQty", 0] },
+//                 "active",
+//                 "sold-out",
+//               ],
+//             },
+//           ],
+//         },
+//       ],
+//     },
+//   ],
+// },
 
                       inactiveReason: {
                         $cond: {
@@ -3604,6 +3604,48 @@ productStatus: {
 }
 );
 
+pipeline.push({
+  $addFields: {
+    productData: {
+      $map: {
+        input: "$productData",
+        as: "pd",
+        in: {
+          $mergeObjects: [
+            "$$pd",
+            {
+              productStatus: {
+                $cond: [
+                  { $eq: ["$$pd.isDeleted", true] },
+                  "delete",
+                  {
+                    $cond: [
+                      { $eq: ["$$pd.draft_status", true] },
+                      "draft",
+                      {
+                        $cond: [
+                          { $eq: ["$$pd.status", false] },
+                          "inactive",
+                          {
+                            $cond: [
+                              { $gt: ["$$pd.effectiveQty", 0] },
+                              "active",
+                              "sold-out"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+});
 
     // ✅ Lookup total children count (without any filter)
 pipeline.push({
@@ -3646,52 +3688,6 @@ pipeline.push({
     shop_name: { $ifNull: [{ $arrayElemAt: ["$vendorInfo.shop_name", 0] }, ""] }
   }
 });
-
-
-// ✅ After productStatus is computed, filter only for correct active/sold-out logic
-if (type === "active") {
-  pipeline.push({
-    $match: {
-      $expr: {
-        $gt: [
-          {
-            $sum: {
-              $map: {
-                input: "$productData",
-                as: "pd",
-                in: "$$pd.effectiveQty"
-              },
-            },
-          },
-          0,
-        ],
-      },
-    },
-  });
-}
-
-if (type === "sold-out") {
-  pipeline.push({
-    $match: {
-      $expr: {
-        $eq: [
-          {
-            $sum: {
-              $map: {
-                input: "$productData",
-                as: "pd",
-                in: "$$pd.effectiveQty"
-              }
-            }
-          },
-          0
-        ]
-      }
-    }
-  });
-}
-
-
 
     if (designation_id == 3) {
       pipeline.push({ $match: { productData: { $ne: [] } } });
@@ -3784,12 +3780,31 @@ if (type === "deleteByAdmin") {
 
 
 // ✅ Remove parents that have no child products left after filtering
-if (["active", "sold-out", "draft", "inactive"].includes(type || "")) {
+if (["active", "sold-out", "draft", "inactive"].includes(type || "") && type !== "all") {
   pipeline.push({
     $match: { productData: { $ne: [] } },
   });
 }
 
+if (type === "active") {
+  pipeline.push({
+    $match: {
+      productData: {
+        $elemMatch: { productStatus: "active" }
+      }
+    }
+  });
+}
+
+if (type === "sold-out") {
+  pipeline.push({
+    $match: {
+      productData: {
+        $elemMatch: { productStatus: "sold-out" }
+      }
+    }
+  });
+}
 
     // ---------- Union with simple products ----------
     const productMatch: any = {
@@ -3812,112 +3827,112 @@ if (["active", "sold-out", "draft", "inactive"].includes(type || "")) {
     if (type === "inactive") productMatch.status = false;
 
 
-if (!["sold-out", "delete", "deleteByAdmin"].includes(type || "")) {
-productMatch.$expr = {
-  $gt: [
-    {
-      $cond: [
-        // qty > 0 → active
-        { $gt: [{ $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } }, 0] },
-        1,
+// if (!["all", "sold-out", "delete", "deleteByAdmin"].includes(type || "")) {
+// productMatch.$expr = {
+//   $gt: [
+//     {
+//       $cond: [
+//         // qty > 0 → active
+//         { $gt: [{ $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } }, 0] },
+//         1,
 
-        // qty == 0 → check isCheckedQuantity
-        {
-          $cond: [
-            { $eq: [
-                {$ifNull: ["$form_values.isCheckedQuantity", false] }, true
-            ] },
-            {
-              $sum: {
-                $map: {
-                  input: {
-                    $reduce: {
-                      input: {
-                        $map: {
-                          input: { $ifNull: ["$combinationData", []] },
-                          as: "cd",
-                          in: "$$cd.combinations"
-                        }
-                      },
-                      initialValue: [],
-                      in: { $concatArrays: ["$$value", "$$this"] }
-                    }
-                  },
-                  as: "comb",
-                  in: {
-                    $convert: {
-                      input: "$$comb.qty",
-                      to: "double",
-                      onError: 0,
-                      onNull: 0
-                    }
-                  }
-                }
-              }
-            },
-            0
-          ]
-        }
-      ]
-    },
-    0
-  ]
-};
+//         // qty == 0 → check isCheckedQuantity
+//         {
+//           $cond: [
+//             { $eq: [
+//                 {$ifNull: ["$form_values.isCheckedQuantity", false] }, true
+//             ] },
+//             {
+//               $sum: {
+//                 $map: {
+//                   input: {
+//                     $reduce: {
+//                       input: {
+//                         $map: {
+//                           input: { $ifNull: ["$combinationData", []] },
+//                           as: "cd",
+//                           in: "$$cd.combinations"
+//                         }
+//                       },
+//                       initialValue: [],
+//                       in: { $concatArrays: ["$$value", "$$this"] }
+//                     }
+//                   },
+//                   as: "comb",
+//                   in: {
+//                     $convert: {
+//                       input: "$$comb.qty",
+//                       to: "double",
+//                       onError: 0,
+//                       onNull: 0
+//                     }
+//                   }
+//                 }
+//               }
+//             },
+//             0
+//           ]
+//         }
+//       ]
+//     },
+//     0
+//   ]
+// };
 
-}
+// }
 
     const unionPipeline: any[] = [{ $match: productMatch }];
 
-if (type === "sold-out") {
-  unionPipeline.push({
-    $match: {
-      status: true,
-      $expr: {
-        $eq: [
-          {
-            $cond: [
-              // qty > 0 → active
-              { $gt: [{ $convert: { input: "$qty", to: "double", onError: 0, onNull: 0}}, 0] },
-              1,
+// if (type === "sold-out") {
+//   unionPipeline.push({
+//     $match: {
+//       status: true,
+//       $expr: {
+//         $eq: [
+//           {
+//             $cond: [
+//               // qty > 0 → active
+//               { $gt: [{ $convert: { input: "$qty", to: "double", onError: 0, onNull: 0}}, 0] },
+//               1,
 
-              // qty == 0 → check isCheckedQuantity
-              {
-                $cond: [
-                  { $eq: [
-                    { $ifNull: ["$form_values.isCheckedQuantity", false] }, true
-                  ] },
-                  {
-                    $sum: {
-                      $map: {
-                        input: {
-                          $reduce: {
-                            input: {
-                              $map: {
-                                input: { $ifNull: ["$combinationData", []] },
-                                as: "cd",
-                                in: { $ifNull: ["$$cd.combinations", []] }
-                              }
-                            },
-                            initialValue: [],
-                            in: { $concatArrays: ["$$value", "$$this"] }
-                          }
-                        },
-                        as: "comb",
-                        in: { $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0}}
-                      }
-                    }
-                  },
-                  0
-                ]
-              }
-            ]
-          },
-          0
-        ]
-      }
-    }
-  });
-}
+//               // qty == 0 → check isCheckedQuantity
+//               {
+//                 $cond: [
+//                   { $eq: [
+//                     { $ifNull: ["$form_values.isCheckedQuantity", false] }, true
+//                   ] },
+//                   {
+//                     $sum: {
+//                       $map: {
+//                         input: {
+//                           $reduce: {
+//                             input: {
+//                               $map: {
+//                                 input: { $ifNull: ["$combinationData", []] },
+//                                 as: "cd",
+//                                 in: { $ifNull: ["$$cd.combinations", []] }
+//                               }
+//                             },
+//                             initialValue: [],
+//                             in: { $concatArrays: ["$$value", "$$this"] }
+//                           }
+//                         },
+//                         as: "comb",
+//                         in: { $convert: { input: "$$comb.qty", to: "double", onError: 0, onNull: 0}}
+//                       }
+//                     }
+//                   },
+//                   0
+//                 ]
+//               }
+//             ]
+//           },
+//           0
+//         ]
+//       }
+//     }
+//   });
+// }
 
 
     
@@ -3936,91 +3951,157 @@ unionPipeline.push({
   }
 });
 
-    
-    unionPipeline.push(
-      {
-        $addFields: {
-          type: "product",
-          image: {
+ unionPipeline.push({
+  $addFields: {
+effectiveQty: {
+  $cond: [
+    // qty > 0 → use qty
+    {
+      $gt: [
+        { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
+        0
+      ]
+    },
+    { $convert: { input: "$qty", to: "double", onError: 0, onNull: 0 } },
+
+    // qty == 0 AND combination qty enabled → sum combinations
+    {
+      $cond: [
+        { $eq: ["$form_values.isCheckedQuantity", true] },
+        {
+          $sum: {
             $map: {
-              input: "$image",
-              as: "img",
-              in: { $concat: [baseUrl, "$$img"] },
-            },
-          },
-          productStatus: {
-            $switch: {
-              branches: [
-                { case: { $eq: [type, "sold-out"] }, then: "sold-out" },
-                { case: { $eq: [type, "delete"] }, then: "delete" },
-                { case: { $eq: [type, "draft"] }, then: "draft" },
-                { case: { $eq: [type, "deleteByAdmin"] }, then: "removed" },
-                {
-                  case: { $in: [type, ["active", "inactive", "all"]] },
-                  then: {
-                    $cond: {
-                      if: { $eq: ["$status", true] },
-                      then: "active",
-                      else: "inactive"
-                    },
+              input: {
+                $reduce: {
+                  input: {
+                    $map: {
+                      input: { $ifNull: ["$combinationData", []] },
+                      as: "cd",
+                      in: { $ifNull: ["$$cd.combinations", []] }
+                    }
                   },
-                },
-              ],
-              default: "unknown",
-            },
-          },
-          inactiveReason: {
-            $cond: {
-               if: { $ne: ["$inactiveReason", ""] },
-               then: "$inactiveReason",
-               else: null
+                  initialValue: [],
+                  in: { $concatArrays: ["$$value", "$$this"] }
+                }
+              },
+              as: "comb",
+              in: {
+                $convert: {
+                  input: "$$comb.qty",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0
+                }
+              }
             }
-          },
+          }
+        },
+        0
+      ]
+    }
+  ]
+}
+  }
+});   
+unionPipeline.push(
+  {
+    $addFields: {
+      type: "product",
+      image: {
+        $map: {
+          input: "$image",
+          as: "img",
+          in: { $concat: [baseUrl, "$$img"] },
         },
       },
-      {
-        $project: {
-          _id: 1,
-          product_title: 1,
-          shop_name: 1,
-          zoom: 1,
-          bestseller: 1,
-          popular_gifts: 1,
-          featured: 1,
-          category: 1,
-          sku_code: 1,
-          qty: 1,
-          price: 1,
-          sale_price: 1,
-          sale_start_date: 1,
-          sale_end_date: 1,
-          description: 1,
-          vendor_id: 1,
-          image: 1,
-          type: 1,
-          product_bedge: 1,
-          updatedAt: 1,
-          createdAt: 1,
-          isDeleted: 1,
-          deletedByAdmin: 1,
-          draft_status: 1,
-          sort_order: 1,
-          status: {
-            $cond: {
-              if: { $eq: ["$draft_status", true] },
-              then: {
-                $cond: {
-                  if: { $eq: [type, "draft"] },
-                  then: "draft",
-                  else: "$$REMOVE",
-                },
-              },
-              else: "$productStatus",
-            },
+productStatus: {
+  $cond: [
+    { $eq: ["$isDeleted", true] }, "delete",
+    {
+      $cond: [
+        { $eq: ["$draft_status", true] }, "draft",
+        {
+          $cond: [
+            { $eq: ["$status", false] }, "inactive",
+            {
+              $cond: [
+                { $gt: ["$effectiveQty", 0] },
+                "active",
+                "sold-out"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+},
+      inactiveReason: {
+        $cond: {
+          if: { $ne: ["$inactiveReason", ""] },
+          then: "$inactiveReason",
+          else: null,
+        },
+      },
+    },
+  }
+);
+
+// ✅ FIX #3 — SIMPLE PRODUCT FILTERING (CORRECT PLACE)
+if (type === "active") {
+  unionPipeline.push({ $match: { productStatus: "active" } });
+}
+
+if (type === "inactive") {
+  unionPipeline.push({ $match: { productStatus: "inactive" } });
+}
+
+if (type === "sold-out") {
+  unionPipeline.push({ $match: { productStatus: "sold-out" } });
+}
+
+unionPipeline.push({
+  $project: {
+    _id: 1,
+    product_title: 1,
+    shop_name: 1,
+    zoom: 1,
+    bestseller: 1,
+    popular_gifts: 1,
+    featured: 1,
+    category: 1,
+    sku_code: 1,
+    qty: 1,
+    price: 1,
+    sale_price: 1,
+    sale_start_date: 1,
+    sale_end_date: 1,
+    description: 1,
+    vendor_id: 1,
+    image: 1,
+    type: 1,
+    product_bedge: 1,
+    updatedAt: 1,
+    createdAt: 1,
+    isDeleted: 1,
+    deletedByAdmin: 1,
+    draft_status: 1,
+    sort_order: 1,
+    status: {
+      $cond: {
+        if: { $eq: ["$draft_status", true] },
+        then: {
+          $cond: {
+            if: { $eq: [type, "draft"] },
+            then: "draft",
+            else: "$$REMOVE",
           },
         },
-      }
-    );
+        else: "$productStatus",
+      },
+    },
+  },
+});
 
     pipeline.push({ $unionWith: { coll: "products", pipeline: unionPipeline } });
 
