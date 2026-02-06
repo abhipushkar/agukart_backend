@@ -1416,248 +1416,254 @@ export const getBrand = async (req: CustomRequest, resp: Response) => {
 
 }
 
-    export const addVariant = async (req: CustomRequest, resp: Response) => {
-    try {
-        const variant_name = req.body.variant_name;
-        const base_url = process.env.ASSET_URL + "/uploads/variant/";
-        const files: any[] = (req.files as any[]) || [];
+export const addVariant = async (req: CustomRequest, resp: Response) => { 
+    try { 
+        const variant_name = req.body.variant_name; 
+        const base_url = process.env.ASSET_URL + "/uploads/variant/"; 
+        const files: any[] = (req.files as any[]) || []; 
+        const findFile = (key: string) => files.find(f => f.fieldname === key); 
+        const findFiles = (key: string) => files.filter(f => f.fieldname === key); 
+        const cleanFileName = (filename: string, fallback: string) => { 
+            if (!filename) return ""; 
+            const match = filename.match(/\[(preview_image|thumbnail|main_images)\](.*)/); 
+            if (match) { 
+                return match[1] + (match[2] || ""); 
+            } 
+            let cleaned = filename.includes("]") ? filename.split("]").pop() || filename : filename; 
+            if (cleaned.startsWith("-")) { 
+                cleaned = fallback + cleaned; 
+            } 
+            return cleaned; 
+        }; 
 
-        const findFile = (key: string) => files.find(f => f.fieldname === key);
-        const findFiles = (key: string) => files.filter(f => f.fieldname === key);
+        // check duplicate 
+        const existingVariant = await Variant.findOne({ variant_name }); 
+        if (existingVariant && req.body._id == "new") { 
+            return resp 
+                .status(400) 
+                .json({ message: "Variant name already exists.", success: false }); 
+        } 
 
-        const cleanFileName = (filename: string, fallback: string) => {
-        if (!filename) return "";
+        let variantId: any; 
+        let variantAttr: any = req.body.variant_attr || []; 
+        if (typeof variantAttr === "string") { 
+            try { 
+                variantAttr = JSON.parse(variantAttr); 
+            } catch { 
+                variantAttr = []; 
+            } 
+        } 
 
-        const match = filename.match(/\[(preview_image|thumbnail|main_images)\](.*)/);
-        if (match) {
-        return match[1] + (match[2] || "");
-        }
+        let deletedStatusIds: any = req.body.deletedAttrIds || []; 
+        if (typeof deletedStatusIds === "string") { 
+            try { 
+                deletedStatusIds = JSON.parse(deletedStatusIds); 
+            } catch { 
+                deletedStatusIds = []; 
+            } 
+        } 
 
-        let cleaned = filename.includes("]") ? filename.split("]").pop() || filename : filename;
-        if (cleaned.startsWith("-")) {
-        cleaned = fallback + cleaned;
-        }
-        return cleaned;
-        };
-
-
-        // check duplicate
-        const existingVariant = await Variant.findOne({ variant_name });
-        if (existingVariant && req.body._id == "new") {
-        return resp
-            .status(400)
-            .json({ message: "Variant name already exists.", success: false });
-        }
+        // 🆕 Handle guide chart upload for Variant 
+        const guideFile = findFile("guide_file"); // single file upload field 
+        const guide_name = req.body.guide_name || ""; 
+        const guide_description = req.body.guide_description || ""; 
+        const remove_guide_file = req.body.remove_guide_file === "true"; // NEW: Check guide file removal flag
         
-
-        let variantId: any;
-
-
-        let variantAttr: any = req.body.variant_attr || [];
-        if (typeof variantAttr === "string") {
-        try {
-            variantAttr = JSON.parse(variantAttr);
-        } catch {
-            variantAttr = [];
-        }
-        }
-
-        let deletedStatusIds: any = req.body.deletedAttrIds || [];
-        if (typeof deletedStatusIds === "string") {
-        try {
-            deletedStatusIds = JSON.parse(deletedStatusIds);
-        } catch {
-            deletedStatusIds = [];
-        }
-        }
-
-        // 🆕 Handle guide chart upload for Variant
-        const guideFile = findFile("guide_file"); // single file upload field
-        const guide_name = req.body.guide_name || "";
-        const guide_description = req.body.guide_description || "";
-        let guide_file = "";
-        let guide_type = "";
-
-        if (guideFile) {
-        guide_file = await saveFile(guideFile, guideFile.filename, "guide");
-        guide_type = guideFile.mimetype === "application/pdf" ? "pdf" : "image";
-        }
-
-        // -------- CREATE --------
-        if (req.body._id == "new") {
-        const variant = await Variant.create({ variant_name, guide_name, guide_file, guide_type, guide_description });
-        variantId = variant._id;
-
-        for (let i = 0; i < variantAttr.length; i++) {
-            const attr = variantAttr[i];
-
-            const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
-            const previewFile = findFile(`variant_attr[${i}][preview_image]`);
-            const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
-
-        const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
-        const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
-        const main_images = mainFiles.length
-        ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
-        : [];
-
-
-            await VariantAttribute.create({
-            variant: variantId,
-            attribute_value: attr.attr_name,
-            sort_order: attr.sort_order,
-            status: attr.status,
-            thumbnail,
-            preview_image,
-            main_images,
-            });
-        }
-
-        return resp
-            .status(200)
-            .json({ message: "Variant created successfully.", success: true });
-        }
-
-        // -------- UPDATE --------
-        else {
-        variantId = req.body._id;
+        let guide_file = ""; 
+        let guide_type = ""; 
         
-        const existingVariant = await Variant.findById(variantId);
-        const oldName = existingVariant?.variant_name;
-        if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) {
-            await VariantAttribute.updateMany(
-            { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } },
-            { $set: { deleted_status: true, status: false } }
-            );
+        if (guideFile) { 
+            guide_file = await saveFile(guideFile, guideFile.filename, "guide"); 
+            guide_type = guideFile.mimetype === "application/pdf" ? "pdf" : "image"; 
+        } 
 
-            // 🔹 Emit event for each soft-deleted attribute
-           for (const id of deletedStatusIds) {
-           const existingAttr = await VariantAttribute.findById(id);
-           if (existingAttr) {
-           let correctVariantName = existingVariant?.variant_name;
-           const sampleProduct = await Product.findOne({ variant_id: variantId }, { variations_data: 1 }).lean();
-           if (sampleProduct) {
-           const match = sampleProduct.variations_data.find(v =>
-           v.values.includes(existingAttr?.attribute_value)
-           );
-           if (match) correctVariantName = match.name;
-        }
+        // -------- CREATE -------- 
+        if (req.body._id == "new") { 
+            const variant = await Variant.create({ 
+                variant_name, 
+                guide_name, 
+                guide_file, 
+                guide_type, 
+                guide_description 
+            }); 
+            variantId = variant._id; 
 
-           eventBus.emit("attributeDeleted", {
-           id,
-           value: existingAttr?.attribute_value,
-           variantName: correctVariantName
-        });
+            for (let i = 0; i < variantAttr.length; i++) { 
+                const attr = variantAttr[i]; 
+                const thumbFile = findFile(`variant_attr[${i}][thumbnail]`); 
+                const previewFile = findFile(`variant_attr[${i}][preview_image]`); 
+                const mainFiles = findFiles(`variant_attr[${i}][main_images]`); 
 
-           eventBus.emit("variantAttributeSoftDeleted", {
-            attributeId: id,
-           });
-       }
-     }
+                const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : ""; 
+                const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : ""; 
+                const main_images = mainFiles.length ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images")))) : []; 
 
-        }
+                await VariantAttribute.create({ 
+                    variant: variantId, 
+                    attribute_value: attr.attr_name, 
+                    sort_order: attr.sort_order, 
+                    status: attr.status, 
+                    thumbnail, 
+                    preview_image, 
+                    main_images, 
+                }); 
+            } 
 
-        for (let i = 0; i < variantAttr.length; i++) {
-            const attr = variantAttr[i];
+            return resp 
+                .status(200) 
+                .json({ message: "Variant created successfully.", success: true }); 
+        } 
 
-            const thumbFile = findFile(`variant_attr[${i}][thumbnail]`);
-            const previewFile = findFile(`variant_attr[${i}][preview_image]`);
-            const mainFiles = findFiles(`variant_attr[${i}][main_images]`);
-            const thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : "";
-            const preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : "";
-            const main_images = mainFiles.length
-            ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
-            : [];
+        // -------- UPDATE -------- 
+        else { 
+            variantId = req.body._id; 
+            const existingVariant = await Variant.findById(variantId); 
+            const oldName = existingVariant?.variant_name; 
 
-            if (attr._id && attr._id !== "new") {
-            const existingAttr = await VariantAttribute.findById(attr._id);
+            if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) { 
+                await VariantAttribute.updateMany( 
+                    { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } }, 
+                    { $set: { deleted_status: true, status: false } } 
+                ); 
 
-            if (existingAttr && existingAttr.attribute_value !== attr.attr_name) {
-                eventBus.emit("variantAttributeValueUpdated", {
-                    attributeId: existingAttr._id.toString(),
-                    oldValue: existingAttr.attribute_value,
-                    newValue: attr.attr_name
-                });
+                // 🔹 Emit event for each soft-deleted attribute 
+                for (const id of deletedStatusIds) { 
+                    const existingAttr = await VariantAttribute.findById(id); 
+                    if (existingAttr) { 
+                        let correctVariantName = existingVariant?.variant_name; 
+                        const sampleProduct = await Product.findOne({ variant_id: variantId }, { variations_data: 1 }).lean(); 
+                        if (sampleProduct) { 
+                            const match = sampleProduct.variations_data.find(v => v.values.includes(existingAttr?.attribute_value) ); 
+                            if (match) correctVariantName = match.name; 
+                        } 
+                        eventBus.emit("attributeDeleted", { id, value: existingAttr?.attribute_value, variantName: correctVariantName }); 
+                        eventBus.emit("variantAttributeSoftDeleted", { attributeId: id, }); 
+                    } 
+                } 
+            } 
+
+            for (let i = 0; i < variantAttr.length; i++) { 
+                const attr = variantAttr[i]; 
+                const thumbFile = findFile(`variant_attr[${i}][thumbnail]`); 
+                const previewFile = findFile(`variant_attr[${i}][preview_image]`); 
+                const mainFiles = findFiles(`variant_attr[${i}][main_images]`); 
+                const remove_preview = attr.remove_preview === "true"; 
+                const remove_thumbnail = attr.remove_thumbnail === "true";
+
+                let thumbnail = ""; 
+                let preview_image = ""; 
+                let main_images = []; 
+
+                if (attr._id && attr._id !== "new") { 
+                    const existingAttr = await VariantAttribute.findById(attr._id); 
+                    if (existingAttr && existingAttr.attribute_value !== attr.attr_name) { 
+                        eventBus.emit("variantAttributeValueUpdated", { 
+                            attributeId: existingAttr._id.toString(), 
+                            oldValue: existingAttr.attribute_value, 
+                            newValue: attr.attr_name 
+                        }); 
+                    } 
+
+                    // find correct variantName from Product 
+                    let correctVariantName = existingVariant?.variant_name; 
+                    const sampleProduct = await Product.findOne( 
+                        { variant_id: variantId }, 
+                        { variations_data: 1 } 
+                    ); 
+                    if (sampleProduct) { 
+                        const match = sampleProduct.variations_data.find(v => v.values.includes(existingAttr?.attribute_value) ); 
+                        if (match) { 
+                            correctVariantName = match.name;
+                        } 
+                    } 
+
+                    // Handle image updates with removal logic
+                    if (thumbFile) {
+                        thumbnail = await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail"));
+                    } else if (remove_thumbnail && existingAttr?.thumbnail) {
+                        thumbnail = "";
+                    } else {
+                        thumbnail = existingAttr?.thumbnail || "";
+                    }
+
+                    if (previewFile) {
+                        preview_image = await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image"));
+                    } else if (remove_preview && existingAttr?.preview_image) {
+                        preview_image = "";
+                    } else {
+                        preview_image = existingAttr?.preview_image || "";
+                    }
+
+                    if (mainFiles.length) {
+                        main_images = await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))));
+                    } else {
+                        main_images = existingAttr?.main_images || [];
+                    }
+
+                    await VariantAttribute.updateOne( 
+                        { _id: attr._id }, 
+                        { $set: { 
+                            attribute_value: attr.attr_name, 
+                            sort_order: attr.sort_order, 
+                            status: attr.status, 
+                            thumbnail, 
+                            preview_image, 
+                            main_images, 
+                        }, } 
+                    ); 
+
+                    // 🔹 Emit event for Attribute update 
+                    eventBus.emit("attributeUpdated", { 
+                        id: attr._id, 
+                        value: attr.attr_name, 
+                        oldValue: existingAttr?.attribute_value, 
+                        variantName: correctVariantName 
+                    }); 
+                } else { 
+                    thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : ""; 
+                    preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : ""; 
+                    main_images = mainFiles.length ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images")))) : []; 
+
+                    await VariantAttribute.create({ 
+                        variant: variantId, 
+                        attribute_value: attr.attr_name, 
+                        sort_order: attr.sort_order, 
+                        status: attr.status, 
+                        thumbnail, 
+                        preview_image, 
+                        main_images, 
+                    }); 
+                } 
+            } 
+
+            const updateData: any = { 
+                variant_name, 
+                guide_name, 
+                guide_description 
+            }; 
+            
+            if (guideFile) { 
+                updateData.guide_file = guide_file; 
+                updateData.guide_type = guide_type; 
+            } else if (remove_guide_file) {
+                updateData.guide_file = "";
+                updateData.guide_type = "";
             }
 
-            // find correct variantName from Product
-            let correctVariantName = existingVariant?.variant_name;
-            const sampleProduct = await Product.findOne(
-            { variant_id: variantId },
-            { variations_data: 1 }
-          );
+            await Variant.updateOne({ _id: variantId }, { $set: updateData }); 
 
-            if (sampleProduct) {
-            const match = sampleProduct.variations_data.find(v =>
-            v.values.includes(existingAttr?.attribute_value)
-          );
-          if (match) {
-          correctVariantName = match.name; // <-- "Stone"
-          }
-        }
-
-            const thumbnail = thumbFile
-            ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail"))
-            : existingAttr?.thumbnail || "";
-
-            const preview_image = previewFile
-            ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image"))
-            : existingAttr?.preview_image || "";
-
-            const main_images = mainFiles.length
-            ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images"))))
-            : existingAttr?.main_images || [];
-
-            await VariantAttribute.updateOne(
-            { _id: attr._id },
-            {
-            $set: {
-            attribute_value: attr.attr_name,
-            sort_order: attr.sort_order,
-            status: attr.status,
-            thumbnail,
-            preview_image,
-            main_images,
-            },
-            }
-            );
-            // 🔹 Emit event for Attribute update
-            eventBus.emit("attributeUpdated", { id: attr._id, value: attr.attr_name, oldValue: existingAttr?.attribute_value, variantName: correctVariantName });
-            }
-            else {
-            await VariantAttribute.create({
-                variant: variantId,
-                attribute_value: attr.attr_name,
-                sort_order: attr.sort_order,
-                status: attr.status,
-                thumbnail,
-                preview_image,
-                main_images,
-            });
-            }
-        }
-
-            const updateData: any = { variant_name, guide_name, guide_description };
-
-            if (guideFile) {
-            updateData.guide_file = guide_file;
-            updateData.guide_type = guide_type;
-          }
-
-        await Variant.updateOne({ _id: variantId }, { $set: updateData });
-
-        // 🔹 Emit event for Variant update
-        eventBus.emit("variantUpdated", { id: variantId, oldName, name: variant_name });
-
-        return resp.status(200).json({ message: "Variant updated successfully." });
-        }
-    } catch (err) {
-        console.log(err);
-        return resp
-        .status(500)
-        .json({ message: "Something went wrong. Please try again." });
-    }
-    };
+            // 🔹 Emit event for Variant update 
+            eventBus.emit("variantUpdated", { id: variantId, oldName, name: variant_name }); 
+            
+            return resp.status(200).json({ message: "Variant updated successfully." }); 
+        } 
+    } catch (err) { 
+        console.log(err); 
+        return resp 
+            .status(500) 
+            .json({ message: "Something went wrong. Please try again." }); 
+    } 
+};
 
 export const variantList = async (req: CustomRequest, resp: Response) => {
     try {
@@ -10022,21 +10028,83 @@ export const addShippingTemplate = async (req: CustomRequest, resp: Response) =>
 }
 
 export const getShippingTemplate = async (req: CustomRequest, resp: Response) => {
-    try {
+  try {
+    const vendorId = new mongoose.Types.ObjectId(req.user._id);
 
-        const templates = await ShippingModel.find({
-            $or: [
-                { vendor_id: new mongoose.Types.ObjectId(req.user._id) },
-                { vendor_id: { $eq: null } }
+    const templates = await ShippingModel.aggregate([
+      {
+        $match: {
+          $or: [
+            { vendor_id: vendorId },
+            { vendor_id: null }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: 'products',
+          let: {
+            templateId: '$_id',
+            templateVendor: '$vendor_id'
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$shipping_templates', '$$templateId'] },
+                    { $eq: ['$vendor_id', vendorId] },
+                    { $eq: ['$status', false] },
+                    { $eq: ['$isDeleted', false] },
+                    { $eq: ['$draft_status', false] }
+                  ]
+                }
+              }
+            },
+            { $count: 'count' }
+          ],
+          as: 'productUsage'
+        }
+      },
+      {
+        $addFields: {
+          productCount: {
+            $cond: [
+              { $ne: ['$vendor_id', null] },
+              { $ifNull: [{ $arrayElemAt: ['$productUsage.count', 0] }, 0] },
+              '$$REMOVE'
             ]
-        });
+          }
+        }
+      },
+      {
+        $project: {
+          productUsage: 0
+        }
+      },
+    //   // Optional: Sort
+    //   {
+    //     $sort: {
+    //       isDefault: -1,
+    //       title: 1
+    //     }
+    //   }
+    ]);
 
-        return resp.status(200).json({ message: 'Shipping Template fetched successfully.', success: true, templates });
-    } catch (error) {
-        console.error(error);
-        return resp.status(500).json({ error: "Something went wrong. Please try again" });
-    }
-}
+    return resp.status(200).json({
+      success: true,
+      message: 'Shipping Template fetched successfully.',
+      templates
+    });
+
+  } catch (error) {
+    console.error(error);
+    return resp.status(500).json({
+      success: false,
+      error: 'Something went wrong. Please try again'
+    });
+  }
+};
 
 export const getShippingTemplateById = async (req: CustomRequest, resp: Response) => {
     try {
@@ -10416,13 +10484,74 @@ export const addPolicy = async (req: CustomRequest, res: Response) => {
 };
 
 export const policyList = async (req: CustomRequest, res: Response) => {
-    try {
-        const policies = await PolicyModel.find({ vendor_id: req.user._id }).sort({ _id: -1 });
-        return res.status(200).json({ message: "Policies fetched successfully.", policies });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: 'Something went wrong. Please try again.' });
-    }
+  try {
+    const vendorId = new mongoose.Types.ObjectId(req.user._id);
+
+    const policies = await PolicyModel.aggregate([
+      {
+        $match: {
+          vendor_id: vendorId
+        }
+      },
+
+      {
+        $lookup: {
+          from: 'products',
+          let: { policyId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$exchangePolicy', '$$policyId'] },
+                    { $eq: ['$vendor_id', vendorId] },
+                    { $eq: ['$status', false] },
+                    { $eq: ['$isDeleted', false] },
+                    { $eq: ['$draft_status', false] }
+                  ]
+                }
+              }
+            },
+            { $count: 'count' }
+          ],
+          as: 'productUsage'
+        }
+      },
+
+      {
+        $addFields: {
+          productCount: {
+            $ifNull: [{ $arrayElemAt: ['$productUsage.count', 0] }, 0]
+          }
+        }
+      },
+
+      {
+        $project: {
+          productUsage: 0
+        }
+      },
+
+      {
+        $sort: {
+          _id: -1
+        }
+      }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Policies fetched successfully.',
+      policies
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong. Please try again.'
+    });
+  }
 };
 
 export const deletePolicy = async (req: CustomRequest, res: Response) => {
