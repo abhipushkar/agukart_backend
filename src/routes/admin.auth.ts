@@ -242,7 +242,8 @@ import {
     getShopBanner,
     getRefundContext,
     refundSuborder,
-    cancelSuborder
+    cancelSuborder,
+    bulkChangeShippingTemplate
 } from "../controllers/admin/Postlogin";
 
 
@@ -507,6 +508,7 @@ routes.get('/getShippingTemplate', getShippingTemplate)
 routes.get('/getShippingTemplateById/:id', getShippingTemplateById)
 routes.post('/setDefaultTemplate', setDefaultTemplate)
 routes.post('/deleteShippingTemplate', deleteShippingTemplate)
+routes.post('/bulkChangeShippingTemplate', bulkChangeShippingTemplate)
 
 routes.get('/getAllShippingTemplate/:id', getAllShippingTemplate)
 

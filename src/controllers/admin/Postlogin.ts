@@ -4230,7 +4230,6 @@ pipeline.push({
 };
 
 
-
 export const productChangeStatus = async (req: CustomRequest, resp: Response) => {
     try {
         const query = { _id: { $in: req.body._id } };
@@ -10190,6 +10189,72 @@ export const getAllShippingTemplate = async (req: CustomRequest, resp: Response)
         return resp.status(500).json({ error: "Something went wrong. Please try again" });
     }
 }
+
+export const bulkChangeShippingTemplate = async (req: CustomRequest , res: Response) => {
+  try {
+    const vendorId = new mongoose.Types.ObjectId(req.user._id);
+    const { productIds, shippingTemplateId } = req.body;
+
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Product IDs are required",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(shippingTemplateId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipping template ID",
+      });
+    }
+
+    const productObjectIds = productIds.map(
+      (id: string) => new mongoose.Types.ObjectId(id)
+    );
+
+    const shippingTemplate = await ShippingModel.findOne({
+      _id: shippingTemplateId,
+      vendor_id: vendorId,
+    });
+
+    if (!shippingTemplate) {
+      return res.status(403).json({
+        success: false,
+        message: "Shipping template not found or not allowed",
+      });
+    }
+
+    const updateResult = await ProductModel.updateMany(
+      {
+        _id: { $in: productObjectIds },
+        status: true,
+        vendor_id: vendorId,
+        isDeleted: false,
+        draft_status: false,
+      },
+      {
+        $set: {
+          shipping_templates: shippingTemplate._id,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipping template updated successfully",
+      matchedProducts: updateResult.matchedCount,
+      modifiedProducts: updateResult.modifiedCount,
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again.",
+    });
+  }
+};
 
 export const getSubscribeData = async (req: CustomRequest, resp: Response) => {
     try {
