@@ -87,6 +87,7 @@ import { main } from "ts-node/dist/bin";
 import { error } from "console";
 import { RefundModel } from "../../models/Refund";
 import { RefundItemModel } from "../../models/RefundItem";
+import UrlResource from "../../models/UrlResource";
 dayjs.extend(duration);
 
 interface CustomRequest extends Request {
@@ -15139,7 +15140,83 @@ export const saveSalerNote = async (req: CustomRequest, resp: Response) => {
     }
 };
 
+export const generateSlug = (text: string) => {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+};
 
+export const createUrlResource = async (req: CustomRequest, resp: Response)=> {
+    try {
+        const { name, description } = req.body;
+
+        if(!req.file) {
+            return resp.status(400).json({
+                success: false,
+                message: "File is required",
+            });
+        }
+        const slug = generateSlug(name + "-" + Date.now());
+        const publicUrl = process.env.ASSET_URL + "/uploads/url/" + req.file.filename;
+        const link = process.env.FRONTEND_URL + "/pages/" + slug;
+
+        const data = await UrlResource.create({
+            name,
+            description,
+            file: publicUrl,
+            slug,
+            link,
+            createdBy: req.user?._id,
+        });
+
+        return resp.status(200).json({
+            success: true,
+            message: "URL generated successfully",
+            data,
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const getUrlList = async (req: CustomRequest, resp: Response) => {
+    try {
+        const data = await UrlResource.find({ isDeleted: false }).sort({ createdAt: -1});
+
+        return resp.status(200).json({
+            success: true,
+            data,
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+           success: false,
+           message: error.message
+        });
+    }
+};
+
+export const getPublicPage = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { slug } = req.params;
+
+        const page = await UrlResource.findOne({
+            slug,
+            isDeleted: false
+        })
+
+        if(!page) {
+            return resp.status(404).send("Page not found");
+        }
+
+        return resp.redirect(page.file);
+    } catch (error) {
+        return resp.status(500).send("Server Error");
+    }
+}
 
 
 

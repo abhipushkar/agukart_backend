@@ -243,7 +243,10 @@ import {
     getRefundContext,
     refundSuborder,
     cancelSuborder,
-    bulkChangeShippingTemplate
+    bulkChangeShippingTemplate,
+    createUrlResource,
+    getUrlList,
+    getPublicPage
 } from "../controllers/admin/Postlogin";
 
 
@@ -323,6 +326,11 @@ routes.get('/get-attribute-list', getAttributeList);
 routes.get('/get-attribute-detail/:id', getAttributeListById);
 routes.post('/update-attribute-list/:id', updateAttributeList);
 routes.delete('/delete-attribute-list/:id', deleteAttributeList);
+
+// URL apis
+routes.post("/createUrl", upload.single("file"), createUrlResource);
+routes.get("/url-list", getUrlList);
+routes.get("/url-page/:slug", getPublicPage);
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )
