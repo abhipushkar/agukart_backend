@@ -328,7 +328,10 @@ routes.post('/update-attribute-list/:id', updateAttributeList);
 routes.delete('/delete-attribute-list/:id', deleteAttributeList);
 
 // URL apis
-routes.post("/createUrl", upload.single("file"), createUrlResource);
+routes.post("/createUrl", (req: any, res, next) => {
+  req.filepath = "url";
+  next();
+}, upload.single("file"), createUrlResource);
 routes.get("/url-list", getUrlList);
 routes.get("/url-page/:slug", getPublicPage);
 
