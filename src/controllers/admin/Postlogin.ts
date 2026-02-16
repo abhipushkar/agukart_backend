@@ -2940,6 +2940,14 @@ for (const file of productMainImages) {
       }
 
       const existingProduct = await Product.findById(req.body._id);
+      if (!existingProduct) {
+        return resp.status(404).json({
+            message: "Product not found",
+            success: false
+        });
+      }
+      const oldSku = existingProduct?.sku_code;
+      const newSku = req.body.sku_code;
 
       if (!req.body.meta_title && req.body.product_title) {
          data.meta_title = stripHtml(req.body.product_title);
@@ -3068,7 +3076,17 @@ if (newCust.guide && oldCust.guide) {
       });
 
       await Product.updateOne({ _id: req.body._id }, { $set: {...data, combinationData: data.combinationData, product_variants: data.product_variants },});
-
+      if ( existingProduct.parent_id && oldSku && newSku && oldSku !== newSku) {
+        await ParentProduct.updateOne(
+            { _id: existingProduct.parent_id },
+            {
+                $set: { "sku.$[elem]": newSku }
+            },
+            {
+                arrayFilters: [{ elem: oldSku }]
+            }
+        );
+      }
       return resp
         .status(200)
         .json({ message: "Product updated successfully." });
