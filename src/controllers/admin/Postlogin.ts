@@ -10054,9 +10054,6 @@ export const getShippingTemplate = async (req: CustomRequest, resp: Response) =>
                   $and: [
                     { $eq: ['$shipping_templates', '$$templateId'] },
                     { $eq: ['$vendor_id', vendorId] },
-                    { $eq: ['$status', false] },
-                    { $eq: ['$isDeleted', false] },
-                    { $eq: ['$draft_status', false] }
                   ]
                 }
               }
@@ -10571,9 +10568,6 @@ export const policyList = async (req: CustomRequest, res: Response) => {
                   $and: [
                     { $eq: ['$exchangePolicy', '$$policyId'] },
                     { $eq: ['$vendor_id', vendorId] },
-                    { $eq: ['$status', false] },
-                    { $eq: ['$isDeleted', false] },
-                    { $eq: ['$draft_status', false] }
                   ]
                 }
               }
