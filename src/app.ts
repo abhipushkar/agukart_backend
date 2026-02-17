@@ -37,7 +37,7 @@ app.use(bodyParser.urlencoded({limit: '100mb', extended: true }));
 app.use(bodyParser.json({ limit: '100mb' }));
 app.use(cors());
 
-app.use(express.json()); 
+// app.use(express.json()); 
  
 app.use(methodOverride('_method', { methods: ['POST', 'GET'] }));
 
