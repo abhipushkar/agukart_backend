@@ -246,7 +246,9 @@ import {
     bulkChangeShippingTemplate,
     createUrlResource,
     getUrlList,
-    getPublicPage
+    getPublicPage,
+    getUrlById,
+    deleteUrlResource
 } from "../controllers/admin/Postlogin";
 
 
@@ -334,6 +336,8 @@ routes.post("/createUrl", (req: any, res, next) => {
 }, upload.single("file"), createUrlResource);
 routes.get("/url-list", getUrlList);
 routes.get("/url-page/:slug", getPublicPage);
+routes.get("/url-page-by-id/:id", getUrlById);
+routes.delete("/delete-url/:id", deleteUrlResource);
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )

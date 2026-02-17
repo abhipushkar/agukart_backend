@@ -3,7 +3,6 @@ import auth from '../middleware/auth';
 
 import user from '../routes/user';
 import admin from '../routes/admin.auth';
-import UrlResource from "../models/UrlResource";
 import {
     login,
     socialLogin,
@@ -167,29 +166,6 @@ routes.get('/get-shop-detail', getShopDetail);
 
 routes.use('/user',auth, user);
 routes.use('/admin', adminAuth, admin);
-
-// for url resource
-routes.get("/url/:slug", async (req, res) => {
-  try {
-    const { slug } = req.params;
-
-    const data = await UrlResource.findOne({
-      slug,
-      isDeleted: false,
-    });
-
-    if (!data) {
-      return res.status(404).json({ success: false });
-    }
-
-    return res.json({
-      success: true,
-      data,
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false });
-  }
-});
 
 export default routes;
 

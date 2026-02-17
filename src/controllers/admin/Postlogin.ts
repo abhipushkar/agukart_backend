@@ -15171,7 +15171,7 @@ export const createUrlResource = async (req: CustomRequest, resp: Response)=> {
         }
         const slug = generateSlug(name + "-" + Date.now());
         const publicUrl = process.env.ASSET_URL + "/uploads/url/" + req.file.filename;
-        const link = `https://agukart.com/pages/${slug}`;
+        const link = process.env.FRONTEND_URL + "/pages/" + slug;
 
         const data = await UrlResource.create({
             name,
@@ -15197,7 +15197,17 @@ export const createUrlResource = async (req: CustomRequest, resp: Response)=> {
 
 export const getUrlList = async (req: CustomRequest, resp: Response) => {
     try {
-        const data = await UrlResource.find({ isDeleted: false }).sort({ createdAt: -1});
+        const { search = "", sort = "asc" } = req.query;
+
+        const filter: any = {
+            isDeleted: false,
+        }
+
+        if (search) {
+            filter.name = { $regex: search, $options: "i" };
+        }
+        const sortOption = sort === "asc" ? { name: 1 } : sort === "desc" ? { name: -1 } : { createdAt: -1 };
+        const data = await UrlResource.find(filter).sort(sortOption as any);
 
         return resp.status(200).json({
             success: true,
@@ -15230,5 +15240,70 @@ export const getPublicPage = async (req: CustomRequest, resp: Response) => {
     }
 }
 
+export const getUrlById = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { id } = req.params;
 
+        const data = await UrlResource.findOne({
+            _id: id,
+            isDeleted: false
+        });
 
+        if(!data) {
+            return resp.status(404).json({
+                success: false,
+                message: "URL resource not found",
+            });
+        }
+
+        return resp.status(200).json({
+            success: true,
+            data,
+        });
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const deleteUrlResource = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return resp.status(400).json({
+                success: false,
+                message: "Invalid ID format",
+            });
+        }
+
+        const resource = await UrlResource.findById(id);
+
+        if (!resource) {
+            return resp.status(404).json({
+                success: false,
+                message: "URL resource not found",
+            });
+        }
+
+        const filePath = resource.file.replace(process.env.ASSET_URL + "/", "");
+
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+        await UrlResource.findByIdAndDelete(id);
+
+        return resp.status(200).json({
+            success: true,
+            message: "URL resource deleted successfully",
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
