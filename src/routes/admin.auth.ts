@@ -248,7 +248,8 @@ import {
     getUrlList,
     getPublicPage,
     getUrlById,
-    deleteUrlResource
+    deleteUrlResource,
+    updateUrlResource
 } from "../controllers/admin/Postlogin";
 
 
@@ -338,6 +339,7 @@ routes.get("/url-list", getUrlList);
 routes.get("/url-page/:slug", getPublicPage);
 routes.get("/url-page-by-id/:id", getUrlById);
 routes.delete("/delete-url/:id", deleteUrlResource);
+routes.put("/url-resource/:id", updateUrlResource);
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )

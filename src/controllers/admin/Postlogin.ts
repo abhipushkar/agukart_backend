@@ -15307,3 +15307,43 @@ export const deleteUrlResource = async (req: CustomRequest, resp: Response) => {
         });
     }
 };
+
+export const updateUrlResource = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { id } = req.params;
+        const { name, description } = req.body;
+
+        if( !mongoose.Types.ObjectId.isValid(id)) {
+            return resp.status(400).json({
+                success: false,
+                message: "Invalid ID format"
+            });
+        }
+
+        const resource = await UrlResource.findById(id);
+
+        if(!resource) {
+            return resp.status(404).json({
+                success: false,
+                message: "URL resource not found"
+            });
+        }
+
+        if (name !== undefined) resource.name = name;
+        if (description !== undefined) resource.description = description;
+
+        await resource.save();
+
+        return resp.status(200).json({
+            success: true,
+            message: "URL resource updated successfully",
+            data: resource,
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
