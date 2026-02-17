@@ -15171,7 +15171,7 @@ export const createUrlResource = async (req: CustomRequest, resp: Response)=> {
         }
         const slug = generateSlug(name + "-" + Date.now());
         const publicUrl = process.env.ASSET_URL + "/uploads/url/" + req.file.filename;
-        const link = process.env.ASSET_URL + "/pages/" + slug;
+        const link = process.env.USER_FRONTEND_URL + "/pages/" + slug;
 
         const data = await UrlResource.create({
             name,
