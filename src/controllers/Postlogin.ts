@@ -2108,29 +2108,163 @@ for (const vendorId in vendorShippingMap) {
   }
 };
 
+// export const getAccessToken = async () => {
+//   try {
+//     const response = await got.post(
+//       "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+//       {
+//         form: {
+//           grant_type: "client_credentials",
+//         },
+//         username:
+//           "AYKXmGSaIYk_P8R1brliTpBwrpi2hA8y5yulQMmi4XLByhWw1rvfdtoefzWkm0nUvSQ86123jZYOuaWq",
+//         password:
+//           "ECTyKQDW5kwDmCxXHj3miWDYXyaNhEOPg_S87zJnIV8XBW-6TTtztez08_I7-_iaGIZVF5g_RFGGqZsV",
+//       },
+//     );
+
+//     const data = JSON.parse(response.body);
+//     const newAccessToken = data.access_token;
+//     return newAccessToken;
+//   } catch (error: any) {}
+// };
+
 export const getAccessToken = async () => {
   try {
+    const auth = Buffer.from(
+      `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`
+    ).toString("base64");
+
     const response = await got.post(
       "https://api-m.sandbox.paypal.com/v1/oauth2/token",
       {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
         form: {
           grant_type: "client_credentials",
         },
-        username:
-          "AYKXmGSaIYk_P8R1brliTpBwrpi2hA8y5yulQMmi4XLByhWw1rvfdtoefzWkm0nUvSQ86123jZYOuaWq",
-        password:
-          "ECTyKQDW5kwDmCxXHj3miWDYXyaNhEOPg_S87zJnIV8XBW-6TTtztez08_I7-_iaGIZVF5g_RFGGqZsV",
-      },
+      }
     );
 
     const data = JSON.parse(response.body);
-    const newAccessToken = data.access_token;
-    return newAccessToken;
-  } catch (error: any) {}
+    return data.access_token;
+  } catch (error: any) {
+    console.error("Access Token Error:", error.response?.body || error.message);
+    throw error;
+  }
 };
 
-export const createOrder = async (req: CustomRequest, resp: Response) => {
+// export const createOrder = async (req: CustomRequest, resp: Response) => {
+//   try {
+//     const accessToken = await getAccessToken();
+
+//     // const response = await got.post(
+//     //   "https://api-m.sandbox.paypal.com/v2/checkout/orders",
+//     //   {
+//     //     headers: {
+//     //       "Content-Type": "application/json",
+//     //       Authorization: `Bearer ${accessToken}`,
+//     //     },
+//     //     json: {
+//     //       intent: "CAPTURE",
+//     //       purchase_units: [
+//     //         {
+//     //           reference_id: "PUHF",
+//     //           description: "Your purchase description",
+//     //           amount: {
+//     //             currency_code: "USD",
+//     //             value: "10.00",
+//     //             breakdown: {
+//     //               item_total: {
+//     //                 currency_code: "USD",
+//     //                 value: "10.00",
+//     //               },
+//     //             },
+//     //           },
+//     //           items: [
+//     //             {
+//     //               name: "item",
+//     //               description: "description",
+//     //               quantity: "1",
+//     //               unit_amount: {
+//     //                 currency_code: "USD",
+//     //                 value: "10.00",
+//     //               },
+//     //             },
+//     //           ],
+//     //           shipping: {
+//     //             address: {
+//     //               address_line_1: "1234 Main Street",
+//     //               address_line_2: "Apt 101",
+//     //               admin_area_2: "San Francisco",
+//     //               admin_area_1: "CA",
+//     //               postal_code: "94105",
+//     //               country_code: "US",
+//     //             },
+//     //           },
+//     //         },
+//     //       ],
+//     //       payment_source: {
+//     //         paypal: {
+//     //           experience_context: {
+//     //             payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
+//     //             payment_method_selected: "PAYPAL",
+//     //             brand_name: "Dekhohub-Volaity store",
+//     //             shipping_preference: "SET_PROVIDED_ADDRESS",
+//     //             locale: "en-US",
+//     //             user_action: "PAY_NOW",
+//     //             return_url: "https://api-m.sandbox.paypal.com/complete-payment",
+//     //             cancel_url: "https://api-m.sandbox.paypal.com/complete-payment",
+//     //           },
+//     //         },
+//     //       },
+//     //     },
+//     //     responseType: "json",
+//     //   },
+//     // );
+//        const response = await got.post(
+//   "https://api-m.sandbox.paypal.com/v2/checkout/orders",
+//   {
+//     headers: {
+//       "Content-Type": "application/json",
+//       Authorization: `Bearer ${accessToken}`,
+//     },
+//     json: {
+//       intent: "CAPTURE",
+//       purchase_units: [
+//         {
+//           amount: {
+//             currency_code: "USD",
+//             value: "10.00"
+//           }
+//         }
+//       ]
+//     },
+//     responseType: "json",
+//   }
+// );
+//     return resp
+//       .status(200)
+//       .json({ success: "order created successfully", data: response.body });
+//   } catch (error: any) {
+//     console.error(
+//       "Error creating PayPal order:",
+//       error.response?.body || error.message,
+//     );
+//     return resp
+//       .status(400)
+//       .json({
+//         message: "Bad Request. Please check your request data.",
+//         details: error.response?.body || error.message,
+//       });
+//   }
+// };
+export const createOrder = async (req: CustomRequest, resp: Response) =>{
   try {
+    const { currency_code, items, shipping, amount } = req.body;
+
     const accessToken = await getAccessToken();
 
     const response = await got.post(
@@ -2144,73 +2278,68 @@ export const createOrder = async (req: CustomRequest, resp: Response) => {
           intent: "CAPTURE",
           purchase_units: [
             {
-              reference_id: "PUHF",
-              description: "Your purchase description",
               amount: {
-                currency_code: "USD",
-                value: "10.00",
+                currency_code,
+                value: amount.total,
                 breakdown: {
                   item_total: {
-                    currency_code: "USD",
-                    value: "10.00",
+                    currency_code,
+                    value: amount.item_total,
                   },
-                },
+                  shipping: {
+                    currency_code,
+                    value: amount.shipping,
+                  }
+                }
               },
-              items: [
-                {
-                  name: "item",
-                  description: "description",
-                  quantity: "1",
-                  unit_amount: {
-                    currency_code: "USD",
-                    value: "10.00",
-                  },
-                },
-              ],
+              items: items,
               shipping: {
-                address: {
-                  address_line_1: "1234 Main Street",
-                  address_line_2: "Apt 101",
-                  admin_area_2: "San Francisco",
-                  admin_area_1: "CA",
-                  postal_code: "94105",
-                  country_code: "US",
-                },
-              },
-            },
-          ],
-          payment_source: {
-            paypal: {
-              experience_context: {
-                payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
-                payment_method_selected: "PAYPAL",
-                brand_name: "Dekhohub-Volaity store",
-                shipping_preference: "SET_PROVIDED_ADDRESS",
-                locale: "en-US",
-                user_action: "PAY_NOW",
-                return_url: "https://api-m.sandbox.paypal.com/complete-payment",
-                cancel_url: "https://api-m.sandbox.paypal.com/complete-payment",
-              },
-            },
-          },
+                address: shipping
+              }
+            }
+          ]
         },
         responseType: "json",
-      },
+      }
     );
-    return resp
-      .status(200)
-      .json({ success: "order created successfully", data: response.body });
+
+    return resp.status(200).json({
+      success: true,
+      data: response.body
+    });
+
+  } catch (error :any) {
+    console.error(error.response?.body || error.message);
+    return resp.status(500).json({ error: "Order creation failed" });
+  }
+};
+
+export const captureOrder = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { orderID } = req.body;
+
+    const accessToken = await getAccessToken();
+
+    const response = await got.post(
+      `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderID}/capture`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        responseType: "json",
+      }
+    );
+
+    return resp.status(200).json(response.body);
+
   } catch (error: any) {
-    console.error(
-      "Error creating PayPal order:",
-      error.response?.body || error.message,
-    );
-    return resp
-      .status(400)
-      .json({
-        message: "Bad Request. Please check your request data.",
-        details: error.response?.body || error.message,
-      });
+    console.error("Capture Error:", error.response?.body || error.message);
+
+    return resp.status(500).json({
+      message: "Failed to capture order",
+      details: error.response?.body || error.message,
+    });
   }
 };
 

@@ -55,7 +55,8 @@ import {
     createOrder,
     checkVoucherForProduct,
     saveNote,
-    getUserOrders
+    getUserOrders,
+    captureOrder
 } from "../controllers/Postlogin";
 
 import multer from 'multer';
@@ -96,6 +97,7 @@ routes.get('/getVendorCartDetails/:id',getVendorCartDetails)
 routes.get('/check-checkoutadress-eligibility', checkoutAddressEligibility)
 routes.post('/checkout', checkout)
 routes.post('/create-order', createOrder);
+routes.post("/capture-order", captureOrder);
 routes.post('/vendorWiseCheckout', vendorWiseCheckout)
 routes.get('/orderList', orderList)
 routes.get('/getOrderDetail/:orderId', getOrderDetail)
