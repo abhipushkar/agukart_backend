@@ -302,8 +302,8 @@ function productHasRegionSupport(
   const shippingTypes = [
     "standardShipping",
     "expedited",
-    "twoDays",
-    "oneDay",
+    "globalExpress",
+    "priorityExpress",
   ];
 
   for (const type of shippingTypes) {
@@ -638,14 +638,14 @@ shipping_id: "$$item.shipping_id",
         const shippingTypes = [
           "standardShipping",
           "expedited",
-          "twoDays",
-          "oneDay",
+          "globalExpress",
+          "priorityExpress",
         ];
         const combinedShipping: Record<string, any[]> = {
           standardShipping: [],
           expedited: [],
-          twoDays: [],
-          oneDay: [],
+          globalExpress: [],
+          priorityExpress: [],
         };
 
         if (userCountry && shippingData.length > 0) {
@@ -1149,14 +1149,14 @@ export const checkoutAddressEligibility = async (
         }
       }
 
-      if (applyVendorShippingTemplate === "twoDays") {
-        for (let region of cart?.shippingDetail?.shippingTemplateData.twoDays) {
+      if (applyVendorShippingTemplate === "globalExpress") {
+        for (let region of cart?.shippingDetail?.shippingTemplateData.globalExpress) {
           allowCountries.push(...region?.region);
         }
       }
 
-      if (applyVendorShippingTemplate === "oneDay") {
-        for (let region of cart?.shippingDetail?.shippingTemplateData.oneDay) {
+      if (applyVendorShippingTemplate === "priorityExpress") {
+        for (let region of cart?.shippingDetail?.shippingTemplateData.priorityExpress) {
           allowCountries.push(...region?.region);
         }
       }
@@ -2571,8 +2571,8 @@ export const vendorWiseCheckout = async (
           const shippingOptions = {
             standardShipping: shippingTemplateData?.standardShipping,
             expedited: shippingTemplateData?.expedited,
-            twoDays: shippingTemplateData?.twoDays,
-            oneDay: shippingTemplateData?.oneDay,
+            globalExpress: shippingTemplateData?.globalExpress,
+            priorityExpress: shippingTemplateData?.priorityExpress,
           };
 
           const selectedShipping =
@@ -4783,8 +4783,8 @@ export const getVendorCartDetails = async (
         const shippingOptions = {
           standardShipping: shippingTemplateData?.standardShipping,
           expedited: shippingTemplateData?.expedited,
-          twoDays: shippingTemplateData?.twoDays,
-          oneDay: shippingTemplateData?.oneDay,
+          globalExpress: shippingTemplateData?.globalExpress,
+          priorityExpress: shippingTemplateData?.priorityExpress,
         };
 
         const selectedShipping =
