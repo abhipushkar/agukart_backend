@@ -249,7 +249,14 @@ import {
     getPublicPage,
     getUrlById,
     deleteUrlResource,
-    updateUrlResource
+    updateUrlResource,
+    addDeliveryService,
+    getAllDeliveryServices,
+    updateDeliveryService,
+    deleteDeliveryService,
+    toggleDeliveryServiceStatus,
+    getActiveDeliveryServices,
+    getDeliveryServiceById
 } from "../controllers/admin/Postlogin";
 
 
@@ -340,6 +347,15 @@ routes.get("/url-page/:slug", getPublicPage);
 routes.get("/url-page-by-id/:id", getUrlById);
 routes.delete("/delete-url/:id", deleteUrlResource);
 routes.put("/url-resource/:id", updateUrlResource);
+
+// Delivery Service API's
+routes.post("/add-delivery-service", upload.single("logo"), addDeliveryService);
+routes.get("/get-delivery-service", getAllDeliveryServices);
+routes.put("/update-delivery-service/:id", upload.single("logo"), updateDeliveryService);
+routes.delete("/delete-delivery-service/:id", deleteDeliveryService);
+routes.patch("/toggle/:id", toggleDeliveryServiceStatus);
+routes.get("/delivery-service/:id", getDeliveryServiceById);
+routes.get("/active-delivery-services", getActiveDeliveryServices);
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )

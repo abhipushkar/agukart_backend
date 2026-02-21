@@ -88,6 +88,7 @@ import { error } from "console";
 import { RefundModel } from "../../models/Refund";
 import { RefundItemModel } from "../../models/RefundItem";
 import UrlResource from "../../models/UrlResource";
+import DeliveryService from "../../models/DeliveryService";
 dayjs.extend(duration);
 
 interface CustomRequest extends Request {
@@ -15344,6 +15345,248 @@ export const updateUrlResource = async (req: CustomRequest, resp: Response) => {
         return resp.status(500).json({
             success: false,
             message: error.message,
+        });
+    }
+};
+
+export const addDeliveryService = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { name, description, tracking_url } = req.body;
+
+    const supportDirectTracking = req.body.supportDirectTracking === true || req.body.supportDirectTracking === "true";
+
+    const existing = await DeliveryService.findOne({ name: name.toLowerCase() });
+
+    if (existing) {
+      return resp.status(400).json({
+        success: false,
+        message: "Delivery service already exists"
+      });
+    }
+
+    let logoFileName = null;
+
+    if (req.file) {
+      const uploadFolderPath = path.join("uploads", "delivery");
+      await fs.promises.mkdir(uploadFolderPath, { recursive: true });
+
+      const webpFileName =
+        Date.now() + "-" + Math.round(Math.random() * 1e9) + ".webp";
+
+      const webpFilePath = path.join(uploadFolderPath, webpFileName);
+
+      await sharp(req.file.buffer)
+        .webp({ quality: 80 })
+        .toFile(webpFilePath);
+
+      logoFileName = webpFileName;
+    }
+
+    const service = await DeliveryService.create({
+      name,
+      description,
+      tracking_url,
+      supportDirectTracking,
+      logo: logoFileName
+    });
+
+    return resp.status(201).json({
+      success: true,
+      message: "Delivery service added successfully",
+      data: service
+    });
+
+  } catch (error: any) {
+
+    if (error.code === 11000) {
+      return resp.status(400).json({
+        success: false,
+        message: "Delivery service already exists"
+      });
+    }
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const getAllDeliveryServices = async (req: CustomRequest, resp: Response) => {
+    try {
+        const services = await DeliveryService.find().sort({ createdAt: -1 });
+
+        return resp.status(200).json({
+            success: true,
+            data: services
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        }); 
+    }
+};
+
+export const getActiveDeliveryServices = async (req: CustomRequest, resp: Response) => {
+    try {
+        const services = await DeliveryService.find({ isActive: true });
+
+        return resp.status(200).json({
+            success: true,
+            data: services
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const updateDeliveryService = async ( req: CustomRequest, resp: Response ) => {
+  try {
+    const { id } = req.params;
+
+    const updateData: any = { ...req.body };
+
+    if (req.file) {
+      updateData.logo = req.file.path;
+    }
+
+    if (
+      updateData.supportDirectTracking === true &&
+      updateData.tracking_url &&
+      !updateData.tracking_url.includes("{tracking_id}")
+    ) {
+      return resp.status(400).json({
+        success: false,
+        message: "Tracking URL must contain {tracking_id}"
+      });
+    }
+
+    const updated = await DeliveryService.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      updateData,
+      { new: true }
+    );
+
+    if (!updated) {
+      return resp.status(404).json({
+        success: false,
+        message: "Service not found"
+      });
+    }
+
+    return resp.status(200).json({
+      success: true,
+      message: "Delivery service updated successfully",
+      data: updated
+    });
+
+  } catch (error: any) {
+
+    if (error.code === 11000) {
+      return resp.status(400).json({
+        success: false,
+        message: "Delivery service name already exists"
+      });
+    }
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const deleteDeliveryService = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { id } = req.params;
+
+        const service = await DeliveryService.findByIdAndUpdate({ _id: id, isDeleted: false }, { isDeleted: true }, { new: true });
+
+        if(!service) {
+            return resp.status(404).json({
+                success: false,
+                message: "Service not found"
+            });
+        }
+
+        return resp.status(200).json({
+            success: true,
+            message: "Service deleted successfully",
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const toggleDeliveryServiceStatus = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { id } = req.params;
+
+        const service = await DeliveryService.findById({ _id: id, isDeleted: false });
+
+        if(!service) {
+            return resp.status(404).json({
+                success: false,
+                message: "Service not found"
+            });
+        }
+
+        service.isActive = !service.isActive;
+        await service.save();
+
+        return resp.status(200).json({
+            success: true,
+            message: "Status updated successfully",
+            data: service
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const getDeliveryServiceById = async ( req: CustomRequest, resp: Response ) => {
+    try {
+        const { id } = req.params;
+
+        if(!mongoose.Types.ObjectId.isValid(id)) {
+            return resp.status(400).json({
+                success: false,
+                message: "Invalid Id format"
+            });
+        }
+
+        const service = await DeliveryService.findOne({ _id: id, isDeleted: false });
+
+        if(!service) {
+            return resp.status(404).json({
+                success: false,
+                message: "Delivery service not found"
+            });
+        }
+
+        return resp.status(200).json({
+            success: true,
+            data: service
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
         });
     }
 };
