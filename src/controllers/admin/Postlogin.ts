@@ -15416,7 +15416,7 @@ export const addDeliveryService = async (req: CustomRequest, resp: Response) => 
 
 export const getAllDeliveryServices = async (req: CustomRequest, resp: Response) => {
     try {
-        const services = await DeliveryService.find().sort({ createdAt: -1 });
+        const services = await DeliveryService.find().sort({ sortOrder: 1 });
 
         return resp.status(200).json({
             success: true,
