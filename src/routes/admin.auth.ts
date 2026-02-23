@@ -256,7 +256,9 @@ import {
     deleteDeliveryService,
     toggleDeliveryServiceStatus,
     getActiveDeliveryServices,
-    getDeliveryServiceById
+    getDeliveryServiceById,
+    setDeafaultDeliveryService,
+    updateDeliveryServiceSortOrder
 } from "../controllers/admin/Postlogin";
 
 
@@ -370,6 +372,8 @@ routes.delete("/delete-delivery-service/:id", deleteDeliveryService);
 routes.patch("/toggle/:id", toggleDeliveryServiceStatus);
 routes.get("/delivery-service/:id", getDeliveryServiceById);
 routes.get("/active-delivery-services", getActiveDeliveryServices);
+routes.patch("/set-default/:id", setDeafaultDeliveryService);
+routes.post("/update-delivery-sort", updateDeliveryServiceSortOrder);
 
 // Product API's
 routes.post('/update-product-by-field', updateProductByField )

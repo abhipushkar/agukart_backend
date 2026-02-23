@@ -82,7 +82,7 @@ import ParentCartModel from "../../models/ParentCart";
 import AddressModel from "../../models/Address";
 import { paginateArray } from "../../utils/pagination";
 import { paginate } from "../../utils/pagination";
-import _ from 'lodash';
+import _, { filter, update } from 'lodash';
 import { main } from "ts-node/dist/bin";
 import { error } from "console";
 import { RefundModel } from "../../models/Refund";
@@ -15585,6 +15585,59 @@ export const getDeliveryServiceById = async ( req: CustomRequest, resp: Response
             data: service
         });
 
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const setDeafaultDeliveryService = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { id } = req.params;
+
+        await DeliveryService.updateMany({isDefault: true}, { $set: { isDefault: false }});
+
+        const updated = await DeliveryService.findByIdAndUpdate(
+            id,
+            { isDefault: true },
+            { new: true }
+        );
+
+        return resp.status(200).json({
+            success: true,
+            message: "Default delivery service set successfully",
+            data: updated
+        });
+    
+    } catch (error: any) {
+        return resp.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+export const updateDeliveryServiceSortOrder = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { services } = req.body;
+
+        const bulkOps = services.map((item: any) => ({
+            updateOne: {
+                filter: { _id: item.id },
+                update: { $set: {
+                    sortOrder: item.sortOrder
+                }}
+            }
+        }));
+
+        await DeliveryService.bulkWrite(bulkOps);
+
+        return resp.status(200).json({
+            success: true,
+            message: "Sort order updated successfully"
+        });
     } catch (error: any) {
         return resp.status(500).json({
             success: false,

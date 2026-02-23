@@ -29,6 +29,14 @@ const deliveryServiceSchema = new mongoose.Schema(
             default: true,
             index: true
         },
+        isDefault: {
+            type: Boolean,
+            default: false
+        },
+        sortOrder: {
+            type: Number,
+            default: 0
+        },
         isDeleted: {
             type: Boolean,
             default: false,
