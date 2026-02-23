@@ -349,9 +349,23 @@ routes.delete("/delete-url/:id", deleteUrlResource);
 routes.put("/url-resource/:id", updateUrlResource);
 
 // Delivery Service API's
-routes.post("/add-delivery-service", upload.single("logo"), addDeliveryService);
+routes.post("/add-delivery-service",
+  (req, res, next) => {
+    (req as any).filepath = "delivery";
+    next();
+  },
+  upload.single("logo"),
+  addDeliveryService
+);
 routes.get("/get-delivery-service", getAllDeliveryServices);
-routes.put("/update-delivery-service/:id", upload.single("logo"), updateDeliveryService);
+routes.put("/update-delivery-service/:id",
+  (req, res, next) => {
+    (req as any).filepath = "delivery";
+    next();
+  },
+  upload.single("logo"),
+  updateDeliveryService
+);
 routes.delete("/delete-delivery-service/:id", deleteDeliveryService);
 routes.patch("/toggle/:id", toggleDeliveryServiceStatus);
 routes.get("/delivery-service/:id", getDeliveryServiceById);
