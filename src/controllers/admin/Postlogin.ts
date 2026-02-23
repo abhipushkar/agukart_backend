@@ -15367,20 +15367,22 @@ export const addDeliveryService = async (req: CustomRequest, resp: Response) => 
     let logoFileName = null;
 
     if (req.file) {
-      const uploadFolderPath = path.join("uploads", "delivery");
-      await fs.promises.mkdir(uploadFolderPath, { recursive: true });
+  const uploadFolderPath = path.join("uploads", "delivery");
+  await fs.promises.mkdir(uploadFolderPath, { recursive: true });
 
-      const webpFileName =
-        Date.now() + "-" + Math.round(Math.random() * 1e9) + ".webp";
+  const webpFileName =
+    Date.now() + "-" + Math.round(Math.random() * 1e9) + ".webp";
 
-      const webpFilePath = path.join(uploadFolderPath, webpFileName);
+  const webpFilePath = path.join(uploadFolderPath, webpFileName);
 
-      await sharp(req.file.buffer)
-        .webp({ quality: 80 })
-        .toFile(webpFilePath);
+  await sharp(req.file.path)
+    .webp({ quality: 80 })
+    .toFile(webpFilePath);
 
-      logoFileName = webpFileName;
-    }
+  await fs.promises.unlink(req.file.path);
+
+  logoFileName = webpFileName;
+}
 
     const service = await DeliveryService.create({
       name,
