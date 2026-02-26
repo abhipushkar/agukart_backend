@@ -87,14 +87,6 @@ const salesDetailsSchema = new Schema(
             type: Date,
             default: null
         },
-        shipping_couriername: {
-            type: String,
-            default: ''
-        },
-        shipping_couriernumber: {
-            type: String,
-            default: ''
-        },
         usercancel_remark: {
             type: String,
             default: ''
@@ -122,9 +114,38 @@ const salesDetailsSchema = new Schema(
         },
         delivery_status: { 
             type: String,
-            enum: ['No tracking', 'Pre transit', 'In transit', 'Delivered', 'Cancelled'],
+            enum: ['Pre-Shipped',  'No tracking', 'track on' , 'Pre transit', 'Out for delivery', 'In transit', 'Delivery attempt', 'Delivered', 'Cancelled'],
             default: 'No tracking',
         },
+        shipments: [
+            {
+                courierName: { 
+                    type: String,
+                    default: ''
+                 },
+                 trackingNumber: {
+                    type: String,
+                    default: ''
+                 },
+                 shipped_date: {
+                    type: Date,
+                    default: null
+                 },
+                 delivered_date: {
+                    type: Date,
+                    default: null
+                 },
+                 delivery_status: {
+                    type: String,
+                    enum: ['Pre-Shipped',  'No tracking', 'track on' , 'Pre transit', 'Out for delivery', 'In transit', 'Delivery attempt', 'Delivered', 'Cancelled'],
+                    default: 'No tracking',
+                 },
+                 remark: {
+                    type: String,
+                    default: ''
+                 }
+            }
+        ],
         ratingStatus: {
             type: Boolean,
             required: true,

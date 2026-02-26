@@ -258,7 +258,8 @@ import {
     getActiveDeliveryServices,
     getDeliveryServiceById,
     setDeafaultDeliveryService,
-    updateDeliveryServiceSortOrder
+    updateDeliveryServiceSortOrder,
+    completeOrder
 } from "../controllers/admin/Postlogin";
 
 
@@ -417,6 +418,7 @@ routes.get('/edit-variant-product/:id', editVariantProductByID);
 // Sales API's
 routes.get('/sales-list/:type', salesList)
 routes.post('/update-order-status', updateOrderStatus)
+routes.post('/complete-order', completeOrder)
 routes.post('/order-history', orderHistory)
 routes.post('/getOrderInvoice', getOrderInvoice)
 // routes.post('/sales-detail/:type', salesDetail)

@@ -82,7 +82,7 @@ import ParentCartModel from "../../models/ParentCart";
 import AddressModel from "../../models/Address";
 import { paginateArray } from "../../utils/pagination";
 import { paginate } from "../../utils/pagination";
-import _, { filter, update } from 'lodash';
+import _, { cond, filter, update } from 'lodash';
 import { main } from "ts-node/dist/bin";
 import { error } from "console";
 import { RefundModel } from "../../models/Refund";
@@ -5144,6 +5144,50 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                             },
                         },
                         {
+                            $lookup: {
+                                from: "deliveryservices",
+                                localField: "shipments.courierName",
+                                foreignField: "name",
+                                as: "deliveryServiceData"
+                            }
+                        },
+                        {
+                            $addFields: {
+                                shipments: {
+                                    $map: {
+                                        input: "$shipments",
+                                        as: "shipment",
+                                        in: {
+                                            $mergeObjects: [
+                                                "$$shipment",
+                                                {
+                                                    service: {
+                                                        $arrayElemAt: [
+                                                            {
+                                                                $filter: {
+                                                                    input: "$deliveryServiceData",
+                                                                    as: "service",
+                                                                    cond: {
+                                                                        $eq: ["$$service.name", {$toLower: "$$shipment.courierName"}]
+                                                                    }
+                                                                }
+                                                            },
+                                                            0
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            $project: {
+                                deliveryServiceData: 0
+                            }
+                        },
+                        {
                         $group: {
                             _id: "$sub_order_id",
                             sub_order_id: { $first: "$sub_order_id" },
@@ -5748,6 +5792,94 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
 
     }
 
+};
+
+export const completeOrder = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { shipments } = req.body;
+
+    if (!shipments || !Array.isArray(shipments)) {
+      return resp.status(400).json({ message: "Shipments array required" });
+    }
+
+    const allowedStatuses = [
+      'Pre transit',
+      'In transit',
+      'Out for delivery',
+      'Delivery attempt',
+      'Delivered',
+      'Cancelled',
+      'No tracking'
+    ];
+
+    for (const shipment of shipments) {
+      const { sub_order_id, courierName, trackingNumber, delivery_status } = shipment;
+
+      if (!sub_order_id) continue;
+
+      const orders = await SalesDetailsModel.find({ sub_order_id });
+
+      if (!orders.length) continue;
+
+      let finalDeliveryStatus = trackingNumber ? 'Pre transit' : 'No tracking';
+
+      if (delivery_status && allowedStatuses.includes(delivery_status)) {
+        finalDeliveryStatus = delivery_status;
+      }
+
+      const now = new Date();
+
+      const shipmentObj = {
+        courierName: courierName || '',
+        trackingNumber: trackingNumber || '',
+        shipped_date: now,
+        delivered_date: finalDeliveryStatus === 'Delivered' ? now : null,
+        delivery_status: finalDeliveryStatus,
+        remark: ''
+      };
+
+      for (const order of orders) {
+
+      const updateData: any = {
+        $push: { shipments: shipmentObj }
+      };
+
+      if (order.order_status !== 'completed') {
+        updateData.$set = {
+        order_status: 'completed'
+    };
+    }
+
+    if (order.delivery_status === 'No tracking') {
+        updateData.$set = {
+        ...updateData.$set,
+        delivery_status: finalDeliveryStatus
+      };
+    }
+
+        if (!order.shipped_date) {
+          updateData.$set.shipped_date = now;
+        }
+
+        if (finalDeliveryStatus === 'Delivered') {
+          updateData.$set.delivered_date = now;
+        }
+
+        await SalesDetailsModel.updateOne(
+          { _id: order._id },
+          updateData
+        );
+      }
+    }
+
+    return resp.status(200).json({
+      message: "Shipments completed successfully"
+    });
+
+  } catch (error) {
+    console.error(error);
+    return resp.status(500).json({ message: "Something went wrong" });
+  }
 };
 
 export const orderReady = async (req: Request, resp: Response) => {
@@ -15448,39 +15580,75 @@ export const getActiveDeliveryServices = async (req: CustomRequest, resp: Respon
     }
 };
 
-export const updateDeliveryService = async ( req: CustomRequest, resp: Response ) => {
+export const updateDeliveryService = async (req: CustomRequest, resp: Response) => {
   try {
     const { id } = req.params;
 
-    const updateData: any = { ...req.body };
-
-    if (req.file) {
-      updateData.logo = req.file.path;
+    const existingService = await DeliveryService.findById(id);
+    if (!existingService || existingService.isDeleted) {
+      return resp.status(404).json({
+        success: false,
+        message: "Service not found"
+      });
     }
 
-    if (
-      updateData.supportDirectTracking === true &&
-      updateData.tracking_url &&
-      !updateData.tracking_url.includes("{tracking_id}")
-    ) {
+    const allowedFields = [
+      "name",
+      "description",
+      "tracking_url",
+      "supportDirectTracking",
+      "isActive",
+      "isDefault",
+      "sortOrder"
+    ];
+
+    const updateData: any = {};
+
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    if (req.body.supportDirectTracking !== undefined) {
+      updateData.supportDirectTracking =
+        req.body.supportDirectTracking === true ||
+        req.body.supportDirectTracking === "true";
+    }
+    const finalSupportTracking = updateData.supportDirectTracking !== undefined ? updateData.supportDirectTracking : existingService.supportDirectTracking;
+
+    const finalTrackingUrl = updateData.tracking_url || existingService.tracking_url;
+
+    if (finalSupportTracking &&(!finalTrackingUrl || !finalTrackingUrl.includes("{tracking_id}"))) {
       return resp.status(400).json({
         success: false,
         message: "Tracking URL must contain {tracking_id}"
       });
     }
 
-    const updated = await DeliveryService.findOneAndUpdate(
-      { _id: id, isDeleted: false },
-      updateData,
-      { new: true }
-    );
+    if (req.file) {
+      const uploadFolderPath = path.join("uploads", "delivery");
+      await fs.promises.mkdir(uploadFolderPath, { recursive: true });
+      const webpFileName = Date.now() + "-" + Math.round(Math.random() * 1e9) + ".webp";
 
-    if (!updated) {
-      return resp.status(404).json({
-        success: false,
-        message: "Service not found"
-      });
+      const webpFilePath = path.join(uploadFolderPath, webpFileName);
+      await sharp(req.file.path).webp({ quality: 80 }).toFile(webpFilePath);
+      await fs.promises.unlink(req.file.path);
+      if (existingService.logo) {
+        const oldPath = path.join("uploads", "delivery", existingService.logo);
+        if (fs.existsSync(oldPath)) {
+          await fs.promises.unlink(oldPath);
+        }
+      }
+
+      updateData.logo = webpFileName;
     }
+
+    const updated = await DeliveryService.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    );
 
     return resp.status(200).json({
       success: true,
