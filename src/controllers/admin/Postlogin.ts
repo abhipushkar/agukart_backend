@@ -5840,6 +5840,14 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
 
       for (const order of orders) {
 
+      const existingShipment  = (order.shipments || []).find(
+        (s: any) => s.trackingNumber === trackingNumber
+      );
+
+      if(existingShipment) {
+        continue;
+      }
+
       const updateData: any = {
         $push: { shipments: shipmentObj }
       };
@@ -5880,6 +5888,83 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
     console.error(error);
     return resp.status(500).json({ message: "Something went wrong" });
   }
+};
+
+export const editShipment = async (req: Request, resp: Response) => {
+    try {
+        const { sub_order_id, shipment_id } = req.params;
+        const { trackingNumber, courierName, delivery_status } = req.body;
+        
+        if (!sub_order_id || !shipment_id) {
+            return resp.status(400).json({
+                message: "Invalid request. sub_order_id and shipment_id are required."
+            });
+        } 
+
+        const allowedStatuses = ['Pre transit', 'In transit', 'Out for delivery', 'Delivery attempt', 'Delivered', 'Cancelled', 'No tracking'];
+
+        const updateFields: any = {};
+
+        if( trackingNumber ) {
+            const duplicate = await SalesDetailsModel.findOne({
+                sub_order_id,
+                shipments: {
+                    $elemMatch: {
+                        trackingNumber,
+                        _id: { $ne: shipment_id }
+                    }
+                }
+            });
+
+            if(duplicate) {
+                return resp.status(400).json({
+                    message: "Tracking number already exists in this order"
+                });
+            }
+        }
+
+        if (trackingNumber !== undefined) {
+            updateFields["shipments.$.trackingNumber"] = trackingNumber;
+        }
+
+        if(courierName !== undefined) {
+            updateFields["shipments.$.courierName"] = courierName;
+        }
+
+        if(delivery_status && allowedStatuses.includes(delivery_status)) {
+            updateFields["shipments.$.delivery_status"] = delivery_status;
+
+            if(delivery_status === 'Delivered') {
+                updateFields["shipments.$.delivered_date"] = new Date();
+            }
+        }
+
+        const updated = await SalesDetailsModel.updateOne(
+            {
+                sub_order_id,
+                "shipments._id": shipment_id
+            },
+            {
+                $set: updateFields
+            }
+        );
+
+        if(!updated.modifiedCount) {
+            return resp.status(404).json({
+                message: "Shipment not found"
+            });
+        }
+
+        return resp.status(200).json({
+            message: "Shipment updated successfully"
+        });
+
+    } catch (error: any) {
+        console.error(error);
+        return resp.status(500).json({
+            message: error.message || "Something went wrong. Please try again."
+        }); 
+    }
 };
 
 export const orderReady = async (req: Request, resp: Response) => {
