@@ -5813,7 +5813,7 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
     ];
 
     for (const shipment of shipments) {
-      const { sub_order_id, courierName, trackingNumber, delivery_status } = shipment;
+      const { sub_order_id, courierName, trackingNumber, delivery_status, delivered_date } = shipment;
 
       if (!sub_order_id) continue;
 
@@ -5833,7 +5833,7 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
         courierName: courierName || '',
         trackingNumber: trackingNumber || '',
         shipped_date: now,
-        delivered_date: finalDeliveryStatus === 'Delivered' ? now : null,
+        delivered_date: finalDeliveryStatus === 'Delivered' ? (delivered_date ? new Date(delivered_date) : now) : null,
         delivery_status: finalDeliveryStatus,
         remark: ''
       };
@@ -5849,7 +5849,8 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
       }
 
       const updateData: any = {
-        $push: { shipments: shipmentObj }
+        $push: { shipments: shipmentObj },
+        $set: {}
       };
 
       if (order.order_status !== 'completed') {
@@ -5870,7 +5871,7 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
         }
 
         if (finalDeliveryStatus === 'Delivered') {
-          updateData.$set.delivered_date = now;
+          updateData.$set.delivered_date = delivered_date ? new Date(delivered_date) : now;
         }
 
         await SalesDetailsModel.updateOne(
@@ -5893,7 +5894,7 @@ export const completeOrder = async (req: CustomRequest, resp: Response) => {
 export const editShipment = async (req: Request, resp: Response) => {
     try {
         const { sub_order_id, shipment_id } = req.params;
-        const { trackingNumber, courierName, delivery_status } = req.body;
+        const { trackingNumber, courierName, delivery_status, delivered_date  } = req.body;
         
         if (!sub_order_id || !shipment_id) {
             return resp.status(400).json({
@@ -5905,7 +5906,16 @@ export const editShipment = async (req: Request, resp: Response) => {
 
         const updateFields: any = {};
 
-        if( trackingNumber ) {
+        if( trackingNumber !== undefined ) {
+
+            const existingShipment = await SalesDetailsModel.findOne({
+                sub_order_id,
+                "shipments._id": shipment_id
+            });
+
+            const currentTrackingNumber = existingShipment?.shipments?.find((s: any) => s._id.toString() === shipment_id)?.trackingNumber;
+
+            if(trackingNumber !== currentTrackingNumber) {
             const duplicate = await SalesDetailsModel.findOne({
                 sub_order_id,
                 shipments: {
@@ -5921,7 +5931,9 @@ export const editShipment = async (req: Request, resp: Response) => {
                     message: "Tracking number already exists in this order"
                 });
             }
+            }
         }
+
 
         if (trackingNumber !== undefined) {
             updateFields["shipments.$.trackingNumber"] = trackingNumber;
@@ -5935,7 +5947,7 @@ export const editShipment = async (req: Request, resp: Response) => {
             updateFields["shipments.$.delivery_status"] = delivery_status;
 
             if(delivery_status === 'Delivered') {
-                updateFields["shipments.$.delivered_date"] = new Date();
+                updateFields["shipments.$.delivered_date"] = delivered_date ? new Date(delivered_date) : new Date();
             }
         }
 
