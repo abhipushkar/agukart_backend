@@ -5146,8 +5146,19 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                         {
                             $lookup: {
                                 from: "deliveryservices",
-                                localField: "shipments.courierName",
-                                foreignField: "name",
+                                let: { courierNames: { $ifNull: ["$shipments.courierName", []] } },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $or: [
+                                                    { $in: ["$name", "$$courierNames"] },
+                                                    { $in: ["$title", "$$courierNames"] }
+                                                ]
+                                            }
+                                        }
+                                    }
+                                ],
                                 as: "deliveryServiceData"
                             }
                         },
@@ -5168,7 +5179,10 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                                                                     input: "$deliveryServiceData",
                                                                     as: "service",
                                                                     cond: {
-                                                                        $eq: ["$$service.name", {$toLower: "$$shipment.courierName"}]
+                                                                        $or: [
+                                                                        { $eq: ["$$service.name", {$toLower: "$$shipment.courierName"}]},
+                                                                        { $eq: ["$$service.title", "$$shipment.courierName"] }
+                                                                        ]
                                                                     }
                                                                 }
                                                             },
@@ -15580,7 +15594,7 @@ export const updateUrlResource = async (req: CustomRequest, resp: Response) => {
 
 export const addDeliveryService = async (req: CustomRequest, resp: Response) => {
   try {
-    const { name, description, tracking_url } = req.body;
+    const { title, name, description, tracking_url } = req.body;
 
     const supportDirectTracking = req.body.supportDirectTracking === true || req.body.supportDirectTracking === "true";
 
@@ -15614,6 +15628,7 @@ export const addDeliveryService = async (req: CustomRequest, resp: Response) => 
 }
 
     const service = await DeliveryService.create({
+      title,  
       name,
       description,
       tracking_url,
@@ -15690,6 +15705,7 @@ export const updateDeliveryService = async (req: CustomRequest, resp: Response) 
     }
 
     const allowedFields = [
+      "title",  
       "name",
       "description",
       "tracking_url",

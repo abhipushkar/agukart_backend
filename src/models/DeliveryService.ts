@@ -2,6 +2,10 @@ import mongoose, {Query} from "mongoose";
 
 const deliveryServiceSchema = new mongoose.Schema(
     {
+        title: {
+            type: String,
+            required: true
+        },
         name: {
             type: String,
             required: true,
