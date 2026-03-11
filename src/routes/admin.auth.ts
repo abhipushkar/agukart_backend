@@ -260,7 +260,8 @@ import {
     setDeafaultDeliveryService,
     updateDeliveryServiceSortOrder,
     completeOrder,
-    editShipment
+    editShipment,
+    updateStatusOfShipmentAndOrder
 } from "../controllers/admin/Postlogin";
 
 
@@ -421,6 +422,7 @@ routes.get('/sales-list/:type', salesList)
 routes.post('/update-order-status', updateOrderStatus)
 routes.post('/complete-order', completeOrder)
 routes.patch('/edit-shipment/:sub_order_id/:shipment_id', editShipment)
+routes.post('/update-shipment-status', updateStatusOfShipmentAndOrder)
 routes.post('/order-history', orderHistory)
 routes.post('/getOrderInvoice', getOrderInvoice)
 // routes.post('/sales-detail/:type', salesDetail)

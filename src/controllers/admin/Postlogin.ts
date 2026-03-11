@@ -5993,6 +5993,113 @@ export const editShipment = async (req: Request, resp: Response) => {
     }
 };
 
+export const updateStatusOfShipmentAndOrder = async (req: Request, resp: Response) => {
+    try {
+        const { shipment_updates = [], order_updates = [] } = req.body;
+
+        if(!Array.isArray(shipment_updates) || !Array.isArray(order_updates)) {
+            return resp.status(400).json({
+                message: "Invalid request. shipment_updates and order_updates should be arrays."
+            });
+        }
+
+        const allowedStatuses = [
+           'Pre transit',
+           'In transit',
+           'Out for delivery',
+           'Delivery attempt',
+           'Delivered',
+           'Cancelled',
+           'No tracking'
+       ];
+
+       const shipmentBulkOps: any[] = [];
+
+       for (const item of shipment_updates) {
+        const { sub_order_id, shipment_id, trackingNumber, delivery_status, delivered_date } = item; 
+
+        if(!sub_order_id) continue;
+        if(!shipment_id && !trackingNumber) continue;
+        if(!allowedStatuses.includes(delivery_status)) continue;
+
+        const filter: any = { sub_order_id: String(sub_order_id) };
+
+        if(shipment_id) {
+            filter["shipments._id"] = new mongoose.Types.ObjectId(shipment_id);
+        } else {
+            filter["shipments.trackingNumber"] = trackingNumber;
+        }
+
+        const updateFields: any = {
+            "shipments.$.delivery_status": delivery_status
+        };
+
+        if(delivery_status === 'Delivered') {
+            updateFields["shipments.$.delivered_date"] = delivered_date ? new Date(delivered_date) : new Date();
+        }
+
+        shipmentBulkOps.push({
+            updateOne: {
+                filter,
+                update: { $set: updateFields}
+            }
+        });
+       }
+
+       if(shipmentBulkOps.length) {
+        await SalesDetailsModel.bulkWrite(shipmentBulkOps, { ordered: false });
+       }
+
+       const orderBulkOps: any[] = [];
+
+       for (const item of order_updates) {
+        const { sub_order_id, delivery_status, delivered_date, order_status } = item;
+
+        if (!sub_order_id) continue;
+
+        if (delivery_status && !allowedStatuses.includes(delivery_status)) continue;
+
+        const updateFields: any = {};
+
+        if (delivery_status) {
+            updateFields.delivery_status = delivery_status;
+        }
+
+        if (delivery_status === 'Delivered') {
+            updateFields.delivered_date = delivered_date ? new Date(delivered_date) : new Date();
+        }
+
+        if (order_status) {
+            updateFields.order_status = order_status;
+        }
+
+        orderBulkOps.push({
+            updateOne: {
+                filter: { sub_order_id: String(sub_order_id) },
+                update: { $set: updateFields }
+            }
+        });
+       }
+
+       if(orderBulkOps.length) {
+        await SalesDetailsModel.bulkWrite(orderBulkOps, { ordered: false });
+       }
+
+       return resp.status(200).json({
+        message: "Shipments and Orders updated successfully",
+        shipmentsUpdated: shipmentBulkOps.length,
+        ordersUpdated: orderBulkOps.length
+       });
+       
+    } catch (error) {
+       console.error(error);
+       
+       return resp.status(500).json({
+        message: "Something went wrong. Please try again."
+       });
+    }
+};
+
 export const orderReady = async (req: Request, resp: Response) => {
 
     try {
