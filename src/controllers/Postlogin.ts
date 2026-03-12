@@ -6059,11 +6059,11 @@ export const checkVoucherForProduct = async (
     const userData = await User.findOne({ _id: req.user._id });
 
     if (userData) {
-      const sales = await Sales.find({ user_id: req.user._id });
-      if (sales.length > 0) {
-        userStatus = "old user";
+      const hasOrders = await Sales.exists({ user_id: req.user._id });
+      if (hasOrders) {
+        userStatus = "oldusers";
       } else {
-        userStatus = "new user";
+        userStatus = "newusers";
       }
     }
 
@@ -6100,6 +6100,31 @@ export const checkVoucherForProduct = async (
       return resp.status(400).json({ message: "Voucher is no longer active" });
     }
 
+    if (voucher.voucher_limit) {
+      const totalVoucherUses = await Sales.countDocuments({
+        voucher_id: voucher._id
+      });
+
+      if (totalVoucherUses >= voucher.voucher_limit) {
+        return resp.status(400).json({
+          message: "Voucher usage limit reached"
+        });
+      }
+    }
+
+    if (voucher.usage_limits) {
+      const userVoucherUses = await Sales.countDocuments({
+        voucher_id: voucher._id,
+        user_id: req.user._id,
+      });
+      
+      if (userVoucherUses >= voucher.usage_limits) {
+        return resp.status(400).json({
+          message: "You have already used this voucher the maximum number of times allowed"
+        });
+      }
+    }
+
     let userCartData = await CartModel.find({ user_id: req.user._id });
 
     if (!userCartData || userCartData.length === 0) {
@@ -6119,6 +6144,11 @@ export const checkVoucherForProduct = async (
       0,
     );
 
+    if (voucher.cart_amount && cartTotal < Number(voucher.cart_amount)) {
+      return resp.status(400).json({
+        message: `Minimum cart amount of ${voucher.cart_amount} is required to use this voucher`
+      });
+    }
     let discount = 0;
 
     if (voucher.type === "product") {
@@ -6207,55 +6237,6 @@ export const checkVoucherForProduct = async (
           discount = voucher.max_amount;
         }
       }
-    }
-
-    const pipeline: any = [
-      {
-        $lookup: {
-          from: "salesdetails",
-          localField: "_id",
-          foreignField: "sale_id",
-          as: "salesdata",
-          pipeline: [
-            {
-              $match: {
-                order_status: {
-                  $ne: "cancelled",
-                },
-              },
-            },
-          ],
-        },
-      },
-      {
-        $match: {
-          salesdata: {
-            $ne: [],
-          },
-        },
-      },
-    ];
-
-    let checkTotalLimitOfVoucher = await Sales.aggregate(pipeline);
-
-    // if (voucher.voucher_limit < checkTotalLimitOfVoucher.length) {
-    //     return resp.status(400).json({ message: 'Voucher limit reached' });
-    // }
-
-    let hasVoucherBeenUsed = 0;
-
-    if (checkTotalLimitOfVoucher.length > 0) {
-      checkTotalLimitOfVoucher.forEach((usage: any) => {
-        if (usage.user_id === req.user._id) {
-          hasVoucherBeenUsed++;
-        }
-      });
-    }
-
-    if (voucher.usage_limits >= checkTotalLimitOfVoucher.length) {
-      return resp
-        .status(400)
-        .json({ message: "You have already used this voucher" });
     }
 
     return resp.status(200).json({

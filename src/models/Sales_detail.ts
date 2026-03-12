@@ -87,6 +87,10 @@ const salesDetailsSchema = new Schema(
             type: Date,
             default: null
         },
+        cancelled_date: {
+            type: Date,
+            default: null
+        },
         usercancel_remark: {
             type: String,
             default: ''
@@ -116,6 +120,12 @@ const salesDetailsSchema = new Schema(
             type: String,
             enum: ['Pre-Shipped',  'No tracking', 'track on' , 'Pre transit', 'Out for delivery', 'In transit', 'Delivery attempt', 'Delivered', 'Cancelled'],
             default: 'No tracking',
+        },
+        refund_status: {
+            type: String,
+            enum: ['none', 'partial', 'full'],
+            default: 'none',
+            index: true
         },
         shipments: [
             {

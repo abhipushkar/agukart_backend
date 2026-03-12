@@ -82,7 +82,7 @@ import ParentCartModel from "../../models/ParentCart";
 import AddressModel from "../../models/Address";
 import { paginateArray } from "../../utils/pagination";
 import { paginate } from "../../utils/pagination";
-import _, { cond, filter, update } from 'lodash';
+import _, { cond, filter, sum, update } from 'lodash';
 import { main } from "ts-node/dist/bin";
 import { error } from "console";
 import { RefundModel } from "../../models/Refund";
@@ -6315,6 +6315,7 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
     const refundItems = [];
 
     for (const r of items) {
+
         refundItems.push({
             refund_id: refund[0]._id,
             item_id: r.item_id,
@@ -6363,6 +6364,36 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
         )
     }
 
+    const updatedItems = await SalesDetailsModel.find({ sub_order_id }).lean();
+
+    const totalItemsAmount  = updatedItems.reduce((sum, i) => sum + i.amount, 0);
+
+    const totalItemsRefunded = updatedItems.reduce((sum, i) => sum + i.refunded_cash_amount + i.refunded_voucher_amount, 0);
+
+    const shippingAmount = updatedItems[0].shippingAmount || 0;
+    const updatedShippingRefunded = updatedItems[0].shipping_refunded_amount || 0;
+
+    const totalOrderAmount = totalItemsAmount + shippingAmount;
+    const totalRefundedAmount = totalItemsRefunded + updatedShippingRefunded;
+
+    let finalRefundStatus = "none";
+    if (totalRefundedAmount > 0 && totalRefundedAmount < totalOrderAmount) {
+        finalRefundStatus = "partial";
+    }
+
+    if (totalRefundedAmount >= totalOrderAmount) {
+        finalRefundStatus = "full";
+    }
+
+    await SalesDetailsModel.updateMany(
+        { sub_order_id },
+        {
+            $set: {
+                refund_status: finalRefundStatus
+            }
+        }
+    );
+
     return resp.json({
         message: "Refund processed successfully.",
         refund_id: refund[0]._id,
@@ -6403,6 +6434,7 @@ export const cancelSuborder = async (req: CustomRequest, resp: Response) => {
                 $set: {
                     order_status: "cancelled",
                     delivery_status: "Cancelled",
+                    cancelled_date: new Date(),
                 }
             }
         );
