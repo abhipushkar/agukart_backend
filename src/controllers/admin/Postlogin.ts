@@ -6847,22 +6847,23 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
  
         if (req.body._id === 'new') {
  
-            const parent_product = await ParentProduct.create(data);
-            const sku: any = [];
- 
+            
             for (const combData of combinations) {
                 const existingCombination = await CombinationProduct.findOne({ sku_code: combData.sku_code });
                 // const checkExistProductCombination = await Product.findOne({ sku_code: combData.sku_code, isCombination: true });
- 
+                
                 // if (checkExistProductCombination) {
-                //     return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
-                // }
- 
-                if (existingCombination) {
-                    return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
+                    //     return resp.status(400).json({ message: `You can't create combination of ${checkExistProductCombination.sku_code} this sku code.`, success: false });
+                    // }
+                    
+                    if (existingCombination) {
+                        return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
+                    }
                 }
-            }
- 
+                
+                const parent_product = await ParentProduct.create(data);
+                const sku: any = [];
+                
             for (const combData of combinations) {
                 const product = await Product.findOne({ sku_code: combData.sku_code });
                 const combinationProductData = {
