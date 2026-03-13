@@ -4333,13 +4333,22 @@ export const deleteProduct = async (req: Request, resp: Response) => {
     const parentProduct = await ParentProduct.findById(id);
 
     if (parentProduct) {
-      await ParentProduct.updateOne({ _id: id }, { $set: { isDeleted: true } });
+      await ParentProduct.updateOne(
+        { _id: id },
+        {
+            $set: { isDeleted: true, sku: []}
+        }
+      );
 
       await Product.updateMany(
         { parent_id: id },
         { $set: { parent_id: null } }
       );
 
+      await CombinationProduct.deleteMany({
+        product_id: id
+      });
+      
       return resp.status(200).json({
         message: 'Parent product deleted successfully and all child products detached.',
       });
