@@ -15393,8 +15393,34 @@ export const getVouchers = async (req: Request, res: Response) => {
     try {
         const vouchers = await VoucherModel.find({}).sort({ createdAt: -1 });
 
+        const voucherIds = vouchers.map(v => v._id);
+
+        const voucherUsage = await Sales.aggregate([
+            {
+                $match: {
+                    voucher_id: { $in: voucherIds },
+                    payment_status: { $ne: "cancelled" }
+                }
+            },
+            {
+                $group: {
+                    _id: "$voucher_id",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const usageMap: any = {};
+
+        voucherUsage.forEach(v => {
+            usageMap[v._id.toString()] = v.count;
+        });
+
         const updatedVouchers = await Promise.all(
             vouchers.map(async (voucher) => {
+                const totalVoucherUses = usageMap[voucher._id.toString()] || 0;
+
+                const remainingUses = voucher.voucher_limit ? voucher.voucher_limit  - totalVoucherUses : null;
                 const startDateFormatted = voucher.startDate
                     ? res.locals.currentdate(voucher.startDate).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm')
                     : '';
@@ -15426,6 +15452,8 @@ export const getVouchers = async (req: Request, res: Response) => {
                     cart_amount: voucher.cart_amount,
                     max_amount: voucher.max_amount,
                     voucher_limit: voucher.voucher_limit,
+                    voucher_used: totalVoucherUses,
+                    voucher_remaining: remainingUses,
                     status: voucher.status,
                     discount_amount: voucher.discount_amount,
                     discount_type: voucher.discount_type,
