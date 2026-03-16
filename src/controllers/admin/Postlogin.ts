@@ -8428,6 +8428,7 @@ export const getProductBySku = async (req: Request, resp: Response) => {
     const data = {
       product_id: product._id,
       vendor_id: product.vendor_id,
+      parent_id: product.parent_id,
       price: product.price,
       sale_price: product.sale_price,
       sale_start_date: product.sale_start_date,
