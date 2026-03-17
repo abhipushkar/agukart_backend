@@ -6876,7 +6876,7 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                 await CombinationProduct.create(combinationProductData);
                 sku.push(combData.sku_code);
  
-                await Product.findByIdAndUpdate(combData.product_id,{ $set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku,},$addToSet: { variant_id: { $each: req.body.variant_id },variant_attribute_id: { $each: req.body.variant_attribute_id },},},{ new: true }
+                await Product.findByIdAndUpdate(combData.product_id,{ $set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku, variant_id: req.body.variant_id, variant_attribute_id: req.body.variant_attribute_id},},{ new: true }
              );
  
             }
@@ -6911,7 +6911,7 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                 await CombinationProduct.updateOne(query, { $set: updateData }, { upsert: true });
                 sku.push(combData.sku_code);
  
-                await Product.findByIdAndUpdate(combData.product_id,{$set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku,},$addToSet: {variant_id: { $each: req.body.variant_id || [] },variant_attribute_id: { $each: req.body.variant_attribute_id || [] },},},{ new: true });
+                await Product.findByIdAndUpdate(combData.product_id,{$set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku, variant_id: req.body.variant_id || [], variant_attribute_id: req.body.variant_attribute_id || []},},{ new: true });
  
             }
  
@@ -7008,14 +7008,23 @@ export const fetchParentProduct = async (req: CustomRequest, resp: Response) => 
             return resp.status(400).json({ message: 'Please Provide Id' });
         }
 
-        const data = await ParentProduct.findById(id)
-            .populate(['variant_id', 'variant_attribute_id'])
+        const parent: any = await ParentProduct.findById({ _id: id, isDeleted: false }).lean();
 
-        if (!data) {
+        if (!parent) {
             return resp.status(400).json({ message: 'Product Not Found.' });
         }
 
-        return resp.status(200).json({ message: 'Fetched successfully.', data, base_url: baseurl });
+        const variants = await Variant.find({ _id: { $in: parent.variant_id } }).lean();
+
+        const attributes = await VariantAttribute.find({ _id: { $in: parent.variant_attribute_id }, deleted_status: false }).lean();
+
+        const attrMap = new Map(attributes.map(attr => [attr._id.toString(), attr]));
+        const variantMap = new Map(variants.map(v => [v._id.toString(), v]));
+
+        parent.variant_attributes = parent.variant_attribute_id.map((id: any) => attrMap.get(id.toString())).filter(Boolean);
+        parent.variants = parent.variant_id.map((id: any) => variantMap.get(id.toString())).filter(Boolean);
+
+        return resp.status(200).json({ message: 'Fetched successfully.', data: parent, base_url: baseurl });
 
     } catch (err) {
         console.log(err)
