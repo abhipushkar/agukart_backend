@@ -1540,6 +1540,7 @@ export const addVariant = async (req: CustomRequest, resp: Response) => {
                         } 
                         eventBus.emit("attributeDeleted", { id, value: existingAttr?.attribute_value, variantName: correctVariantName }); 
                         eventBus.emit("variantAttributeSoftDeleted", { attributeId: id, }); 
+                        eventBus.emit("parentProductAttributeCleanup", { attributeId: id });
                     } 
                 } 
             } 
@@ -2000,7 +2001,7 @@ export const getAllActiveVariant = async (req: CustomRequest, resp: Response) =>
                 variant_name: data.variant_name
             };
 
-            const attrQuery: any = { variant: data._id };
+            const attrQuery: any = { variant: data._id, deleted_status: false};
 
             if (filter === 'active') {
                 attrQuery.status = true;
