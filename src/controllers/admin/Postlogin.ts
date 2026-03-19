@@ -1971,14 +1971,17 @@ export const variantAttributeList = async (req: CustomRequest, resp: Response) =
 
 export const getAllActiveVariant = async (req: CustomRequest, resp: Response) => {
     try {
-        const query: any = {
-            status: true
-        }
+        const filter = req.query.filter || 'active';
+        const query: any = {};
+        
+        if (filter === 'active') {
+            query.status = true;
 
-        if (req.query.type === 'Category') {
-            query.category_status = true
-        } else if (req.query.type === 'Product') {
-            query.product_status = true
+            if (req.query.type === 'Category') {
+                query.category_status = true;
+            } else if (req.query.type === 'Product') {
+                query.product_status = true;
+            }
         }
 
         const variant = await Variant.find(query);
@@ -1997,7 +2000,13 @@ export const getAllActiveVariant = async (req: CustomRequest, resp: Response) =>
                 variant_name: data.variant_name
             };
 
-            const variantAttr = await VariantAttribute.find({ variant: data._id, status: true, deleted_status: false });
+            const attrQuery: any = { variant: data._id };
+
+            if (filter === 'active') {
+                attrQuery.status = true;
+                attrQuery.deleted_status = false;
+            }
+            const variantAttr = await VariantAttribute.find(attrQuery);
 
             if (variantAttr) {
                 final['variant_attribute'] = variantAttr;
@@ -6876,7 +6885,7 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                 await CombinationProduct.create(combinationProductData);
                 sku.push(combData.sku_code);
  
-                await Product.findByIdAndUpdate(combData.product_id,{ $set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku, variant_id: req.body.variant_id, variant_attribute_id: req.body.variant_attribute_id},},{ new: true }
+                 await Product.findByIdAndUpdate(combData.product_id,{ $set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku,},$addToSet: { variant_id: { $each: req.body.variant_id },variant_attribute_id: { $each: req.body.variant_attribute_id },},},{ new: true }
              );
  
             }
@@ -6911,7 +6920,7 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                 await CombinationProduct.updateOne(query, { $set: updateData }, { upsert: true });
                 sku.push(combData.sku_code);
  
-                await Product.findByIdAndUpdate(combData.product_id,{$set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku, variant_id: req.body.variant_id || [], variant_attribute_id: req.body.variant_attribute_id || []},},{ new: true });
+                 await Product.findByIdAndUpdate(combData.product_id,{$set: {price: combData.price,sale_price: combData.sale_price,qty: combData.qty,sale_start_date: combData.sale_start_date,sale_end_date: combData.sale_end_date,seller_sku: combData.seller_sku,},$addToSet: {variant_id: { $each: req.body.variant_id || [] },variant_attribute_id: { $each: req.body.variant_attribute_id || [] },},},{ new: true });
  
             }
  
@@ -7000,39 +7009,70 @@ export const updateProductByField = async (req: CustomRequest, resp: Response) =
 }
 
 export const fetchParentProduct = async (req: CustomRequest, resp: Response) => {
-
     try {
-        let id = req.params.id
+        const id = req.params.id;
         const baseurl = process.env.ASSET_URL + '/uploads/parent_product/';
+
         if (!id) {
             return resp.status(400).json({ message: 'Please Provide Id' });
         }
 
-        const parent: any = await ParentProduct.findById({ _id: id, isDeleted: false }).lean();
+        const parent: any = await ParentProduct.findById(id).lean();
 
         if (!parent) {
             return resp.status(400).json({ message: 'Product Not Found.' });
         }
 
-        const variants = await Variant.find({ _id: { $in: parent.variant_id } }).lean();
+        const variants = await Variant.find({
+            _id: { $in: parent.variant_id }
+        }).lean();
 
-        const attributes = await VariantAttribute.find({ _id: { $in: parent.variant_attribute_id }, deleted_status: false }).lean();
+        const attributes = await VariantAttribute.find({
+            _id: { $in: parent.variant_attribute_id },
+            deleted_status: false
+        }).lean();
 
-        const attrMap = new Map(attributes.map(attr => [attr._id.toString(), attr]));
+        const combinations = await CombinationProduct.find({
+            product_id: parent._id
+        }).lean();
+
+        // 🔹 (optional) fetch actual products for combinations
+        const productIds = combinations.map(c => c.sku_product_id).filter(Boolean);
+
+        const products = await Product.find({
+            _id: { $in: productIds }
+        }).lean();
+
+        const attrMap = new Map(attributes.map(a => [a._id.toString(), a]));
         const variantMap = new Map(variants.map(v => [v._id.toString(), v]));
+        const productMap = new Map(products.map(p => [p._id.toString(), p]));
 
-        parent.variant_attributes = parent.variant_attribute_id.map((id: any) => attrMap.get(id.toString())).filter(Boolean);
-        parent.variants = parent.variant_id.map((id: any) => variantMap.get(id.toString())).filter(Boolean);
+        parent.variant_attributes = (parent.variant_attribute_id || [])
+            .map((id: any) => attrMap.get(id.toString()))
+            .filter(Boolean);
 
-        return resp.status(200).json({ message: 'Fetched successfully.', data: parent, base_url: baseurl });
+        parent.variants = (parent.variant_id || [])
+            .map((id: any) => variantMap.get(id.toString()))
+            .filter(Boolean);
+
+        parent.combinations = combinations.map(c => ({
+            ...c,
+            product: c.sku_product_id
+                ? productMap.get(c.sku_product_id.toString())
+                : null
+        }));
+
+        return resp.status(200).json({
+            message: 'Fetched successfully.',
+            data: parent,
+            base_url: baseurl
+        });
 
     } catch (err) {
-        console.log(err)
+        console.log(err);
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
     }
-
-
-}
+};
 
 export const addBlog = async (req: CustomRequest, res: Response) => {
     try {
