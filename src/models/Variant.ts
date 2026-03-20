@@ -4,6 +4,7 @@ const variantSchema = new Schema(
   {
     variant_name: {
       type: String,
+      trim: true,
       required: true,
       unique:true
     },

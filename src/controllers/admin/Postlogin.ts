@@ -1438,6 +1438,8 @@ export const addVariant = async (req: CustomRequest, resp: Response) => {
             return cleaned; 
         }; 
 
+        let restoredAttributes: any[] = [];
+
         // check duplicate 
         const existingVariant = await Variant.findOne({ variant_name }); 
         if (existingVariant && req.body._id == "new") { 
@@ -1522,14 +1524,17 @@ export const addVariant = async (req: CustomRequest, resp: Response) => {
             const existingVariant = await Variant.findById(variantId); 
             const oldName = existingVariant?.variant_name; 
 
-            if (Array.isArray(deletedStatusIds) && deletedStatusIds.length > 0) { 
+            const validObjectIds = (deletedStatusIds || []).filter((id: string) => mongoose.Types.ObjectId.isValid(id)).map((id: string) => new mongoose.Types.ObjectId(id));
+
+            if (validObjectIds.length > 0) { 
                 await VariantAttribute.updateMany( 
-                    { _id: { $in: deletedStatusIds.map((id: string) => new mongoose.Types.ObjectId(id)) } }, 
+                    { _id: { $in: validObjectIds } }, 
                     { $set: { deleted_status: true, status: false } } 
                 ); 
 
                 // 🔹 Emit event for each soft-deleted attribute 
-                for (const id of deletedStatusIds) { 
+                for (const id of deletedStatusIds) {
+                    if (!mongoose.Types.ObjectId.isValid(id)) continue; 
                     const existingAttr = await VariantAttribute.findById(id); 
                     if (existingAttr) { 
                         let correctVariantName = existingVariant?.variant_name; 
@@ -1623,6 +1628,30 @@ export const addVariant = async (req: CustomRequest, resp: Response) => {
                         variantName: correctVariantName 
                     }); 
                 } else { 
+                    const value = attr.attr_name?.trim();
+
+                    const existing = await VariantAttribute.findOne({
+                        variant: variantId,
+                        attribute_value: value
+                    });
+
+                    if (existing) {
+                        if (existing.deleted_status) {
+                            existing.deleted_status = false;
+                            existing.status = true;
+                            existing.deletedAt = null as any;
+                            existing.sort_order = attr.sort_order;
+                            
+                            await existing.save();
+
+                            restoredAttributes.push({
+                                id: existing._id,
+                                value: existing.attribute_value
+                            });
+
+                            continue;
+                        }
+                    }
                     thumbnail = thumbFile ? await saveFile(thumbFile, cleanFileName(thumbFile.filename, "thumbnail")) : ""; 
                     preview_image = previewFile ? await saveFile(previewFile, cleanFileName(previewFile.filename, "preview_image")) : ""; 
                     main_images = mainFiles.length ? await Promise.all(mainFiles.map(f => saveFile(f, cleanFileName(f.filename, "main_images")))) : []; 
@@ -1658,10 +1687,18 @@ export const addVariant = async (req: CustomRequest, resp: Response) => {
             // 🔹 Emit event for Variant update 
             eventBus.emit("variantUpdated", { id: variantId, oldName, name: variant_name }); 
             
-            return resp.status(200).json({ message: "Variant updated successfully." }); 
+            return resp.status(200).json({
+                message: "Variant updated successfully.",
+                restoredAttributes
+            }); 
         } 
-    } catch (err) { 
+    } catch (err: any) { 
         console.log(err); 
+        if (err.code === 11000) {
+            return resp.status(400).json({
+                message: "Variant name already exists. Please choose a different name.",
+            });
+        }
         return resp 
             .status(500) 
             .json({ message: "Something went wrong. Please try again." }); 
@@ -7037,16 +7074,37 @@ export const fetchParentProduct = async (req: CustomRequest, resp: Response) => 
             product_id: parent._id
         }).lean();
 
-        // 🔹 (optional) fetch actual products for combinations
-        const productIds = combinations.map(c => c.sku_product_id).filter(Boolean);
+        const products = await Product.find({ parent_id: parent._id }).lean();
 
-        const products = await Product.find({
-            _id: { $in: productIds }
-        }).lean();
+        const getProductStatus = (product: any) => {
+
+            if (product?.draft_status) return 'draft';
+
+            const qty = Number(product?.qty || 0);
+            let isSoldOut = false;
+
+            if (product?.isCombination) {
+                if (product?.form_values?.isCheckedQuantity) {
+                    const hasStock = product?.combinationData?.some((group: any) => group?.combinations?.some((c: any) => Number(c?.qty || 0) > 0)
+                    );
+                    if (!hasStock) isSoldOut = true;
+                } else {
+                    isSoldOut = true;
+                }
+            } else {
+                if (qty <= 0) isSoldOut = true;
+            }
+
+            if (isSoldOut) return 'sold-out';
+            if (!product?.status) return 'inactive';
+
+            return 'active';
+        };
 
         const attrMap = new Map(attributes.map(a => [a._id.toString(), a]));
         const variantMap = new Map(variants.map(v => [v._id.toString(), v]));
         const productMap = new Map(products.map(p => [p._id.toString(), p]));
+        const productSkuMap = new Map(products.map(p => [p.sku_code, p]));
 
         parent.variant_attributes = (parent.variant_attribute_id || [])
             .map((id: any) => attrMap.get(id.toString()))
@@ -7056,12 +7114,28 @@ export const fetchParentProduct = async (req: CustomRequest, resp: Response) => 
             .map((id: any) => variantMap.get(id.toString()))
             .filter(Boolean);
 
-        parent.combinations = combinations.map(c => ({
-            ...c,
-            product: c.sku_product_id
-                ? productMap.get(c.sku_product_id.toString())
+        parent.combinations = combinations.map(c => {
+
+            let product = null;
+
+            if (c.sku_product_id && productMap.has(c.sku_product_id.toString())) {
+                product = productMap.get(c.sku_product_id.toString());
+            }
+
+            if (!product && c.sku_code && productSkuMap.has(c.sku_code)) {
+                product = productSkuMap.get(c.sku_code);
+            }
+
+            return {
+                ...c,
+                product: product ? {
+                    ...product,
+                    productStatus: getProductStatus(product)
+                }
                 : null
-        }));
+            };
+
+        });
 
         return resp.status(200).json({
             message: 'Fetched successfully.',

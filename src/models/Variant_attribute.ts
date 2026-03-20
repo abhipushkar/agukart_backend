@@ -9,6 +9,7 @@ const variantAttributeSchema = new Schema(
     },
     attribute_value: {
       type: String,
+      trim: true,
       default: null,
     },
     sort_order: {
