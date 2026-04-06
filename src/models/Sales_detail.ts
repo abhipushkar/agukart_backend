@@ -211,6 +211,15 @@ const salesDetailsSchema = new Schema(
             type: Number,
             default: ''
         },
+        isPinned: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
+        pinnedAt: {
+            type: Date,
+            default: null
+        },
         couponData: {
             type: Object,
             default: {}

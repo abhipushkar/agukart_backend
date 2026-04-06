@@ -261,7 +261,8 @@ import {
     updateDeliveryServiceSortOrder,
     completeOrder,
     editShipment,
-    updateStatusOfShipmentAndOrder
+    updateStatusOfShipmentAndOrder,
+    pinUnpinSubOrder
 } from "../controllers/admin/Postlogin";
 
 
@@ -425,6 +426,7 @@ routes.patch('/edit-shipment/:sub_order_id/:shipment_id', editShipment)
 routes.post('/update-shipment-status', updateStatusOfShipmentAndOrder)
 routes.post('/order-history', orderHistory)
 routes.post('/getOrderInvoice', getOrderInvoice)
+routes.post('/pinUnpin-suborder', pinUnpinSubOrder)
 // routes.post('/sales-detail/:type', salesDetail)
 // routes.post('/order-ready', orderReady)
 // routes.post('/return-approve', returnApprove)

@@ -5104,6 +5104,7 @@ export const editVariantProductByID = async (req: CustomRequest, resp: Response)
 export const salesList = async (req: CustomRequest, resp: Response) => {
     try {
         const order_status = req.params.type;
+        const isPinned = req.query.isPinned;
         const startDate = req.query.startDate
             ? resp.locals.currentdate(req.query.startDate).startOf("day").toDate()
             : null;
@@ -5126,6 +5127,7 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
+        const isPinnedFilter = isPinned === "true" ? true : isPinned === "false" ? false : null;
 
         const pipe: any[] = [];
 
@@ -5144,8 +5146,9 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                     pipeline: [
                         {
                             $match: {
-                                ...(order_status ? { order_status } : {}),
-                            },
+                                  ...( isPinnedFilter === true ? {} : (order_status ? { order_status } : {})),
+                                  ...(isPinnedFilter !== null ? { isPinned: isPinnedFilter } : {}),
+                                }
                         },
 
                         // ---------- Product / Variant lookups (as-is) ----------
@@ -5862,6 +5865,38 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
 
     }
 
+};
+
+export const pinUnpinSubOrder = async (req: CustomRequest, resp: Response) => {
+    try {
+        const { sub_order_id, isPinned } = req.body;
+
+        if (!sub_order_id) {
+            return resp.status(400).json({
+                message: "sub_order_id is required."
+            });
+        }
+
+        const updateData: any = {
+            isPinned: isPinned,
+            pinnedAt: isPinned ? new Date() : null
+        };
+
+        await SalesDetailsModel.updateMany(
+            { sub_order_id },
+            { $set: updateData }
+        );
+
+        return resp.status(200).json({
+            message: isPinned ? "Sub-order pinned successfully." : "Sub-order unpinned successfully."
+        });
+
+    } catch (error: any) {
+        console.error(error);
+        return resp.status(500).json({
+            message: 'Something went wrong. Please try again.'
+        });
+    }
 };
 
 export const completeOrder = async (req: CustomRequest, resp: Response) => {
@@ -7076,30 +7111,27 @@ export const fetchParentProduct = async (req: CustomRequest, resp: Response) => 
 
         const products = await Product.find({ parent_id: parent._id }).lean();
 
-        const getProductStatus = (product: any) => {
+       const getProductStatus = (product: any) => {
+    if (!product) return 'sold-out';
+    
+    if (product?.draft_status) return 'draft';
 
-            if (product?.draft_status) return 'draft';
+    const qty = Number(product?.qty || 0);
 
-            const qty = Number(product?.qty || 0);
-            let isSoldOut = false;
+    if (product?.form_values?.isCheckedQuantity) {
+        const hasStock = product?.combinationData?.some((group: any) =>
+            group?.combinations?.some((c: any) => Number(c?.qty || 0) > 0)
+        );
+        if (!hasStock) return 'sold-out';
+    } else {
+        // simple qty check
+        if (qty <= 0) return 'sold-out';
+    }
 
-            if (product?.isCombination) {
-                if (product?.form_values?.isCheckedQuantity) {
-                    const hasStock = product?.combinationData?.some((group: any) => group?.combinations?.some((c: any) => Number(c?.qty || 0) > 0)
-                    );
-                    if (!hasStock) isSoldOut = true;
-                } else {
-                    isSoldOut = true;
-                }
-            } else {
-                if (qty <= 0) isSoldOut = true;
-            }
+    if (!product?.status) return 'inactive';
 
-            if (isSoldOut) return 'sold-out';
-            if (!product?.status) return 'inactive';
-
-            return 'active';
-        };
+    return 'active';
+};
 
         const attrMap = new Map(attributes.map(a => [a._id.toString(), a]));
         const variantMap = new Map(variants.map(v => [v._id.toString(), v]));
