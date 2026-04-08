@@ -1183,13 +1183,7 @@ export const checkoutAddressEligibility = async (
   };
 };
 
-export function resolvePriceAndQty({
-  product,
-  cartItem,
-}: {
-  product: any;
-  cartItem: any;
-}) {
+export function resolvePriceAndQty({ product, cartItem }: any) {
   const basePrice = Number(product.sale_price || 0);
   const baseQty = Number(product.qty || 0);
 
@@ -1197,44 +1191,64 @@ export function resolvePriceAndQty({
   const isCheckedQuantity = !!product.form_values?.isCheckedQuantity;
 
   const priceDrivenByCombination = isCheckedPrice && basePrice === 0;
-
   const qtyDrivenByCombination = isCheckedQuantity && baseQty === 0;
 
   let resolvedPrice = basePrice;
   let resolvedQty = baseQty;
 
-  if (!priceDrivenByCombination && !qtyDrivenByCombination) {
-    return { price: resolvedPrice, qty: resolvedQty };
-  }
+  const selectedValues = (cartItem.variants || []).map((v: any) =>
+    String(v.attributeName)
+  );
 
-  const selectedVariants = cartItem.variants || [];
+  let matchedPrice: number | null = null;
+  let matchedQty: number | null = null;
 
+  // ✅ PASS 1: FULL MATCH (price + qty)
   for (const group of product.combinationData || []) {
-    const groupName = String(group.variant_name).trim();
-
     for (const comb of group.combinations || []) {
-      const isMatch = selectedVariants.every((v: any) => {
-        return (
-          String(v.variantName).trim() === groupName &&
-          comb.combValues?.includes(String(v.attributeName))
-        );
-      });
+      const combValues = (comb.combValues || []).map(String);
 
-      if (!isMatch) continue;
+      const isFullMatch =
+        combValues.length === selectedValues.length &&
+        combValues.every((v: string) => selectedValues.includes(v));
+
+      if (!isFullMatch) continue;
 
       if (priceDrivenByCombination && comb.price !== "") {
-        resolvedPrice = Number(comb.price);
+        matchedPrice = Number(comb.price);
       }
 
       if (qtyDrivenByCombination && comb.qty !== "") {
-        resolvedQty = Number(comb.qty);
+        matchedQty = Number(comb.qty);
       }
-
-      return { price: resolvedPrice, qty: resolvedQty };
     }
   }
 
-  return { price: resolvedPrice, qty: 0 };
+  // ✅ PASS 2: QTY FALLBACK (VERY IMPORTANT)
+  if (matchedQty === null && qtyDrivenByCombination) {
+    const qtyGroupName = product.form_values?.quantities;
+
+    for (const group of product.combinationData || []) {
+      if (group.variant_name !== qtyGroupName) continue;
+
+      for (const comb of group.combinations || []) {
+        const combValues = (comb.combValues || []).map(String);
+
+        const isPartialMatch = combValues.every((v: string) =>
+          selectedValues.includes(v)
+        );
+
+        if (isPartialMatch && comb.qty !== "") {
+          matchedQty = Number(comb.qty);
+        }
+      }
+    }
+  }
+
+  return {
+    price: matchedPrice ?? resolvedPrice,
+    qty: matchedQty ?? resolvedQty,
+  };
 }
 
 function generateSubOrderId(orderId: string): string {
@@ -1769,8 +1783,7 @@ for (const vendorId in vendorShippingMap) {
       const vendorSubOrderMap = new Map<string, string>();
       const saleId = sales._id;
       if (cartResult.length !== 0) {
-        await Promise.all(
-          cartResult.map(async (item) => {
+        for (const item of cartResult) {
             let couponData = null;
             if (isVendorCheckout) {
               couponData = cartCoupon || null;
@@ -1911,24 +1924,60 @@ for (const vendorId in vendorShippingMap) {
               Number(productData.qty) === 0;
 
             if (qtyDrivenByCombination) {
-              // Deduct ONLY from matched combination
-              for (const group of productData.combinationData || []) {
-                for (const comb of group.combinations || []) {
-                  const combValues = (comb.combValues || []).map(String);
-                  const selectedValues = (item.variant_attribute_id || []).map(
-                    String,
-                  );
+  const normalize = (str: any) =>
+    String(str).trim().toLowerCase();
 
-                  const isMatch =
-                    combValues.length === selectedValues.length &&
-                    combValues.every((v: string) => selectedValues.includes(v));
+  const qtyGroupName = productData.form_values?.quantities;
 
-                  if (isMatch) {
-                    comb.qty = String(updatedQty);
-                  }
-                }
-              }
-            } else {
+  let deducted = false;
+
+  const selectedValues = (item.variants || []).map((v: any) =>
+    normalize(v.attributeName)
+  );
+
+  for (const group of productData.combinationData || []) {
+    // ✅ FIXED GROUP MATCH
+    if (normalize(group.variant_name) !== normalize(qtyGroupName)) continue;
+
+    for (const comb of group.combinations || []) {
+      const combValues = (comb.combValues || []).map((v: any) =>
+        normalize(v)
+      );
+
+      const isPartialMatch = combValues.every((v: string) =>
+        selectedValues.includes(v)
+      );
+
+      console.log("FINAL DEBUG", {
+        group: group.variant_name,
+        combValues,
+        selectedValues,
+        isPartialMatch,
+        qty: comb.qty
+      });
+
+      if (isPartialMatch && comb.qty !== "") {
+        const currentCombQty = Number(comb.qty || 0);
+        const newQty = currentCombQty - Number(item.qty);
+
+        if (newQty < 0) {
+          throw new Error("Stock mismatch during deduction");
+        }
+
+        comb.qty = String(newQty);
+        productData.markModified("combinationData");
+        deducted = true;
+        break;
+      }
+    }
+
+    if (deducted) break;
+  }
+
+  if (!deducted) {
+    throw new Error("Failed to deduct stock correctly");
+  }
+} else {
               productData.qty = String(updatedQty);
             }
 
@@ -2036,8 +2085,8 @@ for (const vendorId in vendorShippingMap) {
             await productData.save();
 
             await Salesdetail.create(data);
-          }),
-        );
+          }
+  
       }
       await Cart.deleteMany({
         user_id: req.user._id,
