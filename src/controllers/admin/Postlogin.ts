@@ -2519,15 +2519,29 @@ const optMainImages = files.filter(
               try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
             }
 
-const oldOpt = isUpdate
-  ? findOldCustomizationOption(
-      existingProducts,
-      cust.customization_name, 
-      opt.option_name         
-    )
-  : null;
+let oldOpt = null;
 
-const oldMainImages = oldOpt?.main_images || [];
+if (isUpdate) {
+  const isVariant =
+    cust.isVariant === true || cust.isVariant === "true";
+
+  if (isVariant) {
+    oldOpt =
+      existingProducts?.customizationData?.customizations?.[cIdx]
+        ?.optionList?.[oIdx] || null;
+  } else {
+    oldOpt =
+      existingProducts?.customizationData?.customizations?.[cIdx]
+        ?.optionList?.find(
+          (o: any) =>
+            o.optionName &&
+            opt.optionName &&
+            o.optionName === opt.optionName
+        ) || null;
+  }
+}
+
+const oldMainImages = Array.isArray(oldOpt?.main_images) ? oldOpt.main_images : [];
 
 // clone
 const mergedMainImages: (string | null)[] = [...oldMainImages];
@@ -2552,17 +2566,8 @@ deleteIndexes.forEach((idx: number) => {
   }
 });
 
-const bodyCustomization = req.body?.customizationData?.customizations
-  ?.find((c: any) =>
-    c.customization_name === cust.customization_name ||
-    c._id === cust._id
-  );
-
-const bodyOption = bodyCustomization?.optionList
-  ?.find((o: any) =>
-    o.option_name === opt.option_name ||
-    o._id === opt._id
-  );
+const bodyCustomization = req.body?.customizationData?.customizations?.[cIdx];
+const bodyOption = bodyCustomization?.optionList?.[oIdx];
 
 const bodyMainImages = bodyOption?.main_images || {};
 
@@ -2570,14 +2575,9 @@ Object.keys(bodyMainImages).forEach((key) => {
   const idx = Number(key);
   if (Number.isNaN(idx)) return;
 
-if (
-  bodyMainImages[key] === "" ||
-  bodyMainImages[key] === undefined ||
-  bodyMainImages[key] === null ||
-  bodyMainImages[key] === "null"
-) {
-  mergedMainImages[idx] = null;
-}
+  if (bodyMainImages[key] === "__DELETE__") {
+    mergedMainImages[idx] = null;
+  }
 });
 
 // 3️⃣ Apply uploaded files (replace exact index)
@@ -2603,7 +2603,7 @@ for (const file of optMainImages) {
               preview_image: optPreview
                 ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
                 : opt.preview_image || "",
-              main_images: normalizeNullArray(mergedMainImages),
+              main_images: mergedMainImages.length > 0 ? normalizeNullArray(mergedMainImages) : opt.main_images || [],
               edit_main_image: optEditMain
                 ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
                 : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
@@ -2764,14 +2764,9 @@ Object.keys(bodyMainImages).forEach((key) => {
   const idx = Number(key);
   if (Number.isNaN(idx)) return;
 
-if (
-  bodyMainImages[key] === "" ||
-  bodyMainImages[key] === undefined ||
-  bodyMainImages[key] === null ||
-  bodyMainImages[key] === "null"
-) {
-  mergedMainImages[idx] = null;
-}
+  if (bodyMainImages[key] === "__DELETE__") {
+    mergedMainImages[idx] = null;
+  }
 });
 
 // 3️⃣ Apply uploaded files (replace)
@@ -2903,12 +2898,7 @@ Object.keys(bodyProductImages).forEach((key) => {
   const idx = Number(key);
   if (Number.isNaN(idx)) return;
 
-if (
-  bodyProductImages[key] === "" ||
-  bodyProductImages[key] === undefined ||
-  bodyProductImages[key] === null ||
-  bodyProductImages[key] === "null"
-) {
+if (bodyProductImages[key] === "__DELETE__") {
   mergedProductMainImages[idx] = null;
 }
 });

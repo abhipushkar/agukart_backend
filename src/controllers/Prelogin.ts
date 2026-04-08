@@ -1848,7 +1848,8 @@ export const getProductList = async (req: Request, resp: Response) => {
       createdAt: 1,
       category: 1,
       qty: 1,
-      combinationData: 1
+      combinationData: 1,
+      form_values: 1
     };
 
     // ---------------------------
@@ -2019,6 +2020,7 @@ export const getProductList = async (req: Request, resp: Response) => {
     category: 1,
     qty: 1,
     combinationData: 1,
+    form_values: 1,
     shop_name: { $ifNull: ["$vendor.shop_name", ""] },
   }
 });
