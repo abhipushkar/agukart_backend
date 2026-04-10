@@ -3649,11 +3649,12 @@ effectiveQty: {
 
                       inactiveReason: {
                         $cond: {
-                          if: { $ne: ["$$pd.inactiveReason", ""] },
-                          then: "$$pd.inactiveReason",
+                          if: { $ne: ["$$pd.inActiveReason", ""] },
+                          then: "$$pd.inActiveReason",
                           else: null,
                         },
                       },
+                      deletedVariantIds: "$$pd.deletedVariantIds",
                     },
                   ],
                 },
@@ -4101,11 +4102,12 @@ productStatus: {
 },
       inactiveReason: {
         $cond: {
-          if: { $ne: ["$inactiveReason", ""] },
-          then: "$inactiveReason",
+          if: { $ne: ["$inActiveReason", ""] },
+          then: "$inActiveReason",
           else: null,
         },
       },
+      deletedVariantIds: "$deletedVariantIds",
     },
   }
 );
@@ -4163,6 +4165,8 @@ unionPipeline.push({
         else: "$productStatus",
       },
     },
+    inactiveReason: 1,
+    deletedVariantIds: 1,
   },
 });
 

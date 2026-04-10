@@ -74,22 +74,26 @@ eventBus.on("attributeUpdated", async (attr) => {
     );
     console.log("combinationData update:", result1);
 
-    // 2. Update variations_data values
+    // 2. Update variations_data values (STRICT UPDATE ONLY)
     if (attr.oldValue && attr.oldValue !== attr.value) {
       await Product.updateMany(
-        { "variations_data.name": attr.variantName },
-        { $pull: { "variations_data.$.values": attr.oldValue } }
-      );
-      await Product.updateMany(
-        { "variations_data.name": attr.variantName },
-        { $addToSet: { "variations_data.$.values": attr.value } }
-      );
-    } else {
-      await Product.updateMany(
-        { "variations_data.name": attr.variantName },
-        { $addToSet: { "variations_data.$.values": attr.value } }
-      );
-    }
+      {
+        "variations_data.name": attr.variantName,
+        "variations_data.values": attr.oldValue
+      },
+      {
+        $set: {
+          "variations_data.$[v].values.$[val]": attr.value
+        }
+      },
+      {
+        arrayFilters: [
+          { "v.name": attr.variantName },
+          { "val": attr.oldValue }
+        ]
+      }
+    );
+  }
 
     console.log(
       `✅ Attribute '${attr.oldValue || "[missing oldValue]"}' → '${
@@ -136,8 +140,13 @@ eventBus.on("attributeDeleted", async (attr) => {
 
     // 3. Remove from variations_data
     await Product.updateMany(
-      { "variations_data.name": attr.variantName },
-      { $pull: { "variations_data.$.values": attr.value } }
+      {
+        "variations_data.name": attr.variantName,
+        "variations_data.values": attr.value
+      },
+      {
+        $pull: { "variations_data.$.values": attr.value }
+      }
     );
 
     console.log(
@@ -167,7 +176,7 @@ eventBus.on("variantDeleted", async (variant) => {
       {
         $set: {
           status: false,                  // globally inactive
-          inactiveReason: "variant_deleted"
+          inActiveReason: "variant_deleted"
         },
         $addToSet: { deletedVariantIds: variantIdStr } // track which variant caused it
       }
