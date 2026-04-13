@@ -4320,6 +4320,96 @@ export const productChangeStatus = async (req: CustomRequest, resp: Response) =>
     }
 };
 
+export const restoreProductAfterDeletedVarients = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { productId } = req.params;
+    const { variantIds = [] } = req.body;
+
+    if (!productId) {
+      return resp.status(400).json({
+        message: "productId is required",
+        success: false
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return resp.status(400).json({
+        message: "Invalid productId",
+        success: false
+      });
+    }
+
+    if (variantIds.length > 0) {
+      await Product.updateOne(
+        { _id: productId },
+        {
+          $pull: {
+            deletedVariantIds: { $in: variantIds }
+          }
+        }
+      );
+
+      const product = await Product.findById(productId).select("deletedVariantIds");
+
+      if (!product) {
+        return resp.status(404).json({
+          message: "Product not found",
+          success: false
+        });
+      }
+
+      if (!product.deletedVariantIds || product.deletedVariantIds.length === 0) {
+        await Product.updateOne(
+          { _id: productId },
+          {
+            $set: {
+              status: true,
+              inActiveReason: ""
+            }
+          }
+        );
+      } else {
+        await Product.updateOne(
+          { _id: productId },
+          {
+            $set: {
+              status: false,
+              inActiveReason: "variant_deleted"
+            }
+          }
+        );
+      }
+    }
+
+    else {
+      await Product.updateOne(
+        { _id: productId },
+        {
+          $set: {
+            status: true,
+            inActiveReason: "",
+            deletedVariantIds: []
+          }
+        }
+      );
+    }
+
+    const updatedProduct = await Product.findById(productId);
+
+    return resp.status(200).json({
+      message: "Product restored successfully",
+      data: updatedProduct,
+      success: true
+    });
+
+  } catch (error: any) {
+    console.error("restoreProduct error:", error);
+    return resp.status(500).json({
+      message: "Something went wrong",
+      success: false
+    });
+  }
+};
 
 export const changeProductSortOrder = async (req: CustomRequest, resp: Response) => {
     try {
@@ -4773,6 +4863,7 @@ export const getVariantDataByCategoryId = async (req: Request, resp: Response) =
                 guide_description?: string;
                 guide_file?: string;
                 guide_type?: string;
+                deletedAt?: Date | null;
                 variant_attribute?: any[];
             }
             let final: FinalData = {
@@ -4781,7 +4872,8 @@ export const getVariantDataByCategoryId = async (req: Request, resp: Response) =
                 guide_name: data.guide_name,
                 guide_description: data.guide_description,
                 guide_file: data.guide_file,
-                guide_type: data.guide_type
+                guide_type: data.guide_type,
+                deletedAt: data.deletedAt
             };
 
             const variantAttr = await VariantAttribute.find({ variant: data._id, status: true, deleted_status: false }).sort({ sort_order: 1 });

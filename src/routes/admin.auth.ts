@@ -262,7 +262,8 @@ import {
     completeOrder,
     editShipment,
     updateStatusOfShipmentAndOrder,
-    pinUnpinSubOrder
+    pinUnpinSubOrder,
+    restoreProductAfterDeletedVarients
 } from "../controllers/admin/Postlogin";
 
 
@@ -396,6 +397,7 @@ routes.post('/add-description-images', uploadDescImages);
 routes.get('/get-product', getProductList)
 routes.get('/get-active-brands', getAllActiveBrands)
 routes.post('/change-status-product', productChangeStatus);
+routes.patch("/restore-product-after-deletedVariants/:productId", restoreProductAfterDeletedVarients);
 routes.post('/change-product-sort-order', changeProductSortOrder)
 routes.post('/changeBestSellerProduct', changeBestSellerProduct);
 routes.post('/changePopularGiftProduct', changePopularGiftProduct);
