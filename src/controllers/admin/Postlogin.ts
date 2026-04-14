@@ -466,93 +466,232 @@ export const getSlider = async (req: Request, resp: Response) => {
 };
 
 export const addCategory = async (req: CustomRequest, resp: Response) => {
-    try {
-        const { title, description, meta_title, meta_keywords, meta_description, variant_id, parent_id, bestseller, equalTo, productsMatch, value, restricted_keywords, attributeList_id } = req.body;
+  try {
+    const {
+      title,
+      description,
+      meta_title,
+      meta_keywords,
+      meta_description,
+      variant_id = [],
+      attributeList_id = [],
+      parent_id,
+      bestseller,
+      equalTo,
+      productsMatch,
+      value,
+      restricted_keywords
+    } = req.body;
 
-        // const existingCategory = await Category.findOne({ title });
+    const toObjectIds = (arr: any[]) =>
+      arr.map(id => new mongoose.Types.ObjectId(id));
 
-        // if (existingCategory && req.body._id == 'new') {
-        //     return resp.status(400).json({ message: 'Category already exists.' });
-        // }
+    const mergeIds = (arrays: any[]) => {
+      const map = new Map<string, mongoose.Types.ObjectId>();
 
-        let parent_slug = '';
-
-        if (parent_id && parent_id !== null) {
-            const parentData = await Category.findOne({ _id: parent_id });
-            if (parentData) {
-                parent_slug = parentData.slug;
-            }
-        }
-
-        let slug = slugify(title, {
-            lower: true,
-            remove: /[*+~.()'"!:@]/g,
+      arrays.forEach(arr => {
+        arr?.forEach((id: any) => {
+          const key = id.toString();
+          map.set(key, new mongoose.Types.ObjectId(id));
         });
+      });
 
-        if (parent_slug) {
-            slug = `${parent_slug}-${slug}`;
+      return Array.from(map.values());
+    };
+
+    const getParentChain = async (parentId: string) => {
+      const parents: any[] = [];
+
+      let current = await Category.findById(parentId)
+        .select('variant_id attributeList_id parent_id')
+        .lean();
+
+      while (current) {
+        parents.push(current);
+        if (!current.parent_id) break;
+
+        current = await Category.findById(current.parent_id)
+          .select('variant_id attributeList_id parent_id')
+          .lean();
+      }
+
+      return parents;
+    };
+
+    const getAllChildren = async (categoryId: string) => {
+      const children: any[] = [];
+      const stack = [categoryId];
+
+      while (stack.length) {
+        const current = stack.pop();
+
+        const childs = await Category.find({ parent_id: current })
+          .select('_id variant_id attributeList_id')
+          .lean();
+
+        for (const child of childs) {
+          children.push(child);
+          stack.push(child._id.toString());
         }
+      }
 
-        if (req.body._id == 'new') {
-            const data = await Category.create({
-                description,
-                meta_description,
-                meta_keywords,
-                meta_title,
-                title,
-                slug,
-                parent_id,
-                parent_slug,
-                variant_id,
-                attributeList_id,
-                bestseller,
-                productsMatch,
-                equalTo,
-                value,
-                restricted_keywords,
-                conditions: req.body.conditions || [],
-                conditionType: req.body.conditionType || 'all',
-                isAutomatic: req.body.isAutomatic || false,
-                categoryScope: req.body.categoryScope || 'all',
-                selectedCategories: req.body.selectedCategories || []
-            });
+      return children;
+    };
 
-            return resp.status(200).json({ message: 'Category created successfully.', success: true, data });
-        } else {
-            const query = { _id: req.body._id };
-            const updateData = {
-                $set: {
-                    title,
-                    parent_id,
-                    parent_slug,
-                    variant_id,
-                    attributeList_id,
-                    slug,
-                    bestseller,
-                    productsMatch,
-                    equalTo,
-                    value,
-                    description,
-                    meta_description,
-                    meta_keywords,
-                    meta_title,
-                    restricted_keywords,
-                    conditions: req.body.conditions || [],
-                    conditionType: req.body.conditionType || 'all',
-                    isAutomatic: req.body.isAutomatic ?? false,
-                    categoryScope: req.body.categoryScope || 'all',
-                    selectedCategories: req.body.selectedCategories || []
-                },
-            };
+    let parent_slug = '';
 
-            await Category.updateOne(query, updateData);
-
-            return resp.status(200).json({ message: 'Category updated successfully.' });
-        }
-    } catch (err) {
-        console.log(err);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    if (parent_id) {
+      const parentData = await Category.findById(parent_id);
+      if (parentData) parent_slug = parentData.slug;
     }
+
+    let slug = slugify(title, {
+      lower: true,
+      remove: /[*+~.()'"!:@]/g,
+    });
+
+    if (parent_slug) {
+      slug = `${parent_slug}-${slug}`;
+    }
+
+    if (req.body._id === 'new') {
+
+      const cleanVariantIds = toObjectIds(variant_id);
+      const cleanAttributeIds = toObjectIds(attributeList_id);
+
+      let finalVariants = [...cleanVariantIds];
+      let finalAttributes = [...cleanAttributeIds];
+
+      if (parent_id) {
+        const parents = await getParentChain(parent_id);
+
+        const parentVariants = parents.map(p => p.variant_id);
+        const parentAttributes = parents.map(p => p.attributeList_id);
+
+        finalVariants = mergeIds([finalVariants, ...parentVariants]);
+        finalAttributes = mergeIds([finalAttributes, ...parentAttributes]);
+      }
+
+      const data = await Category.create({
+        title,
+        slug,
+        parent_id,
+        parent_slug,
+        description,
+        meta_title,
+        meta_keywords,
+        meta_description,
+        variant_id: finalVariants,
+        attributeList_id: finalAttributes,
+        bestseller,
+        productsMatch,
+        equalTo,
+        value,
+        restricted_keywords,
+        conditions: req.body.conditions || [],
+        conditionType: req.body.conditionType || 'all',
+        isAutomatic: req.body.isAutomatic || false,
+        categoryScope: req.body.categoryScope || 'all',
+        selectedCategories: req.body.selectedCategories || []
+      });
+
+      return resp.status(200).json({
+        message: 'Category created successfully.',
+        success: true,
+        data
+      });
+    }
+
+    const existingCategory = await Category.findById(req.body._id);
+
+    if (!existingCategory) {
+      return resp.status(404).json({ message: 'Category not found' });
+    }
+
+    const existingVariantIds = existingCategory.variant_id.map((x: any) => x.toString());
+    const existingAttributeIds = existingCategory.attributeList_id.map((x: any) => x.toString());
+
+    const newVariants = variant_id.filter(
+      (v: any) => !existingVariantIds.includes(v.toString())
+    );
+
+    const newAttributes = attributeList_id.filter(
+      (a: any) => !existingAttributeIds.includes(a.toString())
+    );
+
+    const cleanVariantIds = toObjectIds(variant_id);
+    const cleanAttributeIds = toObjectIds(attributeList_id);
+
+    const finalVariants = cleanVariantIds;
+    const finalAttributes = cleanAttributeIds;
+
+    await Category.updateOne(
+      { _id: req.body._id },
+      {
+        $set: {
+          title,
+          slug,
+          parent_id,
+          parent_slug,
+          variant_id: finalVariants,
+          attributeList_id: finalAttributes,
+          bestseller,
+          productsMatch,
+          equalTo,
+          value,
+          description,
+          meta_title,
+          meta_keywords,
+          meta_description,
+          restricted_keywords,
+          conditions: req.body.conditions || [],
+          conditionType: req.body.conditionType || 'all',
+          isAutomatic: req.body.isAutomatic ?? false,
+          categoryScope: req.body.categoryScope || 'all',
+          selectedCategories: req.body.selectedCategories || []
+        }
+      }
+    );
+
+    if (newVariants.length || newAttributes.length) {
+
+      const newVariantObjectIds = toObjectIds(newVariants);
+      const newAttributeObjectIds = toObjectIds(newAttributes);
+
+      const children = await getAllChildren(req.body._id);
+
+      const bulkOps = children.map(child => {
+        const mergedVariants = mergeIds([child.variant_id, newVariantObjectIds]);
+        const mergedAttributes = mergeIds([child.attributeList_id, newAttributeObjectIds]);
+
+        return {
+          updateOne: {
+            filter: { _id: child._id },
+            update: {
+              $set: {
+                variant_id: mergedVariants,
+                attributeList_id: mergedAttributes
+              }
+            }
+          }
+        };
+      });
+
+      if (bulkOps.length) {
+        await Category.bulkWrite(bulkOps);
+      }
+    }
+
+    return resp.status(200).json({
+      message: 'Category updated successfully.'
+    });
+
+  } catch (err) {
+    console.log(err);
+    return resp.status(500).json({
+      message: 'Something went wrong. Please try again.'
+    });
+  }
 };
 
 export const addCategoryImage = async (req: Request, resp: Response) => {
