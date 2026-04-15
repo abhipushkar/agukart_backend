@@ -480,7 +480,8 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
       equalTo,
       productsMatch,
       value,
-      restricted_keywords
+      restricted_keywords,
+      search_terms = []
     } = req.body;
 
     const toObjectIds = (arr: any[]) =>
@@ -588,6 +589,7 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
         equalTo,
         value,
         restricted_keywords,
+        search_terms,
         conditions: req.body.conditions || [],
         conditionType: req.body.conditionType || 'all',
         isAutomatic: req.body.isAutomatic || false,
@@ -644,6 +646,7 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
           meta_keywords,
           meta_description,
           restricted_keywords,
+          search_terms,
           conditions: req.body.conditions || [],
           conditionType: req.body.conditionType || 'all',
           isAutomatic: req.body.isAutomatic ?? false,
@@ -769,6 +772,8 @@ export const categoryList = async (req: CustomRequest, resp: Response) => {
                     meta_description: 1,
                     bestseller: 1,
                     topRated: 1,
+                    showInMainUI: 1,
+                    showInProductListing: 1,
                     parent_id: 1,
                     parent_name: '$parent_data.title',
                     parent_status: '$parent_data.status',
@@ -905,25 +910,67 @@ export const categoryChangeStatus = async (req: CustomRequest, resp: Response) =
 
     }
 
-}
+};
 
-export const topRatedChangeStatus = async (req: CustomRequest, resp: Response) => {
+type AllowedCategoryFields =
+  | "topRated"
+  | "showInMainUI"
+  | "showInProductListing";
 
-    try {
+export const updateCategoryField = async (req: CustomRequest, resp: Response) => {
+  try {
 
-        const query = { _id: req.body.id }
-        const updateData = { $set: { topRated: req.body.topRated } }
-        await Category.updateOne(query, updateData);
+    const { id, field, value }: {
+      id: string;
+      field: AllowedCategoryFields;
+      value: boolean;
+    } = req.body;
 
-        return resp.status(200).json({ message: 'Tpp Rated Category status changed successfully.' });
+    const allowedFields: AllowedCategoryFields[] = [
+      "topRated",
+      "showInMainUI",
+      "showInProductListing"
+    ];
 
-    } catch (error) {
-
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
-
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return resp.status(400).json({ message: "Invalid category id" });
     }
 
-}
+    if (!allowedFields.includes(field)) {
+      return resp.status(400).json({ message: "Invalid field" });
+    }
+
+    if (typeof value !== "boolean") {
+      return resp.status(400).json({ message: "Value must be boolean" });
+    }
+
+    const category = await Category.findById(id);
+
+    if (!category) {
+      return resp.status(404).json({ message: "Category not found" });
+    }
+
+    const currentValue = (category.toObject() as Record<string, any>)[field];
+
+    if (currentValue === value) {
+      return resp.status(204).json({ message: "No change needed" });
+    }
+
+    await Category.updateOne(
+      { _id: id },
+      { $set: { [field]: value } }
+    );
+
+    return resp.status(200).json({
+      message: `${field} status changed successfully.`
+    });
+
+  } catch (error) {
+    return resp.status(500).json({
+      message: 'Something went wrong. Please try again.'
+    });
+  }
+};
 
 export const deleteCategory = async (req: CustomRequest, resp: Response) => {
 
@@ -1009,6 +1056,7 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
           description: 1,
           meta_title: 1,
           meta_keywords: 1,
+          search_terms: 1,
           meta_description: 1,
           bestseller: 1,
           parent_id: 1,
@@ -1052,6 +1100,7 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
       meta_title: category.meta_title,
       meta_keywords: category.meta_keywords,
       meta_description: category.meta_description,
+      search_terms: category.search_terms,
       variant_data: category.variant_data,
       attributeList_data: category.attributeList_data,
       productsMatch: category.productsMatch,
@@ -3473,7 +3522,8 @@ export const getAdminParentcategory = async (req: CustomRequest, resp: Response)
 export const getChildCategory = async (req: CustomRequest, resp: Response) => {
     try {
         const query: any = {
-            status: true
+            status: true,
+            showInProductListing: true
         }
 
         const categories = await Category.find(query);

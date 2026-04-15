@@ -99,7 +99,6 @@ import {
     getAllSearchTerms,
     addDeal,
     getDeal,
-    topRatedChangeStatus,
     changeAdminCategoryMenuStatus,
     getActiveAdminCategory,
     getInformation,
@@ -263,7 +262,8 @@ import {
     editShipment,
     updateStatusOfShipmentAndOrder,
     pinUnpinSubOrder,
-    restoreProductAfterDeletedVarients
+    restoreProductAfterDeletedVarients,
+    updateCategoryField
 } from "../controllers/admin/Postlogin";
 
 
@@ -289,7 +289,7 @@ routes.post('/add-category', validationMiddleware(categoryValid), addCategory)
 routes.post('/add-category-image', multer().fields([{ name: 'file', maxCount: 1 }, { name: 'image', maxCount: 1 }]), addCategoryImage);
 routes.get('/get-category', categoryList)
 routes.post('/change-status-category', validationMiddleware(statusValid), categoryChangeStatus);
-routes.post('/change-toprated-status-category', topRatedChangeStatus);
+routes.post('/change-status-category-Fields', updateCategoryField);
 routes.delete('/delete-category/:id', deleteCategory);
 routes.get('/edit-category/:id', getCategory);
 

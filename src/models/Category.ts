@@ -42,6 +42,14 @@ const categorySchema = new Schema(
       required: true,
       default: false
     },
+    showInProductListing: {
+      type: Boolean,
+      default: true
+    },
+    showInMainUI: {
+      type: Boolean,
+      default: true
+    },
     attributeList_id: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'AttributeList' ,
@@ -68,6 +76,10 @@ const categorySchema = new Schema(
       type: String,
       default: null
     },
+    search_terms: [{
+      type: String,
+      default: [],
+    }],
     productsMatch: {
       type: String,
       enum: ['', 'Product Title', 'Product Tag'],

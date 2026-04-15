@@ -615,6 +615,7 @@ export const getCategoryList = async (req: Request, resp: Response) => {
   try {
     const query: any = {
       status: true,
+      showInMainUI: true
     };
 
     if (req.query.slug) {
@@ -642,6 +643,8 @@ export const getCategoryList = async (req: Request, resp: Response) => {
         parent_slug: item.parent_slug,
         image: item.image ? process.env.ASSET_URL + '/uploads/category/' + item.image : "",
         status: item.status,
+        showInMainUI: item.showInMainUI,
+        showInProductListing: item.showInProductListing,
         variant_id: item.variant_id,
         exist: exist,
         originalSlug: item.slug
