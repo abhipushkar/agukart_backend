@@ -19,6 +19,30 @@ const adminCategorySchema = new Schema(
             type: String,
             default: ''
         },
+        description: {
+            type: String,
+            default: ''
+        },
+        meta_title: {
+            type: String,
+            default: ''
+        },
+        meta_description: {
+            type: String,
+            default: ''
+        },
+        meta_keyword: {
+            type: String,
+            default: ''
+        },
+        search_terms: [{
+            type: String,
+            default: []
+        }],
+        image_alt: {
+            type: String,
+            default: ''
+        },
         image: {
             type: String,
             default: ''

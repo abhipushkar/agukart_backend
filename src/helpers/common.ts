@@ -183,7 +183,7 @@ export const getCategoryTree = async (id: any) => {
         let final: FinalData = {
             id: data._id,
             title: data.title,
-            image: data.image
+            image: typeof data.image === "string" ? data.image : data.image?.url || "",
         };
 
         const childParent = await getCategoryTree(data._id);
@@ -223,7 +223,7 @@ export const getCategoryTreeNew = async (id: Types.ObjectId | string, splitSearc
         const final: FinalDataNew = {
             id: data._id,
             title: data.title,
-            image: data.image,
+            image: typeof data.image === "string" ? data.image : data.image?.url || "",
         };
 
         parent.push(final);

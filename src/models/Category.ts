@@ -20,12 +20,24 @@ const categorySchema = new Schema(
       default: ''
     },
     image: {
+      url: {
       type: String,
       default: ''
+      },
+      alt: {
+        type: String,
+        default: ''
+      }
     },
     topRatedImage: {
-      type: String,
-      default: ''
+      url: {
+        type: String,
+        default: ''
+      },
+      alt: {
+        type: String,
+        default: ''
+      }
     },
     bestseller: {
       type: String,

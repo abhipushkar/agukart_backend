@@ -700,8 +700,12 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
 export const addCategoryImage = async (req: Request, resp: Response) => {
     try {
         const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+
         const image1 = files?.["file"]?.[0];
         const image2 = files?.["image"]?.[0];
+
+        const imageAlt = req.body.image_alt || '';
+        const topRatedAlt = req.body.topRatedImage_alt || '';
 
         if (image1 && !image1.mimetype.startsWith("image/")) {
             return resp.status(400).json({ message: "Invalid file type for image1. Only images are allowed." });
@@ -713,6 +717,7 @@ export const addCategoryImage = async (req: Request, resp: Response) => {
 
         let fileName1: string | undefined;
         let fileName2: string | undefined;
+
 
         const uploadDir = path.join('uploads', 'category');
         if (!fs.existsSync(uploadDir)) {
@@ -731,14 +736,32 @@ export const addCategoryImage = async (req: Request, resp: Response) => {
             await convertToWebP(image2.buffer, fullPath);
         }
 
-        const query = { _id: req.body._id };
-        const updateData = { $set: { image: fileName1, topRatedImage: fileName2 } };
-        await Category.updateOne(query, updateData);
+        const updateData: any = {};
 
-        return resp.status(200).json({ message: 'Images added successfully.' });
+        if (fileName1) {
+            updateData["image.url"] = fileName1;
+            updateData["image.alt"] = imageAlt;
+        } else if (imageAlt) {
+            updateData["image.alt"] = imageAlt;
+        }
+
+        if (fileName2) {
+            updateData["topRatedImage.url"] = fileName2;
+            updateData["topRatedImage.alt"] = topRatedAlt;
+        } else if (topRatedAlt) {
+            updateData["topRatedImage.alt"] = topRatedAlt;
+        }
+
+      const result =  await Category.updateOne(
+            { _id: req.body._id },
+            { $set: updateData }
+        );
+        console.log("Update Result:", result);
+        return resp.status(200).json({ message: 'Images + ALT added successfully.' });
+
     } catch (err) {
-        console.error('Error processing images:', err);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+        console.error(err);
+        return resp.status(500).json({ message: 'Something went wrong' });
     }
 };
 
@@ -1093,8 +1116,14 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
       bestseller: category.bestseller,
       variant_id: category.variant_id,
       attributeList_id: category.attributeList_id,
-      image: baseurl + category.image,
-      topRatedImage: baseurl + category.topRatedImage,
+      image: {
+            url: category.image?.url ? baseurl + category.image.url : '',
+            alt: category.image?.alt || category.title
+        },
+      topRatedImage: {
+            url: category.topRatedImage?.url ? baseurl + category.topRatedImage.url : '',
+            alt: category.topRatedImage?.alt || category.title
+        },
       status: category.status,
       description: category.description,
       meta_title: category.meta_title,
@@ -7783,7 +7812,7 @@ export const getAllSearchTerms = async (req: CustomRequest, res: Response) => {
 
 export const addAdminCategory = async (req: CustomRequest, res: Response) => {
     try {
-        const { title, _id, tag, parent_id, productsMatch, equalTo, value, restricted_keywords } = req.body;
+        const { title, _id, tag, parent_id, productsMatch, equalTo, value, restricted_keywords, description, meta_title, meta_description, meta_keyword, search_terms, image_alt } = req.body;
 
         let parentId: any;
 
@@ -7803,7 +7832,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
             if (existingAdminCategory) {
                 return res.status(400).json({ message: 'Category already exists.' });
             }
-            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] });
+            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] });
 
             const slug = slugify(`${title}`, {
                 lower: true,
@@ -7827,7 +7856,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
 
             adminCategory = await AdminCategoryModel.findByIdAndUpdate(
                 _id,
-                { title: title, slug: slug, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
+                { title: title, slug: slug, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
                 { new: true, runValidators: true }
             );
             if (!adminCategory) {
@@ -8038,9 +8067,15 @@ export const getAdminCategory = async (req: CustomRequest, res: Response) => {
             tag: adminCategory.tag,
             parent_id: adminCategory.parent_id,
             title: adminCategory.title,
+            description: adminCategory.description,
+            meta_title: adminCategory.meta_title,
+            meta_description: adminCategory.meta_description,
+            meta_keyword: adminCategory.meta_keyword,
+            search_terms: adminCategory.search_terms,
             popular: adminCategory.popular,
             special: adminCategory.special,
             image: baseurl + adminCategory.image,
+            image_alt: adminCategory.image_alt,
             status: adminCategory.status,
             productsMatch: adminCategory.productsMatch,
             equalTo: adminCategory.equalTo,
