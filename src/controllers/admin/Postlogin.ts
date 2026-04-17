@@ -7832,7 +7832,8 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
             if (existingAdminCategory) {
                 return res.status(400).json({ message: 'Category already exists.' });
             }
-            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] });
+            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, 
+                image_alt: image_alt, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] });
 
             const slug = slugify(`${title}`, {
                 lower: true,
@@ -7856,7 +7857,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
 
             adminCategory = await AdminCategoryModel.findByIdAndUpdate(
                 _id,
-                { title: title, slug: slug, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
+                { title: title, slug: slug, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, image_alt: image_alt, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
                 { new: true, runValidators: true }
             );
             if (!adminCategory) {
