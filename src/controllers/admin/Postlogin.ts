@@ -90,6 +90,9 @@ import { RefundItemModel } from "../../models/RefundItem";
 import UrlResource from "../../models/UrlResource";
 import DeliveryService from "../../models/DeliveryService";
 dayjs.extend(duration);
+import { createOrUpdateSlug } from "../../helpers/slug.helper";
+import { buildCategoryMeta } from "../../helpers/category.helper";
+import UrlRedirect from "../../models/UrlRedirect";
 
 interface CustomRequest extends Request {
     user?: any;
@@ -484,6 +487,35 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
       search_terms = []
     } = req.body;
 
+    let categoryDoc: any;
+
+if (req.body._id === 'new') {
+  categoryDoc = new Category();
+} else {
+  categoryDoc = await Category.findById(req.body._id);
+  if (!categoryDoc) {
+    return resp.status(404).json({ message: 'Category not found' });
+  }
+}
+
+// set base values
+categoryDoc.title = title;
+categoryDoc.parent_id = parent_id || null;
+const oldFullSlug = categoryDoc.fullSlug;
+
+// 🔥 NEW SLUG SYSTEM
+categoryDoc.slug = await createOrUpdateSlug({
+  model: Category,
+  entity: categoryDoc,
+  title: title,
+  entityType: "category"
+});
+
+const { fullSlug, parentSlug } = await buildCategoryMeta(categoryDoc);
+
+categoryDoc.fullSlug = fullSlug;
+categoryDoc.parent_slug = parentSlug || '';
+
     const toObjectIds = (arr: any[]) =>
       arr.map(id => new mongoose.Types.ObjectId(id));
 
@@ -539,22 +571,6 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
       return children;
     };
 
-    let parent_slug = '';
-
-    if (parent_id) {
-      const parentData = await Category.findById(parent_id);
-      if (parentData) parent_slug = parentData.slug;
-    }
-
-    let slug = slugify(title, {
-      lower: true,
-      remove: /[*+~.()'"!:@]/g,
-    });
-
-    if (parent_slug) {
-      slug = `${parent_slug}-${slug}`;
-    }
-
     if (req.body._id === 'new') {
 
       const cleanVariantIds = toObjectIds(variant_id);
@@ -573,38 +589,35 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
         finalAttributes = mergeIds([finalAttributes, ...parentAttributes]);
       }
 
-      const data = await Category.create({
-        title,
-        slug,
-        parent_id,
-        parent_slug,
-        description,
-        meta_title,
-        meta_keywords,
-        meta_description,
-        variant_id: finalVariants,
-        attributeList_id: finalAttributes,
-        bestseller,
-        productsMatch,
-        equalTo,
-        value,
-        restricted_keywords,
-        search_terms,
-        conditions: req.body.conditions || [],
-        conditionType: req.body.conditionType || 'all',
-        isAutomatic: req.body.isAutomatic || false,
-        categoryScope: req.body.categoryScope || 'all',
-        selectedCategories: req.body.selectedCategories || []
-      });
+// assign remaining fields
+categoryDoc.description = description;
+categoryDoc.meta_title = meta_title;
+categoryDoc.meta_keywords = meta_keywords;
+categoryDoc.meta_description = meta_description;
+categoryDoc.variant_id = finalVariants;
+categoryDoc.attributeList_id = finalAttributes;
+categoryDoc.bestseller = bestseller;
+categoryDoc.productsMatch = productsMatch;
+categoryDoc.equalTo = equalTo;
+categoryDoc.value = value;
+categoryDoc.restricted_keywords = restricted_keywords;
+categoryDoc.search_terms = search_terms;
+categoryDoc.conditions = req.body.conditions || [];
+categoryDoc.conditionType = req.body.conditionType || 'all';
+categoryDoc.isAutomatic = req.body.isAutomatic || false;
+categoryDoc.categoryScope = req.body.categoryScope || 'all';
+categoryDoc.selectedCategories = req.body.selectedCategories || [];
+
+await categoryDoc.save();
 
       return resp.status(200).json({
         message: 'Category created successfully.',
         success: true,
-        data
+        data: categoryDoc
       });
     }
 
-    const existingCategory = await Category.findById(req.body._id);
+    const existingCategory = categoryDoc;
 
     if (!existingCategory) {
       return resp.status(404).json({ message: 'Category not found' });
@@ -627,41 +640,126 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
     const finalVariants = cleanVariantIds;
     const finalAttributes = cleanAttributeIds;
 
-    await Category.updateOne(
-      { _id: req.body._id },
-      {
-        $set: {
-          title,
-          slug,
-          parent_id,
-          parent_slug,
-          variant_id: finalVariants,
-          attributeList_id: finalAttributes,
-          bestseller,
-          productsMatch,
-          equalTo,
-          value,
-          description,
-          meta_title,
-          meta_keywords,
-          meta_description,
-          restricted_keywords,
-          search_terms,
-          conditions: req.body.conditions || [],
-          conditionType: req.body.conditionType || 'all',
-          isAutomatic: req.body.isAutomatic ?? false,
-          categoryScope: req.body.categoryScope || 'all',
-          selectedCategories: req.body.selectedCategories || []
-        }
+// assign update fields
+categoryDoc.description = description;
+categoryDoc.meta_title = meta_title;
+categoryDoc.meta_keywords = meta_keywords;
+categoryDoc.meta_description = meta_description;
+categoryDoc.variant_id = finalVariants;
+categoryDoc.attributeList_id = finalAttributes;
+categoryDoc.bestseller = bestseller;
+categoryDoc.productsMatch = productsMatch;
+categoryDoc.equalTo = equalTo;
+categoryDoc.value = value;
+categoryDoc.restricted_keywords = restricted_keywords;
+categoryDoc.search_terms = search_terms;
+categoryDoc.conditions = req.body.conditions || [];
+categoryDoc.conditionType = req.body.conditionType || 'all';
+categoryDoc.isAutomatic = req.body.isAutomatic ?? false;
+categoryDoc.categoryScope = req.body.categoryScope || 'all';
+categoryDoc.selectedCategories = req.body.selectedCategories || [];
+
+await categoryDoc.save();
+
+const children = await getAllChildren(categoryDoc._id);
+
+for (const child of children) {
+  const childDoc = await Category.findById(child._id);
+
+  if (!childDoc) continue;
+
+  const { fullSlug, parentSlug } = await buildCategoryMeta(childDoc);
+
+  const oldSlug = childDoc.fullSlug;
+
+  childDoc.fullSlug = fullSlug;
+  childDoc.parent_slug = parentSlug || '';
+
+  console.log({
+  childId: childDoc._id,
+  oldSlug,
+  fullSlug
+});
+
+console.log("CHILD DEBUG", {
+  id: childDoc._id,
+  oldSlug,
+  newFullSlug: fullSlug
+});
+console.log("MAIN CATEGORY:", {
+  oldFullSlug,
+  newFullSlug: categoryDoc.fullSlug
+});
+
+if (!fullSlug || fullSlug.trim() === "") {
+  console.error("❌ INVALID CHILD SLUG", {
+    childId: childDoc._id,
+    parent: childDoc.parent_id
+  });
+  continue; // skip this child
+}
+  await childDoc.save();
+
+  // redirect for child
+if (
+  oldSlug &&
+  fullSlug &&
+  oldSlug !== fullSlug
+) {
+  await UrlRedirect.updateOne(
+    { oldSlug: oldSlug, entityId: childDoc._id, entityType: "category" },
+    {
+      $set: {
+        newSlug: fullSlug,
+        entityType: "category"
       }
-    );
+    },
+    { upsert: true }
+  );
+}
+}
+
+if (
+  oldFullSlug &&
+  categoryDoc.fullSlug &&
+  oldFullSlug !== categoryDoc.fullSlug
+) {
+  await UrlRedirect.updateOne(
+    {
+      oldSlug: oldFullSlug,
+      entityId: categoryDoc._id,
+      entityType: "category"
+    },
+    {
+      $set: {
+        newSlug: categoryDoc.fullSlug,
+        entityType: "category"
+      }
+    },
+    { upsert: true }
+  );
+
+await UrlRedirect.updateMany(
+  {
+    entityId: categoryDoc._id,
+    entityType: "category",
+    oldSlug: {
+      $exists: true,
+      $nin: [null, ""]
+    }
+  },
+  {
+    $set: {
+      newSlug: categoryDoc.fullSlug
+    }
+  }
+);
+}
 
     if (newVariants.length || newAttributes.length) {
 
       const newVariantObjectIds = toObjectIds(newVariants);
       const newAttributeObjectIds = toObjectIds(newAttributes);
-
-      const children = await getAllChildren(req.body._id);
 
       const bulkOps = children.map(child => {
         const mergedVariants = mergeIds([child.variant_id, newVariantObjectIds]);

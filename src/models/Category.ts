@@ -1,3 +1,4 @@
+import { required } from 'joi';
 import mongoose, { Schema, Document, model } from 'mongoose';
 
 const categorySchema = new Schema(
@@ -8,7 +9,8 @@ const categorySchema = new Schema(
     },
     slug: {
       type: String,
-      default: ''
+      required: true,
+      index: true
     },
     parent_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -17,7 +19,14 @@ const categorySchema = new Schema(
     },
     parent_slug: {
       type: String,
-      default: ''
+      default: '',
+      index: true
+    },
+    fullSlug: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true
     },
     image: {
       url: {

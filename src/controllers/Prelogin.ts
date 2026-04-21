@@ -618,51 +618,63 @@ export const getCategoryList = async (req: Request, resp: Response) => {
       showInMainUI: true
     };
 
+    let currentCategory: any = null;
+
     if (req.query.slug) {
-      query.parent_slug = req.query.slug;
-      // query.parent_slug = { $regex: req.query.slug };
+      const parentCategory = await Category.findOne({
+        fullSlug: req.query.slug
+      });
+
+      if (!parentCategory) {
+        return resp.status(404).json({ message: "Parent category not found" });
+      }
+
+      query.parent_id = parentCategory._id;
+
+      currentCategory = {
+        _id: parentCategory._id,
+        title: parentCategory.title,
+        slug: parentCategory.fullSlug,
+        parent_slug: parentCategory.parent_slug
+      };
+
     } else {
-      query.parent_slug = '';
+      query.parent_id = null;
     }
 
     const categories = await Category.find(query);
 
     const result = await Promise.all(categories.map(async (item) => {
+
       const subCategoryCheck = await Category.find({ parent_id: item._id });
-
-      const exist = subCategoryCheck.length > 0;
-
-      const modifiedSlug = item.slug.replace(/-/g, '/');
-
 
       return {
         _id: item._id,
         title: item.title,
-        slug: modifiedSlug,
+        slug: item.fullSlug,
         parent_id: item.parent_id,
         parent_slug: item.parent_slug,
-        image: item.image ? process.env.ASSET_URL + '/uploads/category/' + item.image : "",
+        image: item.image
+          ? process.env.ASSET_URL + '/uploads/category/' + item.image.url
+          : "",
+        image_alt: item.image?.alt || "",
         status: item.status,
         showInMainUI: item.showInMainUI,
         showInProductListing: item.showInProductListing,
         variant_id: item.variant_id,
-        exist: exist,
+        exist: subCategoryCheck.length > 0,
         originalSlug: item.slug
       };
     }));
 
-    result.sort((a, b) => {
-      if (a.parent_slug === b.parent_slug) {
-        return a.title.localeCompare(b.title);
-      } else {
-        return a.parent_slug.localeCompare(b.parent_slug);
-      }
-    });
+    result.sort((a, b) => a.title.localeCompare(b.title));
 
     resp.status(200).json({
       message: 'Category List fetched successfully',
+      current: currentCategory, 
       category: result
     });
+
   } catch (error) {
     console.error('Error fetching category list:', error);
     resp.status(500).json({ message: 'Something went wrong. Please try again.' });
@@ -2990,11 +3002,11 @@ export const getDeals = async (req: Request, res: Response) => {
 
 export const getCategoryBySlug = async (req: Request, resp: Response) => {
   try {
-    const slug = req.params.slug;
+    const slug = req.params[0];
 
     const query: any = {
       status: true,
-      slug: slug
+      fullSlug: slug
     }
     const categories = await Category.find(query);
 
@@ -3006,6 +3018,7 @@ export const getCategoryBySlug = async (req: Request, resp: Response) => {
           _id: item._id,
           title: item.title,
           slug: item.slug,
+          fullSlug: item.fullSlug
         }
       })
     }));

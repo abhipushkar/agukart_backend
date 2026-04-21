@@ -1,6 +1,6 @@
 import express from "express"; 
 import auth from '../middleware/auth';
-
+import { Request, Response } from "express";
 import user from '../routes/user';
 import admin from '../routes/admin.auth';
 import {
@@ -67,6 +67,31 @@ import {
     getSimilarVendorProduct
 } from "../controllers/Prelogin";
 
+interface CustomRequest extends Request {
+  type?: "category" | "product";
+  data?: any;
+}
+
+const finalHandler = (req: CustomRequest, res: Response) => {
+  if (req.type === "category") {
+    return res.status(200).json({
+      type: "category",
+      data: req.data
+    });
+  }
+
+  if (req.type === "product") {
+    return res.status(200).json({
+      type: "product",
+      data: req.data
+    });
+  }
+
+  return res.status(400).json({
+    message: "Invalid type"
+  });
+};
+
 import {
     adminLogin
 } from "../controllers/admin/Prelogin";
@@ -79,6 +104,7 @@ import validationMiddleware from "../utils/multivalidate";
 import { otpsend, validateSignup, validateState, validateCity, validateInformation, validateDescription } from "../validators/validators";
 import { loginValid } from "../validators/adminvalidators";
 import adminAuth from "../middleware/adminauth";
+import { resolveSlug } from "../middleware/resolveSlug";
 
 const routes=express.Router();
   
@@ -119,7 +145,7 @@ routes.post('/get-city-by-id',validationMiddleware(validateCity),getCityById)
 routes.post('/get-informations',validationMiddleware(validateInformation), getInformations);
 routes.post('/get-description',validationMiddleware(validateDescription), getDescription)
 
-routes.get('/get-category-by-slug/:slug', getCategoryBySlug);
+routes.get('/get-category-by-slug/*', getCategoryBySlug);
 routes.get('/get-admin-category-by-slug/:slug', getAdminCategoryBySlug);
 routes.get('/getVendorDetailsBySlug/:slug', getVendorDetailsBySlug);
 routes.get('/vendor-reviews/:vendor_id', getParticularVendorReviews);
@@ -166,6 +192,8 @@ routes.get('/get-shop-detail', getShopDetail);
 
 routes.use('/user',auth, user);
 routes.use('/admin', adminAuth, admin);
+
+routes.get("/:slug(*)", resolveSlug, finalHandler);
 
 export default routes;
 
