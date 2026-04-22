@@ -962,7 +962,8 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     products = products.filter((product: any) =>{
       const productQty = product?.qty;
       const combinationData = product?.combinationData || [];
-      return !checkSoldOut(productQty, combinationData);
+      const formValues = product?.form_values || {};
+      return !checkSoldOut(productQty, combinationData, formValues);
     })
 
     products.sort((a, b) => {
@@ -1059,7 +1060,8 @@ export const getPopularGiftProducts = async (req: Request, resp: Response) => {
     const products = await Promise.all(data.filter((item: any) =>{
       const productQty = item?.qty;
       const combinationData = item?.combinationData || [];
-      return !checkSoldOut(productQty, combinationData);
+      const formValues = item?.form_values || {};
+      return !checkSoldOut(productQty, combinationData, formValues);
     }).map(async (item: any) => {
       const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true, vendor_id: item.vendor_id, expiry_status: { $ne: 'expired' } })
       return {
@@ -1091,7 +1093,8 @@ export const bigDiscountProducts = async (req: Request, resp: Response) => {
     const products = await Promise.all(data.filter((item: any) =>{
       const productQty = item?.qty;
       const combinationData = item?.combinationData || [];
-      return !checkSoldOut(productQty, combinationData);
+      const formValues = item?.form_values || {};
+      return !checkSoldOut(productQty, combinationData, formValues);
     }).map(async (item: any) => {
       const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true })
       return {
@@ -1984,7 +1987,6 @@ export const getProductList = async (req: Request, resp: Response) => {
         { $match: condFilter },
         { $project: productProject }
       ];
-
       // add union stage to main agg
       agg.push({
         $unionWith: {
@@ -2050,27 +2052,38 @@ export const getProductList = async (req: Request, resp: Response) => {
     }
 
     // Facet: data + total count so we can paginate
-    const start = (page - 1) * limit;
-    agg.push({
-      $facet: {
-        data: [{ $skip: start }, { $limit: limit }],
-        total: [{ $count: "count" }]
-      }
-    });
+    // const start = (page - 1) * limit;
+    // agg.push({
+    //   $facet: {
+    //     data: [{ $skip: start }, { $limit: limit }],
+    //     total: [{ $count: "count" }]
+    //   }
+    // });
 
     // run aggregate
     const aggRes = await ProductModel.aggregate(agg).allowDiskUse(true);
 
-    const rawData = (aggRes[0] && aggRes[0].data) || [];
+    const rawData = aggRes || [];
     const filteredData = rawData.filter((product: any) => {
       const productQty = product?.qty;
       const combinationData = product?.combinationData || [];
-      return !checkSoldOut(productQty, combinationData);
-    });
+      const formValues = product?.form_values || {};
+      return !checkSoldOut(productQty, combinationData, formValues);
+    }); 
+
+    const start = (page - 1) * limit;
+
+const paginatedData = filteredData.slice(start, start + limit);
+
+const totalCount = filteredData.length;
+const totalPages = Math.ceil(totalCount / limit);
 
     // PROMOTIONAL OFFER ENRICHMENT
-    const productIds = filteredData.map((p: any) => p._id);
-    const vendorIds = Array.from(new Set<string>(filteredData.map((p: any) => p.vendor_id.toString()))).map((id) => new mongoose.Types.ObjectId(id));
+    const productIds = paginatedData.map((p: any) => p._id);
+
+const vendorIds = Array.from(
+  new Set(paginatedData.map((p: any) => p.vendor_id.toString()))
+).map((id) => new mongoose.Types.ObjectId(id));
 
     let enrichedData = filteredData;
 
@@ -2089,7 +2102,7 @@ export const getProductList = async (req: Request, resp: Response) => {
       promoMap.get(key)!.push(p);
     });
 
-    enrichedData = filteredData.map((item: any) => {
+    enrichedData = paginatedData.map((item: any) => {
     let originalPrice = +item.sale_price;
     let finalPrice = originalPrice;
 
@@ -2134,8 +2147,8 @@ export const getProductList = async (req: Request, resp: Response) => {
     };
     });
   }
-    const totalCount = filteredData.length
-    const totalPages = Math.ceil(totalCount / limit);
+    // const totalCount = filteredData.length
+    // const totalPages = Math.ceil(totalCount / limit);
 
     const base_url = process.env.ASSET_URL + "/uploads/product/";
     const video_base_url = process.env.ASSET_URL + "/uploads/video/";
@@ -2158,29 +2171,31 @@ export const getProductList = async (req: Request, resp: Response) => {
 };
 
 
-export function checkSoldOut(productQty: any, combinationData: any[]) {
+export function checkSoldOut(productQty: any, combinationData: any[], formValues: any) {
   const qtyNumber = Number(productQty || 0);
 
   if (qtyNumber > 0) return false;
 
-  let combinationHasStock = false;
+  const isVariantStock = formValues?.isCheckedQuantity;
+  const stockVariantName = formValues?.quantities;
 
-  if (Array.isArray(combinationData)) {
-    combinationData.forEach(variant => {
-      if (variant?.combinations && Array.isArray(variant.combinations)) {
-        variant.combinations.forEach((comb: any) => {
-          const combQty = Number(comb?.qty || 0);
-          if (combQty > 0) combinationHasStock = true;
-        });
-      }
-    });
+  if (!isVariantStock) {
+    return true;
   }
 
-  if (combinationHasStock) return false;
+  const targetVariant = combinationData.find(
+    (v) => v.variant_name === stockVariantName
+  );
 
-  return true;
+  if (!targetVariant) return true;
+
+  const hasStock = targetVariant.combinations?.some((comb: any) => {
+    const qty = Number(comb?.qty || 0);
+    return qty > 0 && comb.isVisible === true || comb.isVisible === "true";
+  });
+
+  return !hasStock;
 }
-
 
 
 export const getProductById = async (req: Request, resp: Response) => {
@@ -2367,7 +2382,8 @@ export const getProductById = async (req: Request, resp: Response) => {
     const skuId = sku?._id || item.sku_product_id;
     const productQty = sku?.qty || 0;
     const combinationDataList = sku?.combinationData || [];
-    const sold_out = checkSoldOut(productQty, combinationDataList);
+    const formValues = sku?.form_values || {};
+    const sold_out = checkSoldOut(productQty, combinationDataList, formValues);
 
     delete obj.sku_product_id;
     return {
@@ -2971,7 +2987,8 @@ export const bestRatedProduct = async (req: Request, res: Response) => {
     const product = await Promise.all(data.filter((item: any) =>{
       const productQty = item?.qty;
       const combinationData = item?.combinationData || [];
-      return !checkSoldOut(productQty, combinationData);
+      const formValues = item?.form_values || {};
+      return !checkSoldOut(productQty, combinationData, formValues);
     }).map(async (item: any) => {
       const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true, expiry_status: 'active', vendor_id: item.vendor_id._id })
       return {

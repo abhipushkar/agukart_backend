@@ -15,20 +15,48 @@ export const resolveSlug = async (
   next: NextFunction
 ) => {
   try {
-    // 🔥 Validate slug param
     if (!req.params.slug) {
       return res.status(400).json({ message: "Invalid URL" });
     }
 
-    // handle both /a/b and single slug
     const slugPath = Array.isArray(req.params.slug)
       ? req.params.slug.join("/")
       : req.params.slug;
 
     // =========================
-    // 1. CHECK CATEGORY
+    // 🔥 STEP 1: RESOLVE FINAL SLUG (CHAIN REDIRECT)
     // =========================
-    const category = await Category.findOne({ fullSlug: slugPath }).lean();
+    let finalSlug = slugPath;
+    let safetyCounter = 0;
+
+    while (true) {
+      const redirect = await UrlRedirect.findOne({
+        oldSlug: finalSlug,
+      }).lean();
+
+      if (!redirect || !redirect.newSlug) break;
+
+      finalSlug = redirect.newSlug;
+      safetyCounter++;
+
+      // 🚨 prevent infinite loop
+      if (safetyCounter > 10) break;
+    }
+
+    // =========================
+    // 🔥 STEP 2: IF REDIRECT HAPPENED → RETURN FINAL URL
+    // =========================
+    if (finalSlug !== slugPath) {
+      return res.json({
+        redirect: true,
+        newSlug: finalSlug,
+      });
+    }
+
+    // =========================
+    // 🔥 STEP 3: CHECK CATEGORY
+    // =========================
+    const category = await Category.findOne({ fullSlug: finalSlug }).lean();
 
     if (category) {
       req.type = "category";
@@ -37,9 +65,9 @@ export const resolveSlug = async (
     }
 
     // =========================
-    // 2. CHECK PRODUCT
+    // 🔥 STEP 4: CHECK PRODUCT
     // =========================
-    const product = await ParentProduct.findOne({ fullSlug: slugPath }).lean();
+    const product = await ParentProduct.findOne({ fullSlug: finalSlug }).lean();
 
     if (product) {
       req.type = "product";
@@ -48,38 +76,19 @@ export const resolveSlug = async (
     }
 
     // =========================
-    // 3. CHECK REDIRECT (SEO)
-    // =========================
-    const redirect = await UrlRedirect.findOne({
-      oldSlug: slugPath,
-    }).lean();
-
-    if (redirect) {
-      // 🔥 Always normalize URL
-      const newUrl = redirect.newSlug.startsWith("/")
-        ? redirect.newSlug
-        : `/${redirect.newSlug}`;
-
-      return res.json({
-        redirect: true,
-        newSlug: redirect.newSlug,
-      });
-    }
-
-    // =========================
-    // 4. NOT FOUND
+    // 🔥 STEP 5: NOT FOUND
     // =========================
     return res.status(404).json({
       success: false,
       message: "Page not found",
-      slug: slugPath
+      slug: finalSlug,
     });
 
   } catch (error) {
     console.error("resolveSlug error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };
