@@ -635,7 +635,12 @@ export const getCategoryList = async (req: Request, resp: Response) => {
         _id: parentCategory._id,
         title: parentCategory.title,
         slug: parentCategory.fullSlug,
-        parent_slug: parentCategory.parent_slug
+        description: parentCategory.description,
+        parent_slug: parentCategory.parent_slug,
+        meta_title: parentCategory.meta_title,
+        meta_description: parentCategory.meta_description,
+        meta_keywords: parentCategory.meta_keywords,
+        search_terms: parentCategory.search_terms
       };
 
     } else {
@@ -1867,7 +1872,8 @@ export const getProductList = async (req: Request, resp: Response) => {
       category: 1,
       qty: 1,
       combinationData: 1,
-      form_values: 1
+      form_values: 1,
+      product_bedge: 1
     };
 
     // ---------------------------
@@ -2038,6 +2044,7 @@ export const getProductList = async (req: Request, resp: Response) => {
     qty: 1,
     combinationData: 1,
     form_values: 1,
+    product_bedge: 1,
     shop_name: { $ifNull: ["$vendor.shop_name", ""] },
   }
 });
@@ -2095,13 +2102,19 @@ const vendorIds = Array.from(
         expiry_status: { $ne: "expired" }
     }).select("product_id promotional_title offer_type discount_amount qty").lean();
 
-    const promoMap = new Map<string, any[]>();
-      promotions.forEach(p => {
-      const key = p.product_id.toString();
-      if (!promoMap.has(key)) promoMap.set(key, []);
-      promoMap.get(key)!.push(p);
-    });
+const promoMap = new Map<string, any[]>();
 
+promotions.forEach(p => {
+  (p.product_id || []).forEach((pid: any) => {
+    const key = pid.toString();
+
+    if (!promoMap.has(key)) {
+      promoMap.set(key, []);
+    }
+
+    promoMap.get(key)!.push(p);
+  });
+});
     enrichedData = paginatedData.map((item: any) => {
     let originalPrice = +item.sale_price;
     let finalPrice = originalPrice;

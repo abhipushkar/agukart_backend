@@ -12,7 +12,7 @@ export const createOrUpdateSlug = async ({
   let newSlug = baseSlug;
   let count = 1;
 
-  while (await model.findOne({ slug: newSlug, _id: { $ne: entity._id } })) {
+  while (await model.findOne({ slug: newSlug, parent_id: entity.parent_id, _id: { $ne: entity._id } })) {
     newSlug = `${baseSlug}-${count++}`;
   }
 

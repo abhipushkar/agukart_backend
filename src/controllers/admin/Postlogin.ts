@@ -498,18 +498,27 @@ if (req.body._id === 'new') {
   }
 }
 
+const oldTitle = categoryDoc.title;
+const oldParent = categoryDoc.parent_id?.toString() || null;
+const newParent = parent_id || null;
+
 // set base values
 categoryDoc.title = title;
 categoryDoc.parent_id = parent_id || null;
 const oldFullSlug = categoryDoc.fullSlug;
 
-// 🔥 NEW SLUG SYSTEM
-categoryDoc.slug = await createOrUpdateSlug({
-  model: Category,
-  entity: categoryDoc,
-  title: title,
-  entityType: "category"
-});
+if (
+  req.body._id === 'new' ||
+  generateSlug(oldTitle) !== generateSlug(title) ||
+  oldParent !== newParent
+) {
+  categoryDoc.slug = await createOrUpdateSlug({
+    model: Category,
+    entity: categoryDoc,
+    title: title,
+    entityType: "category"
+  });
+}
 
 const { fullSlug, parentSlug } = await buildCategoryMeta(categoryDoc);
 
