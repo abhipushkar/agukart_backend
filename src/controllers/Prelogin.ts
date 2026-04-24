@@ -1834,9 +1834,140 @@ export const getProductList = async (req: Request, resp: Response) => {
       deletedByAdmin: false
     };
 
-    if (!categoryId) {
-      return resp.status(400).json({ message: "categoryId is required" });
+
+    const isAllProducts = !categoryId;
+
+    if (isAllProducts) {
+  const minPrice = req.query.minPrice;
+  const maxPrice = req.query.maxPrice;
+  const brand_id = req.query.brand_id as string;
+  const rating = req.query.rating;
+  const featured = req.query.featured;
+  const bestseller = req.query.bestseller;
+  const top_rated = req.query.top_rated;
+  const categoryIds = req.query.categoryIds as string;
+
+  const match: any = { ...baseFilter };
+
+  // 🔹 search
+  if (q) {
+    const r = new RegExp(escapeForRegex(q), "i");
+    match.$or = [
+      { product_title: r },
+      { search_terms: r }
+    ];
+  }
+
+  // 🔹 price
+  if (minPrice || maxPrice) {
+    match.sale_price = {};
+    if (minPrice) match.sale_price.$gte = Number(minPrice);
+    if (maxPrice) match.sale_price.$lte = Number(maxPrice);
+  }
+
+  // 🔹 vendor
+  if (vendor_id) {
+    match.vendor_id = new mongoose.Types.ObjectId(vendor_id);
+  }
+
+  // 🔹 category multi-filter
+  if (categoryIds) {
+    const ids = categoryIds.split(',').map(id => new mongoose.Types.ObjectId(id));
+    match.category = { $in: ids };
+  }
+
+  // 🔹 brand
+  if (brand_id) {
+    match.brand_id = new mongoose.Types.ObjectId(brand_id);
+  }
+
+  // 🔹 rating
+  if (rating) {
+    match.ratingAvg = { $gte: Number(rating) };
+  }
+
+  // 🔹 flags
+  if (featured) match.featured = featured === "true";
+  if (bestseller) match.bestseller = bestseller;
+  if (top_rated) match.top_rated = top_rated === "true";
+
+  const agg: any[] = [
+    { $match: match },
+
+    {
+      $lookup: {
+        from: "vendordetails",
+        localField: "vendor_id",
+        foreignField: "user_id",
+        as: "vendor"
+      }
+    },
+    {
+      $unwind: {
+        path: "$vendor",
+        preserveNullAndEmptyArrays: true
+      }
+    },
+
+    {
+      $project: {
+        _id: 1,
+        product_title: 1,
+        sale_price: 1,
+        image: 1,
+        product_variants: 1,
+        dynamicFields: 1,
+        vendor_id: 1,
+        search_terms: 1,
+        createdAt: 1,
+        category: 1,
+        qty: 1,
+        combinationData: 1,
+        form_values: 1,
+        product_bedge: 1,
+        shop_name: { $ifNull: ["$vendor.shop_name", ""] }
+      }
     }
+  ];
+
+  // 🔹 sorting
+  if (sortBy === "asc") {
+    agg.push({ $sort: { sale_price: 1 } });
+  } else if (sortBy === "desc") {
+    agg.push({ $sort: { sale_price: -1 } });
+  } else if (sortBy === "rating") {
+    agg.push({ $sort: { ratingAvg: -1 } });
+  } else {
+    agg.push({ $sort: { createdAt: -1 } });
+  }
+
+  const aggRes = await ProductModel.aggregate(agg).allowDiskUse(true);
+
+  const filteredData = aggRes.filter((product: any) => {
+    return !checkSoldOut(product.qty, product.combinationData, product.form_values);
+  });
+
+  const start = (page - 1) * limit;
+  const paginatedData = filteredData.slice(start, start + limit);
+
+  const totalCount = filteredData.length;
+  const totalPages = Math.ceil(totalCount / limit);
+
+  const base_url = process.env.ASSET_URL + "/uploads/product/";
+  const video_base_url = process.env.ASSET_URL + "/uploads/video/";
+
+  return resp.status(200).json({
+    message: "All products fetched successfully.",
+    data: paginatedData,
+    base_url,
+    video_base_url,
+    pagination: {
+      currentPage: page,
+      totalPages,
+      totalItems: totalCount
+    }
+  });
+}
 
     // 1) load main category
     const categoryData = await Category.findById(categoryId).lean();
