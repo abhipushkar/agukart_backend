@@ -2,10 +2,11 @@ import { Request, Response, NextFunction } from "express";
 import UrlRedirect from "../models/UrlRedirect";
 import Category from "../models/Category";
 import ParentProduct from "../models/ParentProduct";
+import AdminCategory from "../models/AdminCategory";
 
 // 🔥 Extend Request properly
 interface CustomRequest extends Request {
-  type?: "category" | "product";
+  type?: "category" | "product" | "adminCategory";
   data?: any;
 }
 
@@ -61,6 +62,16 @@ export const resolveSlug = async (
     if (category) {
       req.type = "category";
       req.data = category;
+      return next();
+    }
+    // =========================
+    // 🔥 STEP 4: CHECK ADMIN-CATEGORY
+    // =========================
+    const adminCategory = await AdminCategory.findOne({ fullSlug: finalSlug }).lean();
+
+    if (adminCategory) {
+      req.type = "adminCategory";
+      req.data = adminCategory;
       return next();
     }
 

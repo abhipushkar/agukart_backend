@@ -17,6 +17,14 @@ const adminCategorySchema = new Schema(
         },
         slug: {
             type: String,
+            required: true,
+            default: ''
+        },
+        fullSlug: {
+            type: String,
+            unique: true,
+            index: true,
+            required: true,
             default: ''
         },
         description: {

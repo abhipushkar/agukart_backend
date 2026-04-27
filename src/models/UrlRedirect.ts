@@ -14,7 +14,7 @@ const urlRedirectSchema = new Schema(
         },
         entityType: {
             type: String,
-            enum: ['category', 'product', 'blog', 'store'],
+            enum: ['category', 'product', 'blog', 'store', 'admin-category'],
             required: true
         },
         entityId: {

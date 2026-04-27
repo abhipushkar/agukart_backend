@@ -93,6 +93,7 @@ dayjs.extend(duration);
 import { createOrUpdateSlug } from "../../helpers/slug.helper";
 import { buildCategoryMeta } from "../../helpers/category.helper";
 import UrlRedirect from "../../models/UrlRedirect";
+import { buildAdminCategoryFullSlug, updateAdminCategoryChildrenSlugs } from "../../helpers/adminCategory.helper";
 
 interface CustomRequest extends Request {
     user?: any;
@@ -2785,6 +2786,7 @@ const existingProducts = isUpdate
       design: req.body.design,
       material: req.body.material,
       product_size: req.body.product_size,
+      altText: Array.isArray(req.body.altText) ? req.body.altText.filter(Boolean) : [],
       isCombination:
         req.body.isCombination === "true" || req.body.isCombination === true,
       combinationData: req.body.combinationData || [],
@@ -3310,6 +3312,12 @@ for (const file of productMainImages) {
       }
       const oldSku = existingProduct?.sku_code;
       const newSku = req.body.sku_code;
+
+      if (req.body.altText !== undefined) {
+            data.altText = Array.isArray(req.body.altText) ? req.body.altText.filter(Boolean) : [];
+      } else if (isUpdate) {
+        data.altText = existingProducts?.altText || [];
+      }
 
       if (!req.body.meta_title && req.body.product_title) {
          data.meta_title = stripHtml(req.body.product_title);
@@ -7935,42 +7943,173 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
 
         let adminCategory;
         if (_id === 'new') {
-            const existingAdminCategory = await AdminCategoryModel.findOne({ title });
-            if (existingAdminCategory) {
-                return res.status(400).json({ message: 'Category already exists.' });
+
+            if (parentId === null) {
+                if (!req.body.password) {
+                    return res.status(400).json({ message: "Password is required for root category." });
+                }
+                if (req.body.password !== process.env.ADMIN_CATEGORY_PASSWORD) {
+                    return res.status(400).json({ message: "Incorrect password for Admin category." });
+                }
             }
-            adminCategory = await AdminCategoryModel.create({ title: title, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, restricted_keywords: restricted_keywords, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, 
-                image_alt: image_alt, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] });
 
-            const slug = slugify(`${title}`, {
-                lower: true,
-                remove: /[*+~.()'"!:@]/g,
+               adminCategory = new AdminCategoryModel({
+               title,
+               tag,
+               parent_id: parentId,
+               productsMatch,
+               equalTo,
+               value,
+               restricted_keywords,
+               description,
+               meta_title,
+               meta_description,
+               meta_keyword,
+               search_terms,
+               image_alt,
+               isAutomatic: req.body.isAutomatic,
+               categoryScope: req.body.categoryScope,
+               selectedCategories: req.body.selectedCategories || [],
+               conditionType: req.body.conditionType,
+               conditions: req.body.conditions || []
             });
-            adminCategory.slug = slug;
-            await adminCategory.save();
-            return res.status(200).json({ message: "Category added successfully.", adminCategory });
-        } else {
 
-            const existingCombination = await AdminCategoryModel.findOne({ title: title, _id: { $ne: req.body._id }, parent_id: parentId });
-
-            if (existingCombination) {
-                return res.status(400).json({ message: 'Category already exists.', success: false });
-            }
-            
-            const slug = slugify(`${title}`, {
-                lower: true,
-                remove: /[*+~.()'"!:@]/g,
+           const slug = await createOrUpdateSlug({
+                model: AdminCategoryModel,
+                entity: adminCategory,
+                title,
+                entityType: "admin-category"
             });
 
-            adminCategory = await AdminCategoryModel.findByIdAndUpdate(
-                _id,
-                { title: title, slug: slug, restricted_keywords: restricted_keywords, tag: tag, parent_id: parentId, productsMatch: productsMatch, equalTo: equalTo, value: value, description: description, meta_title: meta_title, meta_description: meta_description, meta_keyword: meta_keyword, search_terms: search_terms, image_alt: image_alt, isAutomatic: req.body.isAutomatic, categoryScope: req.body.categoryScope, selectedCategories: req.body.selectedCategories || [], conditionType: req.body.conditionType, conditions: req.body.conditions || [] },
-                { new: true, runValidators: true }
-            );
-            if (!adminCategory) {
+          adminCategory.slug = slug;
+
+          const fullSlug = await buildAdminCategoryFullSlug(adminCategory);
+
+          const existsInAdmin = await AdminCategoryModel.findOne({ fullSlug });
+          const existsInCategory = await Category.findOne({ fullSlug });
+
+          if (existsInAdmin || existsInCategory) {
+            return res.status(400).json({ message: "Slug already exists." });
+          }
+
+          adminCategory.fullSlug = fullSlug;
+
+          await adminCategory.save();
+
+          return res.status(200).json({
+            message: "Category added successfully.",
+            adminCategory
+          });
+          } else {
+
+            const oldCategory = await AdminCategoryModel.findById(_id);
+            if (!oldCategory) {
                 return res.status(404).json({ message: "Category not found." });
             }
-            return res.status(200).json({ message: "Category updated successfully.", adminCategory });
+
+            const isBecomingRoot = String(oldCategory.parent_id) !== String(parentId) && parentId === null;
+
+            if (isBecomingRoot) {
+                if (!req.body.password) {
+                    return res.status(400).json({ message: "Password is required to change to Admin category." });
+                }
+
+                if (req.body.password !== process.env.ADMIN_CATEGORY_PASSWORD) {
+                    return res.status(400).json({ message: "Incorrect password for Admin category." });
+                }    
+            }
+
+            const slug = await createOrUpdateSlug({
+                model: AdminCategoryModel,
+                entity: oldCategory,
+                title,
+                entityType: "admin-category"
+            });
+
+            const newFullSlug = await buildAdminCategoryFullSlug({
+                ...oldCategory.toObject(),
+                slug,
+                parent_id: parentId
+            });
+
+            const isSlugChanged = oldCategory.fullSlug !== newFullSlug ||
+                String(oldCategory.parent_id) !== String(parentId);
+
+            const existsInAdmin = await AdminCategoryModel.findOne({ fullSlug: newFullSlug, _id: { $ne: _id }});
+
+            const existsInCategory = await Category.findOne({ fullSlug: newFullSlug });
+
+            if (existsInAdmin || existsInCategory) {
+                return res.status(400).json({ message: "Slug already exists." });
+            }
+
+            if (isSlugChanged) {
+
+            await UrlRedirect.create({
+                oldSlug: oldCategory.fullSlug,
+                newSlug: newFullSlug,
+                entityType: "admin-category",
+                entityId: oldCategory._id
+            });
+
+            adminCategory = await AdminCategoryModel.findByIdAndUpdate(_id,{
+                title,
+                slug,
+                fullSlug: newFullSlug,
+                parent_id: parentId,
+                restricted_keywords,
+                tag,
+                productsMatch,
+                equalTo,
+                value,
+                description,
+                meta_title,
+                meta_description,
+                meta_keyword,
+                search_terms,
+                image_alt,
+                isAutomatic: req.body.isAutomatic,
+                categoryScope: req.body.categoryScope,
+                selectedCategories: req.body.selectedCategories || [],
+                conditionType: req.body.conditionType,
+                conditions: req.body.conditions || []
+            },
+            { new: true, runValidators: true }
+            );
+
+            await updateAdminCategoryChildrenSlugs(_id);
+
+            } else {
+
+            adminCategory = await AdminCategoryModel.findByIdAndUpdate( _id,
+            {
+                title,
+                parent_id: parentId,
+                restricted_keywords,
+                tag,
+                productsMatch,
+                equalTo,
+                value,
+                description,
+               meta_title,
+               meta_description,
+               meta_keyword,
+               search_terms,
+               image_alt,
+               isAutomatic: req.body.isAutomatic,
+               categoryScope: req.body.categoryScope,
+               selectedCategories: req.body.selectedCategories || [],
+               conditionType: req.body.conditionType,
+               conditions: req.body.conditions || []
+               },
+               { new: true, runValidators: true }
+               );
+            }
+
+            return res.status(200).json({
+                message: "Category updated successfully.",
+                adminCategory
+             });
         }
     } catch (err) {
         console.error(err);

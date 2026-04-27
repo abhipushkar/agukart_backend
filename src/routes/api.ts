@@ -120,7 +120,7 @@ routes.get('/top-rated-category', topRatedCategory)
 routes.post('/get-admin-category', getAdminCategory)
 routes.get('/get-admin-menu-category', getAdminMenuCategory)
 routes.post('/getAdminSubcategory', getAdminSubcategory)
-routes.get('/getProductBySlug/:slug', getProductBySlug)
+routes.get('/getProductBySlug/*', getProductBySlug)
 routes.get('/getPopularGiftProducts', getPopularGiftProducts)
 routes.get('/bigDiscountProducts', bigDiscountProducts)
 routes.get('/get-slider',getSlider)
@@ -146,7 +146,7 @@ routes.post('/get-informations',validationMiddleware(validateInformation), getIn
 routes.post('/get-description',validationMiddleware(validateDescription), getDescription)
 
 routes.get('/get-category-by-slug/*', getCategoryBySlug);
-routes.get('/get-admin-category-by-slug/:slug', getAdminCategoryBySlug);
+routes.get('/get-admin-category-by-slug/*', getAdminCategoryBySlug);
 routes.get('/getVendorDetailsBySlug/:slug', getVendorDetailsBySlug);
 routes.get('/vendor-reviews/:vendor_id', getParticularVendorReviews);
 routes.get('/getVendorProductsBySlug/:slug', getVendorProductsBySlug);

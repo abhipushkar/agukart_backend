@@ -756,6 +756,7 @@ export const getAdminSubcategory = async (req: Request, resp: Response) => {
       title: category.title,
       tag: category.tag,
       slug: category.slug,
+      fullSlug: category.fullSlug,
       special: category.special,
       popular: category.popular,
       image: baseurl + category.image,
@@ -811,7 +812,7 @@ const getAdminCategoryTree = async (rootId: mongoose.Types.ObjectId) => {
 
 export const getProductBySlug = async (req: Request, resp: Response) => {
   try {
-    const slug = req.params.slug;
+    const slug = req.params[0];
     const sortBy = req.query.sortBy as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -822,7 +823,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     const video_base_url = process.env.ASSET_URL + "/uploads/video/";
 
     // 1️⃣ Root category
-    const rootCategory = await AdminCategoryModel.findOne({ slug }).lean();
+    const rootCategory = await AdminCategoryModel.findOne({ fullSlug: slug }).lean();
     if (!rootCategory) {
       return resp.status(404).json({ message: "Category not found" });
     }
@@ -3196,13 +3197,14 @@ export const getCategoryBySlug = async (req: Request, resp: Response) => {
 
 export const getAdminCategoryBySlug = async (req: Request, resp: Response) => {
   try {
-    const slug = req.params.slug;
+    const slug = req.params[0];
 
     const query: any = {
       status: true,
-      slug: slug
+      fullSlug: slug
     }
     const categories = await AdminCategoryModel.find(query);
+    const currentCategory = categories[0] || null;
 
     let data = await Promise.all(categories.map(async (category) => {
       let title = await buildAdminCategoryBySlug(category._id);
@@ -3212,13 +3214,26 @@ export const getAdminCategoryBySlug = async (req: Request, resp: Response) => {
           _id: item._id,
           title: item.title,
           slug: item.slug,
+          fullSlug: item.fullSlug
         }
       })
     }));
 
     data = data.flat();
 
-    return resp.status(200).json({ message: "Admin Category retrieved successfully.", data });
+    const current = currentCategory ? {
+      _id: currentCategory._id,
+      title: currentCategory.title,
+      slug: currentCategory.slug,
+      fullSlug: currentCategory.fullSlug,
+      meta_title: currentCategory.meta_title,
+      meta_description: currentCategory.meta_description,
+      meta_keyword: currentCategory.meta_keyword,
+      description: currentCategory.description,
+      search_term: currentCategory.search_terms,
+    } : null;
+
+    return resp.status(200).json({ message: "Admin Category retrieved successfully.", data, current });
 
   } catch (err) {
     console.log(err);
