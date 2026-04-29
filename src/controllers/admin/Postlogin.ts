@@ -94,6 +94,7 @@ import { createOrUpdateSlug } from "../../helpers/slug.helper";
 import { buildCategoryMeta } from "../../helpers/category.helper";
 import UrlRedirect from "../../models/UrlRedirect";
 import { buildAdminCategoryFullSlug, updateAdminCategoryChildrenSlugs } from "../../helpers/adminCategory.helper";
+import AttributeGroup from "../../models/AttributeGroup";
 
 interface CustomRequest extends Request {
     user?: any;
@@ -955,7 +956,7 @@ export const categoryList = async (req: CustomRequest, resp: Response) => {
         );
 
         if (req.query.search) {
-        const search = String(req.query.search).trim().toLowerCase();
+        const search = String(req.query.search).toLowerCase();
 
         categories = categories.filter((cat: any) =>
         cat.parent && cat.parent.toLowerCase().includes(search)
@@ -2474,59 +2475,122 @@ export const createAttributeList = async (req: CustomRequest, resp: Response) =>
 
 
 export const getAttributeList = async (req: CustomRequest, resp: Response) => {
-    try {
-        const { sort, fulldata } = req.query;
+  try {
+    const { sort, fulldata, groupId } = req.query;
 
-        let sortOption: any = { createdAt: -1 };
+    let sortOption: any = { attributeOrder: 1 };
 
-        if (sort) {
-            try {
-                const parsed = JSON.parse(sort as string);
-                if (typeof parsed === "object") sortOption = parsed;
-            } catch {
-                console.log("Invalid sort format received — using default sort.");
+    if (sort) {
+      try {
+        const parsed = JSON.parse(sort as string);
+        if (typeof parsed === "object") sortOption = parsed;
+      } catch {
+        console.log("Invalid sort format — using default.");
+      }
+    }
+
+    let filter: any = { isDeleted: false };
+
+    if (req.query.search) {
+      const search = String(req.query.search).trim();
+
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    if (fulldata === "true") {
+      const data = await AttributesList.aggregate([
+        { $match: filter },
+
+        {
+            $lookup: {
+                from: "attributegroups",
+                localField: "groupId",
+                foreignField: "_id",
+                as: "group"
+            }
+        },
+        { $unwind: "$group" },
+        {
+            $match: {
+                "group.isDeleted": false,
+                "group.status": true
+            }
+        },
+        {
+            $sort: {
+            // "group.order": 1,   
+             name: 1   
+        }
+        },
+
+        // optional cleanup
+        {
+            $project: {
+                name: 1,
+                type: 1,
+                values: 1,
+                subAttributes: 1,
+                attributeOrder: 1,
+                groupId: 1,
+                groupName: "$group.name",
+                groupOrder: "$group.order"
             }
         }
+      ]);
 
-        let filter: any = { isDeleted: false };
-
-        if(req.query.search) {
-            const search = String(req.query.search).trim();
-
-            filter.$or = [
-                { name: { $regex: search, $options: "i" } },
-            ]
-        };
-
-        if(fulldata === "true"){
-            const data = await AttributesList.find(filter).sort(sortOption);
-
-            return resp.status(200).json({
-                success: true,
-                message: "Full Attribute List retrieved successfully.",
-                data
-            });
-        }
-
-        const result = await paginate(AttributesList, {
-            page: Number(req.query.page || 1),
-            limit: Number(req.query.limit || 10),
-            sort: sortOption,
-            filter
-        });
-
-        return resp.status(200).json({
-            success: true,
-            message: "Attribute List retrieved successfully.",
-            ...result
-        });
-
-    } catch (error: any) {
-        return resp.status(500).json({
-            success: false,
-            message: error.message || "Something went wrong. Please try again."
-        });
+      return resp.status(200).json({
+        success: true,
+        message: "Full Attribute List retrieved successfully.",
+        data
+      });
     }
+
+    if (!groupId) {
+      return resp.status(400).json({
+        success: false,
+        message: "groupId is required"
+      });
+    }
+
+    const groupObjectId = new mongoose.Types.ObjectId(groupId as string);
+
+    const group = await AttributeGroup.findOne({
+      _id: groupObjectId,
+      isDeleted: false,
+      status: true
+    }).select("_id name order");
+
+    if (!group) {
+      return resp.status(404).json({
+        success: false,
+        message: "Group not found"
+      });
+    }
+
+    filter.groupId = groupObjectId;
+
+    const result = await paginate(AttributesList, {
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 10),
+      sort: sortOption,
+      filter
+    });
+
+    return resp.status(200).json({
+      success: true,
+      message: "Attribute List retrieved successfully.",
+      group,
+      ...result
+    });
+
+  } catch (error: any) {
+    return resp.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong."
+    });
+  }
 };
 
 export const getAttributeListById = async (req: CustomRequest, resp: Response) => {
@@ -2655,6 +2719,315 @@ export const deleteAttributeList = async (req: CustomRequest, resp: Response) =>
     });
     }
 }
+
+export const reorderAttributes = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { groupId } = req.params;
+    const updates = req.body;
+
+    if (!groupId) {
+      return resp.status(400).json({
+        success: false,
+        message: "groupId is required"
+      });
+    }
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return resp.status(400).json({
+        success: false,
+        message: "Invalid payload"
+      });
+    }
+
+    const groupObjectId = new mongoose.Types.ObjectId(groupId);
+
+    for (const item of updates) {
+      if (!item._id || typeof item.attributeOrder !== "number") {
+        return resp.status(400).json({
+          success: false,
+          message: "Each item must have _id and attributeOrder"
+        });
+      }
+    }
+
+    const ids = updates.map(u => u._id);
+
+    const attributes = await AttributesList.find({
+      _id: { $in: ids },
+      isDeleted: false
+    }).select("_id groupId");
+
+    if (attributes.length !== updates.length) {
+      return resp.status(400).json({
+        success: false,
+        message: "Some attributes not found"
+      });
+    }
+
+    for (const attr of attributes) {
+      if (String(attr.groupId) !== String(groupObjectId)) {
+        return resp.status(400).json({
+          success: false,
+          message: "All attributes must belong to same group"
+        });
+      }
+    }
+
+    const orders = updates.map(u => u.attributeOrder);
+    if (new Set(orders).size !== orders.length) {
+      return resp.status(400).json({
+        success: false,
+        message: "Duplicate attributeOrder not allowed"
+      });
+    }
+
+    const sorted = [...orders].sort((a, b) => a - b);
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i] !== i + 1) {
+        return resp.status(400).json({
+          success: false,
+          message: "Order must be sequential starting from 1"
+        });
+      }
+    }
+
+    const bulkOps = updates.map(item => ({
+      updateOne: {
+        filter: { _id: item._id },
+        update: { attributeOrder: item.attributeOrder }
+      }
+    }));
+
+    await AttributesList.bulkWrite(bulkOps);
+
+    return resp.status(200).json({
+      success: true,
+      message: "Attributes reordered successfully"
+    });
+
+  } catch (error: any) {
+    console.error("Reorder Attributes Error:", error);
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong"
+    });
+  }
+};
+
+export const createAttributeGroup = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { _id, name, order } = req.body;
+
+    if (!name || !name.trim()) {
+      return resp.status(400).json({
+        success: false,
+        message: "Group name is required"
+      });
+    }
+
+    const normalizedName = name.trim();
+    const slug = slugify(normalizedName, { lower: true, strict: true });
+
+    if (_id) {
+      const existing = await AttributeGroup.findOne({ _id, isDeleted: false });
+
+      if (!existing) {
+        return resp.status(404).json({
+          success: false,
+          message: "Group not found"
+        });
+      }
+
+      const duplicate = await AttributeGroup.findOne({
+        slug,
+        _id: { $ne: _id },
+        isDeleted: false
+      });
+
+      if (duplicate) {
+        return resp.status(400).json({
+          success: false,
+          message: "Group name already exists"
+        });
+      }
+
+      if (order && order !== existing.order) {
+
+        if (order < existing.order) {
+          await AttributeGroup.updateMany(
+            {
+              order: { $gte: order, $lt: existing.order },
+              isDeleted: false
+            },
+            { $inc: { order: 1 } }
+          );
+        } else {
+          await AttributeGroup.updateMany(
+            {
+              order: { $gt: existing.order, $lte: order },
+              isDeleted: false
+            },
+            { $inc: { order: -1 } }
+          );
+        }
+
+        existing.order = order;
+      }
+
+      existing.name = name;
+      existing.slug = slug;
+
+      await existing.save();
+
+      return resp.status(200).json({
+        success: true,
+        message: "Attribute group updated successfully",
+        data: existing
+      });
+    }
+
+    const existing = await AttributeGroup.findOne({
+      slug,
+      isDeleted: false
+    });
+
+    if (existing) {
+      return resp.status(400).json({
+        success: false,
+        message: "Group already exists"
+      });
+    }
+
+    let finalOrder = order;
+
+    if (finalOrder) {
+      await AttributeGroup.updateMany(
+        {
+          order: { $gte: finalOrder },
+          isDeleted: false
+        },
+        { $inc: { order: 1 } }
+      );
+    } else {
+      const last = await AttributeGroup.findOne({ isDeleted: false })
+        .sort({ order: -1 })
+        .select("order");
+
+      finalOrder = last ? last.order + 1 : 1;
+    }
+
+    const group = await AttributeGroup.create({
+      name,
+      slug,
+      order: finalOrder
+    });
+
+    return resp.status(201).json({
+      success: true,
+      message: "Attribute group created successfully",
+      data: group
+    });
+
+  } catch (error: any) {
+    console.error("Upsert AttributeGroup Error:", error);
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong"
+    });
+  }
+};
+
+export const getAttributeGroups = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { search } = req.query;
+
+    let filter: any = {
+      isDeleted: false,
+      status: true
+    };
+
+    if (search && typeof search === "string") {
+      const searchText = search.trim();
+
+      filter.$or = [
+        { name: { $regex: searchText, $options: "i" } },
+        { slug: { $regex: searchText, $options: "i" } }
+      ];
+    }
+
+    const groups = await AttributeGroup.find(filter)
+      .sort({ order: 1 })
+      .select("name slug order status");
+
+    return resp.status(200).json({
+      success: true,
+      message: "Attribute groups fetched successfully",
+      data: groups
+    });
+
+  } catch (error: any) {
+    console.error("Get AttributeGroups Error:", error);
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong"
+    });
+  }
+};
+
+export const reorderAttributeGroups = async (req: CustomRequest, resp: Response) => {
+  try {
+    const updates = req.body;
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return resp.status(400).json({
+        success: false,
+        message: "Invalid payload. Must be an array"
+      });
+    }
+
+    for (const item of updates) {
+      if (!item._id || typeof item.order !== "number") {
+        return resp.status(400).json({
+          success: false,
+          message: "Each item must have _id and order"
+        });
+      }
+    }
+
+    const orders = updates.map(u => u.order);
+    if (new Set(orders).size !== orders.length) {
+      return resp.status(400).json({
+        success: false,
+        message: "Duplicate order values are not allowed"
+      });
+    }
+
+    const bulkOps = updates.map((item) => ({
+      updateOne: {
+        filter: { _id: item._id },
+        update: { order: item.order }
+      }
+    }));
+
+    await AttributeGroup.bulkWrite(bulkOps);
+
+    return resp.status(200).json({
+      success: true,
+      message: "Groups reordered successfully"
+    });
+
+  } catch (error: any) {
+    console.error("Reorder Groups Error:", error);
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong"
+    });
+  }
+};
 
 const stripHtml = (text: string = ""): string => {
   return text
@@ -8198,7 +8571,7 @@ export const adminCategoryList = async (req: CustomRequest, res: Response) => {
         let categories = data.filter(Boolean);
 
         if (req.query.search) {
-        const search = String(req.query.search).trim().toLowerCase();
+        const search = String(req.query.search).toLowerCase();
 
         categories = categories.filter((cat: any) =>
         (cat.title && cat.title.toLowerCase().includes(search)) ||

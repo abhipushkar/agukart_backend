@@ -263,7 +263,11 @@ import {
     updateStatusOfShipmentAndOrder,
     pinUnpinSubOrder,
     restoreProductAfterDeletedVarients,
-    updateCategoryField
+    updateCategoryField,
+    createAttributeGroup,
+    reorderAttributeGroups,
+    getAttributeGroups,
+    reorderAttributes
 } from "../controllers/admin/Postlogin";
 
 
@@ -343,6 +347,13 @@ routes.get('/get-attribute-list', getAttributeList);
 routes.get('/get-attribute-detail/:id', getAttributeListById);
 routes.post('/update-attribute-list/:id', updateAttributeList);
 routes.delete('/delete-attribute-list/:id', deleteAttributeList);
+routes.post('/reorder-attribute/:groupId', reorderAttributes);
+
+
+// Attribute List Group API's
+routes.post('/create-attribute-group', createAttributeGroup);
+routes.get("/attribute-group", getAttributeGroups);
+routes.post("/attribute-group/reorder", reorderAttributeGroups);
 
 // URL apis
 routes.post("/createUrl", (req: any, res, next) => {

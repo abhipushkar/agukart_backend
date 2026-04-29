@@ -15,6 +15,8 @@
 
   export interface IAttribute extends Document {
     name: string;
+    groupId: mongoose.Types.ObjectId;
+    attributeOrder: number;
     type: "Text" | "Number" | "Yes/No" | "Dropdown" | "Compound";
     status: boolean;
     viewOnProductPage: boolean;
@@ -45,6 +47,8 @@
   const AttributeSchema = new Schema<IAttribute>(
     {
       name: { type: String, required: true, trim: true },
+      groupId: { type: mongoose.Schema.Types.ObjectId, ref: "AttributeGroup", required: true },
+      attributeOrder: { type: Number, default: 1 },
       type: {
         type: String,
         enum: ["Text", "Number", "Yes/No", "Dropdown", "Compound"],
@@ -69,6 +73,8 @@
       partialFilterExpression: { isDeleted: false },
     }
   );
+
+  AttributeSchema.index({ groupId: 1, attributeOrder: 1 });
 
   AttributeSchema.pre("save", function (next) {
     const doc = this as IAttribute;
