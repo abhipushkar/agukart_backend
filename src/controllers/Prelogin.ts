@@ -2353,9 +2353,9 @@ export function checkSoldOut(productQty: any, combinationData: any[], formValues
 
 
 export const getProductById = async (req: Request, resp: Response) => {
-  const productId = req.query.productId as string;
+  const productParam = req.query.productId as string;
 
-  if (!productId) {
+  if (!productParam) {
     return resp.status(400).json({
       message: 'No Product id found',
       data: []
@@ -2363,12 +2363,22 @@ export const getProductById = async (req: Request, resp: Response) => {
   }
 
   try {
-    const data = await ProductModel.findOne({
-      _id: productId,
-      status: true,
-      isDeleted: false,
-      draft_status: false
-    })
+let query: any = {
+  status: true,
+  isDeleted: false,
+  draft_status: false
+};
+
+if (mongoose.Types.ObjectId.isValid(productParam)) {
+  query.$or = [
+    { _id: new mongoose.Types.ObjectId(productParam) },
+    { product_code: productParam }
+  ];
+} else {
+  query.product_code = productParam;
+}
+
+const data = await ProductModel.findOne(query)
       .populate({ path: 'vendor_id', match: { status: true } })
       .populate({ path: 'category', match: { status: true } })
       .populate({ path: 'brand_id', match: { status: true } })
@@ -2383,6 +2393,8 @@ export const getProductById = async (req: Request, resp: Response) => {
           { path: 'variant_attribute_id', match: { status: true } }
         ]
       });
+
+      const finalProductId = data?._id;
 
     if (!data) {
       return resp.status(404).json({
@@ -2422,7 +2434,7 @@ export const getProductById = async (req: Request, resp: Response) => {
     const base_url = process.env.ASSET_URL || '';
 
     const rating = await RatingModel.aggregate([
-      { '$match': { product_id: new mongoose.Types.ObjectId(productId), status: 'approved' } },
+      { '$match': { product_id: finalProductId, status: 'approved' } },
       {
         '$lookup': {
           from: 'users',
@@ -2475,7 +2487,7 @@ export const getProductById = async (req: Request, resp: Response) => {
     };
 
     const promotionData = await PromotionalOfferModel.find({
-      product_id: productId,
+      product_id: finalProductId,
       vendor_id: data.vendor_id?._id,
       status: true,
       expiry_status: 'active'
@@ -2521,7 +2533,7 @@ export const getProductById = async (req: Request, resp: Response) => {
       }
     }
 
-    const cartEntry = await CartModel.findOne({ product_id: productId });
+    const cartEntry = await CartModel.findOne({ product_id: finalProductId });
     const cartProductCount = cartEntry?.qty || 0;
 
     const parentCombinationData = combinationData.map((item: any) => {
