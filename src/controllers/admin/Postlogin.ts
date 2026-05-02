@@ -3079,6 +3079,50 @@ const findOldCustomizationOption = (
   );
 };
 
+const generateProductCode = () => {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "AK";
+
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  return result;
+};
+
+async function generateUniqueProductCode() {
+  let code;
+  let exists = true;
+
+  while (exists) {
+    code = generateProductCode();
+
+    const found = await Product.findOne({ product_code: code }).lean();
+    if (!found) exists = false;
+  }
+
+  return code;
+}
+
+const cleanTitleForSlug = (title: string) =>
+  title.replace(/<[^>]*>/g, "").trim();
+
+const generateProductSlug = (title: string, fallback: string) => {
+  const clean = cleanTitleForSlug(title);
+
+  if (!clean || clean.length < 3) {
+    return `product-${fallback}`;
+  }
+
+  const words = clean.split(" ").slice(0, 8).join(" "); // limit words
+
+  return slugify(words, {
+    lower: true,
+    strict: true,
+    trim: true,
+  });
+};
+
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
@@ -3640,16 +3684,15 @@ for (const file of productMainImages) {
       }
 
       data.draft_status = false;
+
+      data.product_code = await generateUniqueProductCode();
       const product = await Product.create(data);
 
       let cat = await CategoryModel.findById(req.body.category);
       if (cat && product && req.body.category) {
-        const slug = slugify(
-          `${cat.slug}-${String(product._id).padStart(4, "0")}`,
-          {
-            lower: true,
-            remove: /[*+~.()'"!:@]/g,
-          }
+        const slug = generateProductSlug(
+            data.product_title,
+            product.product_code!
         );
         await Product.findByIdAndUpdate(product._id, { slug });
       }

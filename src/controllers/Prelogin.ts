@@ -781,6 +781,7 @@ export const getAdminMenuCategory = async (req: Request, resp: Response) => {
       _id: category._id,
       title: category.title,
       slug: category.slug,
+      fullSlug: category.fullSlug,
       parent_id: category.parent_id,
       image: baseurl + category.image,
       createdAt: category.createdAt,
@@ -944,6 +945,8 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       qty: 1,
       isCombination: 1,
       combinationData: 1,
+      product_code: 1,
+      slug: 1,
       videos: 1,
       image: 1,
       product_bedge: 1,
@@ -1919,6 +1922,8 @@ export const getProductList = async (req: Request, resp: Response) => {
         product_variants: 1,
         dynamicFields: 1,
         vendor_id: 1,
+        product_code: 1,
+        slug: 1,
         search_terms: 1,
         createdAt: 1,
         category: 1,
@@ -2001,6 +2006,8 @@ export const getProductList = async (req: Request, resp: Response) => {
       vendor_id: 1,
       search_terms: 1,
       createdAt: 1,
+      product_code: 1,
+      slug: 1,
       category: 1,
       qty: 1,
       combinationData: 1,
@@ -2172,6 +2179,8 @@ export const getProductList = async (req: Request, resp: Response) => {
     vendor_id: 1,
     search_terms: 1,
     createdAt: 1,
+    product_code: 1,
+    slug: 1,
     category: 1,
     qty: 1,
     combinationData: 1,
@@ -2407,7 +2416,7 @@ export const getProductById = async (req: Request, resp: Response) => {
     const combinationData = await CombinationProductModel.find({ product_id: data.parent_id }).populate({
       path: "sku_product_id",
       match: { isDeleted: false, status: true },
-      select: "image qty combinationData"
+      select: "image qty combinationData product_code slug"
     })
 
     const base_url = process.env.ASSET_URL || '';
@@ -2535,6 +2544,8 @@ export const getProductById = async (req: Request, resp: Response) => {
     ...obj,
     sku_product_id: skuId,   
     sku_first_image: firstImage,
+    product_code: sku?.product_code || "",
+    slug: sku?.slug || "",
     sold_out
     };
   });
@@ -3197,47 +3208,56 @@ export const getCategoryBySlug = async (req: Request, resp: Response) => {
 
 export const getAdminCategoryBySlug = async (req: Request, resp: Response) => {
   try {
-    const slug = req.params[0];
+    const slugPath = req.params[0];
+    const slugArray = slugPath.split('/');
 
-    const query: any = {
-      status: true,
-      fullSlug: slug
+    let parent: any = null;
+
+    for (const slugPart of slugArray) {
+      const category = await AdminCategoryModel.findOne({
+        slug: slugPart,
+        parent_id: parent ? parent._id : null,
+        status: true
+      });
+
+      if (!category) {
+        return resp.status(404).json({ message: "Category not found" });
+      }
+
+      parent = category;
     }
-    const categories = await AdminCategoryModel.find(query);
-    const currentCategory = categories[0] || null;
 
-    let data = await Promise.all(categories.map(async (category) => {
-      let title = await buildAdminCategoryBySlug(category._id);
+    // breadcrumb
+    const breadcrumb = await buildAdminCategoryBySlug(parent._id);
 
-      return title.map((item: any) => {
-        return {
-          _id: item._id,
-          title: item.title,
-          slug: item.slug,
-          fullSlug: item.fullSlug
-        }
-      })
+    const data = breadcrumb.map((item: any) => ({
+      _id: item._id,
+      title: item.title,
+      slug: item.slug,
+      fullSlug: item.fullSlug
     }));
 
-    data = data.flat();
+    const current = {
+      _id: parent._id,
+      title: parent.title,
+      slug: parent.slug,
+      fullSlug: parent.fullSlug,
+      meta_title: parent.meta_title,
+      meta_description: parent.meta_description,
+      meta_keyword: parent.meta_keyword,
+      description: parent.description,
+      search_term: parent.search_terms,
+    };
 
-    const current = currentCategory ? {
-      _id: currentCategory._id,
-      title: currentCategory.title,
-      slug: currentCategory.slug,
-      fullSlug: currentCategory.fullSlug,
-      meta_title: currentCategory.meta_title,
-      meta_description: currentCategory.meta_description,
-      meta_keyword: currentCategory.meta_keyword,
-      description: currentCategory.description,
-      search_term: currentCategory.search_terms,
-    } : null;
-
-    return resp.status(200).json({ message: "Admin Category retrieved successfully.", data, current });
+    return resp.status(200).json({
+      message: "Admin Category retrieved successfully.",
+      data,
+      current
+    });
 
   } catch (err) {
     console.log(err);
-    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+    return resp.status(500).json({ message: 'Something went wrong.' });
   }
 };
 
@@ -3358,7 +3378,10 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
     const state = await StateModel.findOne({ _id: vendor.state_id });
     const city = await CityModel.findOne({ _id: vendor.city_id });
 
-    const particularVendorReviews = await RatingModel.find({ vendor_id: vendor._id, status: 'approved' });
+    const particularVendorReviews = await RatingModel.find({ vendor_id: vendor._id, status: 'approved' }).populate({
+      path: 'product_id',
+      select: 'product_code slug'
+    });
 
     const allData = {
       _id: vendor._id,

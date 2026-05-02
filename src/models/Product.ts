@@ -2,6 +2,12 @@ import mongoose, { Schema, Document, model } from 'mongoose';
 
 const productSchema = new Schema(
   {
+    product_code: {
+      type: String,
+      unique: true,
+      required: true,
+      index: true
+    },
     vendor_id: {
       type: mongoose.Schema.Types.ObjectId,
       default: null,
