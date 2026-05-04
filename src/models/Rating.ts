@@ -58,6 +58,10 @@ const ratingSchema = new Schema(
         rejected_date: {
             type: Date,
             default: null
+        },
+        images: {
+            type: [String],
+            default: []
         }
 
     },

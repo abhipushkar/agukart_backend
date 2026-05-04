@@ -62,6 +62,12 @@ import {
 import multer from 'multer';
 import validationMiddleware from "../utils/multivalidate";
 import { otpsend, validateChangeEmail, validateSignup } from "../validators/validators";
+import { Request, Response, NextFunction } from "express";
+import { upload } from "../middleware/fileupload";
+ 
+interface CustomRequest extends Request {
+  filepath?: string;
+}
 
 const routes = express.Router();
 routes.post('/add-viewed-products', addViewedProducts)
@@ -103,7 +109,15 @@ routes.get('/orderList', orderList)
 routes.get('/getOrderDetail/:orderId', getOrderDetail)
 routes.get('/searchorder',searchOrder)
 
-routes.post('/sendRating', sendRating)
+routes.post(
+  "/sendRating",
+  (req: CustomRequest, res: Response, next: NextFunction) => {
+    req.filepath = "ratings";
+    next();
+  },
+  upload.array("images", 5),
+  sendRating
+);
 
 routes.post('/sub-order-list', subOrderList)
 routes.post('/user-cancel-order', userCancelOrder)

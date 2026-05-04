@@ -2620,7 +2620,7 @@ export const getSimilarProduct = async (req: Request, resp: Response) => {
       status: true,
       draft_status: false
     })
-      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom')
+      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_code slug')
       .limit(6)
       .lean();
 
@@ -2674,6 +2674,8 @@ export const getSimilarProduct = async (req: Request, resp: Response) => {
         return {
           _id: item._id,
           product_title: item.product_title,
+          product_code: item.product_code,
+          slug: item.slug,
           zoom: item.zoom,
           ratingAvg: item.ratingAvg || 0,
           originalPrice,
@@ -2735,7 +2737,7 @@ export const getSimilarVendorProduct = async (req: Request, resp: Response) => {
       status: true,
       draft_status: false,
     })
-      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom')
+      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_code slug')
       .limit(6)
       .lean();
 
@@ -2788,6 +2790,8 @@ export const getSimilarVendorProduct = async (req: Request, resp: Response) => {
         return {
           _id: item._id,
           product_title: item.product_title,
+          product_code: item.product_code,
+          slug: item.slug,
           ratingAvg: item.ratingAvg || 0,
           originalPrice,
           finalPrice,
@@ -4095,7 +4099,7 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
     // --- Fetch products (no change needed in selection) ---
     const rawProducts = await ProductModel.find(query)
       .select(
-        "product_title sale_price isCombination combinationData ratingAvg createdAt image videos zoom product_bedge userReviewCount"
+        "product_title sale_price isCombination combinationData ratingAvg createdAt image videos zoom product_bedge userReviewCount product_code slug"
       )
       .sort(sort_by === "newest" ? { createdAt: -1 } : {})
       .skip(skip)
@@ -4184,6 +4188,8 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
         return {
           _id: item._id,
           product_title: item.product_title,
+          product_code: item.product_code,
+          slug: item.slug,
           ratingAvg: item.ratingAvg || 0,
           originalPrice,
           finalPrice,

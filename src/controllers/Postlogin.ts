@@ -4986,6 +4986,33 @@ export const getOrderDetailsById = async (
 
 export const sendRating = async (req: CustomRequest, resp: Response) => {
   try {
+    const files = req.files as Express.Multer.File[] || [];
+    const imagePaths: string[] = [];
+
+    if (files.length > 0) {
+      const uploadDir = path.join('uploads', 'ratings');
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    for (const file of files) {
+      const fileName = Date.now() + "-" + Math.round(Math.random() * 1e9) + ".webp";
+      const fullPath = path.join(uploadDir, fileName);
+
+      await sharp(file.path)
+        .webp({ quality: 80 })
+        .toFile(fullPath);
+
+          try {
+            await fs.promises.unlink(file.path);
+          } catch (err) {
+            console.warn("File delete failed:", file.path);
+          }
+
+      imagePaths.push(fileName);
+    }
+    }
     const delivery_rating = req.body.delivery_rating;
     const item_rating = req.body.item_rating;
     const additional_comment = req.body.additional_comment;
@@ -5017,6 +5044,7 @@ export const sendRating = async (req: CustomRequest, resp: Response) => {
       user_id: req.user._id,
       product_id: saleDetailData.product_id,
       vendor_id: vendor_id,
+      images: imagePaths
     };
     saleDetailData.ratingStatus = true;
 
