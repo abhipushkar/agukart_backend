@@ -193,6 +193,8 @@ routes.get('/get-shop-detail', getShopDetail);
 routes.use('/user',auth, user);
 routes.use('/admin', adminAuth, admin);
 
+routes.get("/product/:slug/:product_code", resolveSlug, finalHandler);
+
 routes.get("/:slug(*)", resolveSlug, finalHandler);
 
 export default routes;

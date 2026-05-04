@@ -3686,16 +3686,13 @@ for (const file of productMainImages) {
       data.draft_status = false;
 
       data.product_code = await generateUniqueProductCode();
-      const product = await Product.create(data);
 
-      let cat = await CategoryModel.findById(req.body.category);
-      if (cat && product && req.body.category) {
-        const slug = generateProductSlug(
-            data.product_title,
-            product.product_code!
-        );
-        await Product.findByIdAndUpdate(product._id, { slug });
-      }
+      data.slug = generateProductSlug(
+        cleanTitle,
+        data.product_code
+      );
+
+      const product = await Product.create(data);
 
       await PromotionalOfferModel.updateMany(
         { purchased_items: "Entire Catalog" },
@@ -3860,6 +3857,31 @@ if (newCust.guide && oldCust.guide) {
       Object.keys(data).forEach((k) => {
         if (data[k] === undefined) delete data[k];
       });
+
+      const oldSlug = existingProduct.slug;
+
+      const newSlug = generateProductSlug(
+        cleanTitle || existingProduct.product_title,
+        existingProduct.product_code
+      );
+
+      if (oldSlug !== newSlug) {
+        await UrlRedirect.updateOne(
+        {
+            oldSlug: `/product/${oldSlug}/${existingProduct.product_code}`
+        },
+        {
+            $set: {
+                newSlug: `/product/${newSlug}/${existingProduct.product_code}`,
+                entityType: "product",
+                entityId: existingProduct._id
+            }
+        },
+        { upsert: true }
+    );
+
+       data.slug = newSlug;
+    }
 
       await Product.updateOne({ _id: req.body._id }, { $set: {...data, combinationData: data.combinationData, product_variants: data.product_variants },});
       if ( existingProduct.parent_id && oldSku && newSku && oldSku !== newSku) {

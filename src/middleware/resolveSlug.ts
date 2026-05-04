@@ -3,6 +3,8 @@ import UrlRedirect from "../models/UrlRedirect";
 import Category from "../models/Category";
 import ParentProduct from "../models/ParentProduct";
 import AdminCategory from "../models/AdminCategory";
+import ProductModel from "../models/Product";
+import { generateProductSlug } from "../utils/productSlug";
 
 // 🔥 Extend Request properly
 interface CustomRequest extends Request {
@@ -19,6 +21,39 @@ export const resolveSlug = async (
     if (!req.params.slug) {
       return res.status(400).json({ message: "Invalid URL" });
     }
+
+if (req.params.product_code) {
+  const { slug, product_code } = req.params;
+
+  const fullPath = `/product/${slug}/${product_code}`;
+
+  const [product, redirectDoc] = await Promise.all([
+    ProductModel.findOne({ product_code }).lean(),
+    UrlRedirect.findOne({ oldSlug: fullPath }).lean()
+  ]);
+
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+
+  if (redirectDoc) {
+    return res.json({
+      redirect: true,
+      newSlug: redirectDoc.newSlug
+    });
+  }
+
+  if (slug !== product.slug) {
+    return res.json({
+      redirect: true,
+      newSlug: `/product/${product.slug}/${product.product_code}`
+    });
+  }
+
+  req.type = "product";
+  req.data = product;
+  return next();
+}
 
     const slugPath = Array.isArray(req.params.slug)
       ? req.params.slug.join("/")
@@ -72,17 +107,6 @@ export const resolveSlug = async (
     if (adminCategory) {
       req.type = "adminCategory";
       req.data = adminCategory;
-      return next();
-    }
-
-    // =========================
-    // 🔥 STEP 4: CHECK PRODUCT
-    // =========================
-    const product = await ParentProduct.findOne({ fullSlug: finalSlug }).lean();
-
-    if (product) {
-      req.type = "product";
-      req.data = product;
       return next();
     }
 
