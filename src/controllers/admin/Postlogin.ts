@@ -4259,6 +4259,7 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
       {
         $group: {
           _id: "$_id",
+          parent_product_code: { $first: "$parent_product_code" },
           product_title: { $first: "$product_title" },
           image: { $first: "$image" },
           seller_sku: { $first: "$seller_sku" },
@@ -4907,6 +4908,8 @@ unionPipeline.push({
     featured: 1,
     category: 1,
     sku_code: 1,
+    product_code: 1,
+    slug: 1,
     qty: 1,
     price: 1,
     sale_price: 1,
@@ -4988,6 +4991,11 @@ if (req.query.search && String(req.query.search).trim() !== "") {
         : []),
       { sku_code: { $regex: search, $options: "i" } }, // simple product SKU
       { "productData.sku_code": { $regex: search, $options: "i" } }, // variant SKU
+      { product_code: { $regex: search, $options: "i" } },
+      { parent_product_code: { $regex: search, $options: "i" } },
+      { "productData.product_code": { $regex: search, $options: "i" } },
+      { seller_sku: { $regex: search, $options: "i" } },
+      { "productData.seller_sku": { $regex: search, $options: "i" } },
       { product_title: { $regex: search, $options: "i" } }, // parent title
       { "productData.product_title": { $regex: search, $options: "i" } }, // variant title
     ],
@@ -7742,6 +7750,28 @@ export const getOccasion = async (req: CustomRequest, res: Response) => {
     }
 };
 
+const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+const generateParentProductCode = () => {
+  let result = "AK"; // as per your decision
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+async function generateUniqueParentProductCode() {
+  while (true) {
+    const code = generateParentProductCode();
+
+    const exists = await ParentProduct.findOne({
+      parent_product_code: code
+    });
+
+    if (!exists) return code;
+  }
+}
+
 export const addParentProduct = async (req: CustomRequest, resp: Response) => {
     try {
         req.body.product_variation = parseJSON(req.body.product_variation, []);
@@ -7799,8 +7829,22 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
                         return resp.status(400).json({ message: `SKU Code ${existingCombination.sku_code} already exists.`, success: false });
                     }
                 }
+
+
                 
-                const parent_product = await ParentProduct.create(data);
+                let parent_product: any;
+                let created = false;
+
+                while (!created) {
+                    try {
+                        data.parent_product_code = await generateUniqueParentProductCode();
+                        parent_product = await ParentProduct.create(data);
+                        created = true;
+                    } catch (err: any) {
+                        if (err.code === 11000) continue; // retry on duplicate
+                            throw err;
+                        }
+                }
                 const sku: any = [];
                 
             for (const combData of combinations) {

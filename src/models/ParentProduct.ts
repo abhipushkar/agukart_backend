@@ -1,4 +1,4 @@
-import { string } from 'joi';
+import { required, string } from 'joi';
 import mongoose, { Schema, Document, model } from 'mongoose';
 
 const parentProductSchema = new Schema(
@@ -6,6 +6,12 @@ const parentProductSchema = new Schema(
         product_title: {
             type: String,
             default: '',
+        },
+        parent_product_code: {
+            type: String,
+            required: true,
+            unique: true,
+            index: true
         },
         vendor_id: {
             type: mongoose.Schema.Types.ObjectId,
