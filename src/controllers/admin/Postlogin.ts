@@ -2500,51 +2500,88 @@ export const getAttributeList = async (req: CustomRequest, resp: Response) => {
     }
 
     if (fulldata === "true") {
-      const data = await AttributesList.aggregate([
-        { $match: filter },
 
-        {
-            $lookup: {
-                from: "attributegroups",
-                localField: "groupId",
-                foreignField: "_id",
-                as: "group"
-            }
-        },
-        { $unwind: "$group" },
-        {
-            $match: {
-                "group.isDeleted": false,
-                "group.status": true
-            }
-        },
-        {
-            $sort: {
-            // "group.order": 1,   
-             name: 1   
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 10);
+    const skip = (page - 1) * limit;
+
+    const fullDataSort = Object.keys(sortOption).length > 0 ? sortOption : { name: 1 };
+
+    const aggregationPipeline: any[] = [
+      {
+        $match: filter
+      },
+
+      {
+        $lookup: {
+            from: "attributegroups",
+            localField: "groupId",
+            foreignField: "_id",
+            as: "group"
         }
-        },
+      },
 
-        // optional cleanup
-        {
-            $project: {
-                name: 1,
-                type: 1,
-                values: 1,
-                subAttributes: 1,
-                attributeOrder: 1,
-                groupId: 1,
-                groupName: "$group.name",
-                groupOrder: "$group.order"
-            }
+      {
+        $unwind: "$group"
+      },
+
+      {
+        $match: {
+            "group.isDeleted": false,
+            "group.status": true
         }
-      ]);
+      },
+      {
+        $sort: fullDataSort
+      },
+      {
+        $project: {
+            name: 1,
+            type: 1,
+            values: 1,
+            status: 1,
+            viewInFilters: 1,
+            viewOnProductPage: 1,
+            subAttributes: 1,
+            attributeOrder: 1,
+            groupId: 1,
+            groupName: "$group.name",
+            groupOrder: "$group.order"
+        }
+      },
 
-      return resp.status(200).json({
+      {
+        $facet: {
+            data: [
+              { $skip: skip },
+              { $limit: limit }
+            ],
+
+        totalCount: [
+          { $count: "count" }
+        ]
+      }
+      }
+    ];
+
+    const result = await AttributesList.aggregate(aggregationPipeline);
+
+    const data = result[0]?.data || [];
+    const totalDocs = result[0]?.totalCount[0]?.count || 0;
+
+    return resp.status(200).json({
         success: true,
         message: "Full Attribute List retrieved successfully.",
-        data
-      });
+        data,
+        pagination: {
+            totalDocs,
+            totalPages: Math.ceil(totalDocs / limit),
+            currentPage: page,
+            limit,
+            hasNextPage: page < Math.ceil(totalDocs / limit),
+            hasPrevPage: page > 1
+        }
+    });
     }
 
     if (!groupId) {
@@ -2590,6 +2627,76 @@ export const getAttributeList = async (req: CustomRequest, resp: Response) => {
       success: false,
       message: error.message || "Something went wrong."
     });
+  }
+};
+
+export const getAttributeDropdown = async ( req: CustomRequest, resp: Response) => {
+  try {
+
+    const data = await AttributesList.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          status: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "attributegroups",
+          localField: "groupId",
+          foreignField: "_id",
+          as: "group"
+        }
+      },
+
+      {
+        $unwind: "$group"
+      },
+
+      {
+        $match: {
+          "group.isDeleted": false,
+          "group.status": true
+        }
+      },
+
+      {
+        $sort: {
+          name: 1
+        }
+      },
+
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          type: 1,
+          groupId: 1,
+          attributeOrder: 1,
+          groupName: "$group.name",
+
+          // optional useful fields
+          viewInFilters: 1,
+          viewOnProductPage: 1,
+          multiSelect: 1
+        }
+      }
+    ]);
+
+    return resp.status(200).json({
+      success: true,
+      message: "Attribute dropdown fetched successfully.",
+      data
+    });
+
+  } catch (error: any) {
+
+    return resp.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong."
+    });
+
   }
 };
 
