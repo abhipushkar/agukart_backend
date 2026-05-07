@@ -5425,13 +5425,21 @@ export const deletedByAdmin = async (req: Request, resp: Response) => {
 
 export const editProduct = async (req: CustomRequest, resp: Response) => {
   try {
-    const id = req.params.id;
+    const identifier = req.params.id;
+
+    const matchCondition: any = {};
+    if (mongoose.Types.ObjectId.isValid(identifier)) {
+        matchCondition.$or = [
+            { _id: new mongoose.Types.ObjectId(identifier) },
+            { product_code: identifier }
+        ];
+    } else {
+        matchCondition.product_code = identifier;
+    }
 
     const pipeline: any = [
       {
-        $match: {
-          _id: new mongoose.Types.ObjectId(id),
-        },
+        $match: matchCondition,
       },
       {
         $lookup: {
@@ -5791,10 +5799,33 @@ export const getAttributeListByCategoryId = async (req: Request, resp: Response)
             return resp.status(404).json({ message: "No attribute lists assigned to this category." });
         }
         
-        const attributeLists = await AttributesList.find({
-            _id: {$in: category.attributeList_id },
-            status: true,
-        });
+        const attributeLists = await AttributesList.aggregate([
+            {
+                $match: {
+                    _id: { $in: category.attributeList_id.map((id: any) => new mongoose.Types.ObjectId(id)) },
+                    status: true,
+                    isDeleted: false
+                },
+            },
+            {
+                $lookup: {
+                    from: "attributegroups",
+                    localField: "groupId",
+                    foreignField: "_id",   
+                    as: "groupId",
+                },
+            },
+            {
+                $unwind: "$groupId",
+            },
+            {
+                $sort: {
+                    "groupId.order": 1,
+                    attributeOrder: 1
+                },
+            },
+        ]);
+
         return resp.status(200).json({ message: "Attribute lists fetched successfully." , attributeLists, });
     } catch (error) {
       console.error("Error fetching attribute list:", error);
@@ -8091,14 +8122,24 @@ export const updateProductByField = async (req: CustomRequest, resp: Response) =
 
 export const fetchParentProduct = async (req: CustomRequest, resp: Response) => {
     try {
-        const id = req.params.id;
+        const identifier = req.params.id;
         const baseurl = process.env.ASSET_URL + '/uploads/parent_product/';
 
-        if (!id) {
+        if (!identifier) {
             return resp.status(400).json({ message: 'Please Provide Id' });
         }
 
-        const parent: any = await ParentProduct.findById(id).lean();
+        const query: any = {};
+        if (mongoose.Types.ObjectId.isValid(identifier)) {
+            query.$or = [
+                { _id: new mongoose.Types.ObjectId(identifier) },
+                { parent_product_code: identifier }
+            ];
+        } else {
+            query.parent_product_code = identifier;
+        }
+
+        const parent: any = await ParentProduct.findOne(query).lean();
 
         if (!parent) {
             return resp.status(400).json({ message: 'Product Not Found.' });
