@@ -201,18 +201,14 @@ const saveProductFile = async (file: any, cleanedName: string) => {
   if (!file) return "";
 
   const uploadDir = path.join("uploads", "product");
-
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
   const mime = file.mimetype?.toLowerCase() || "";
   const ext = path.extname(file.originalname)?.toLowerCase() || "";
-
   const parsed = path.parse(cleanedName);
-
   const baseName = parsed.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-
   const timestamp = Date.now();
 
   let finalFileName = "";
@@ -220,53 +216,17 @@ const saveProductFile = async (file: any, cleanedName: string) => {
 
   try {
     if (mime.startsWith("image/")) {
-
       finalFileName = `${baseName}-${timestamp}.webp`;
-
       fullPath = path.join(uploadDir, finalFileName);
-
-      // FIXED HERE
-      if (file.buffer) {
-        await sharp(file.buffer)
-          .rotate()
-          .webp({ quality: 90 })
-          .toFile(fullPath);
-
-      } else if (file.path) {
-
-        await sharp(file.path)
-          .rotate()
-          .webp({ quality: 90 })
-          .toFile(fullPath);
-
-      } else {
-        throw new Error("No buffer or path found");
-      }
-
+      await sharp(file.path).toFormat("webp").toFile(fullPath);
     } else {
-
       finalFileName = `${baseName}-${timestamp}${ext}`;
-
       fullPath = path.join(uploadDir, finalFileName);
-
-      if (file.buffer) {
-        await fs.promises.writeFile(fullPath, file.buffer);
-
-      } else if (file.path) {
-
-        await fs.promises.copyFile(file.path, fullPath);
-
-      } else {
-        throw new Error("No buffer or path found");
-      }
+      await fs.promises.copyFile(file.path, fullPath);
     }
-
     return process.env.ASSET_URL + "/uploads/product/" + finalFileName;
-
   } catch (e) {
-
     console.error("File save failed:", e);
-
     return "";
   }
 };
