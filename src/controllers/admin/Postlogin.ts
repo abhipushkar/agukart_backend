@@ -146,7 +146,20 @@ const uploadImage = multer({
         }
         cb(null, true);
     }
-}).array('images', 12);
+}).array('images', 15);
+
+const uploadProductImages  = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: function (req, file, cb) {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('Only images are allowed'));
+        }
+        cb(null, true);
+    }
+}).fields([
+    { name: 'images', maxCount: 15 },
+    { name: 'edited_image', maxCount: 1 }
+]);
 
 
 const deleteFile = (filePath: string) => {
@@ -2492,7 +2505,7 @@ export const getAttributeList = async (req: CustomRequest, resp: Response) => {
     let filter: any = { isDeleted: false };
 
     if (req.query.search) {
-      const search = String(req.query.search).trim();
+      const search = String(req.query.search);
 
       filter.$or = [
         { name: { $regex: search, $options: "i" } }
@@ -2674,6 +2687,8 @@ export const getAttributeDropdown = async ( req: CustomRequest, resp: Response) 
           type: 1,
           groupId: 1,
           attributeOrder: 1,
+          values: 1,
+          subAttributes: 1,
           groupName: "$group.name",
 
           // optional useful fields
@@ -3056,7 +3071,7 @@ export const getAttributeGroups = async (req: CustomRequest, resp: Response) => 
     };
 
     if (search && typeof search === "string") {
-      const searchText = search.trim();
+      const searchText = search;
 
       filter.$or = [
         { name: { $regex: searchText, $options: "i" } },
@@ -5888,7 +5903,7 @@ export const addVariantProduct = async (req: CustomRequest, resp: Response) => {
 }
 
 export const uploadImages = async (req: Request, resp: Response) => {
-    uploadImage(req, resp, async (err: any) => {
+    uploadProductImages(req, resp, async (err: any) => {
         const deleteImgArr: string[] = req.body.deleteImgArr || [];
         let FeMessage = 'Images added successfully.';
 
@@ -5906,10 +5921,13 @@ export const uploadImages = async (req: Request, resp: Response) => {
             return resp.status(400).json({ message: 'Product Not Found.', success: false });
         }
 
-        const files = req.files as Express.Multer.File[];
+        const files = (req.files as any)?.images || [];
+
+        const editedImageFile = (req.files as any)?.edited_image?.[0];
         let data: string[] = product?.image?.length > 0 ? product?.image : [];
 
         const convertedFiles: string[] = [];
+        let editedImageName = product?.edited_image || '';
         if (files) {
             const uploadFolderPath = path.join('uploads', 'product');
 
@@ -5929,6 +5947,26 @@ export const uploadImages = async (req: Request, resp: Response) => {
                 } catch (error) {
                     return resp.status(400).json({ message: 'Error converting image to webp', success: false });
                 }
+            }
+        }
+
+        if (editedImageFile) {
+
+            const uploadFolderPath = path.join('uploads', 'product');
+            const editedWebpName = 'edited-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + '.webp';
+
+            const editedWebpPath = path.join(uploadFolderPath, editedWebpName);
+
+            try {
+                await sharp(editedImageFile.buffer).webp({ quality: 90 }).toFile(editedWebpPath);
+
+                editedImageName = editedWebpName;
+
+            } catch (error) {
+                return resp.status(400).json({
+                message: 'Error converting edited image',
+                success: false
+            });
             }
         }
 
@@ -5957,7 +5995,7 @@ export const uploadImages = async (req: Request, resp: Response) => {
         console.log(finalData)
         try {
             const query = { _id: product_id };
-            const updateData = { $set: { image: finalData, altText: altText } };
+            const updateData = { $set: { image: finalData, altText: altText, edited_image: editedImageName } };
 
             await Product.updateOne(query, updateData);
 

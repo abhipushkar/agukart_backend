@@ -127,6 +127,10 @@ const productSchema = new Schema(
       type: String,
       default: []
     }],
+    edited_image: {
+      type: String,
+      default: ''
+    },
     altText: [{
       type: String,
       default: [],
