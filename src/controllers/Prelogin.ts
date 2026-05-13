@@ -4099,7 +4099,7 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
     // --- Fetch products (no change needed in selection) ---
     const rawProducts = await ProductModel.find(query)
       .select(
-        "product_title sale_price isCombination combinationData ratingAvg createdAt image videos zoom product_bedge userReviewCount product_code slug"
+        "product_title sale_price isCombination combinationData ratingAvg createdAt image videos zoom product_bedge userReviewCount product_code slug form_values product_variants"
       )
       .sort(sort_by === "newest" ? { createdAt: -1 } : {})
       .skip(skip)
@@ -4168,7 +4168,7 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
           originalPrice = minCombo.length ? Math.min(...minCombo) : +item.sale_price;
           finalPrice = originalPrice;
 
-          if (bestPromo && typeof bestPromo.qty === "number" && bestPromo.qty <= 1) {
+          if (bestPromo) {
             finalPrice = calculatePriceAfterDiscount(
               bestPromo.offer_type,
               +bestPromo.discount_amount,
@@ -4176,7 +4176,7 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
             );
           }
         } else {
-          if (bestPromo && typeof bestPromo.qty === "number" && bestPromo.qty <= 1) {
+          if (bestPromo) {
             finalPrice = calculatePriceAfterDiscount(
               bestPromo.offer_type,
               +bestPromo.discount_amount,
@@ -4196,6 +4196,8 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
           sale_price: item.sale_price,
           isCombination: item.isCombination,
           combinationData: item.combinationData || [],
+          productVariants: item.product_variants || [],
+          formValues: item.form_values || [],
           videos: item.videos || [],
           image: item.image || [],
           product_bedge: item.product_bedge || "",

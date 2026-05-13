@@ -2472,6 +2472,15 @@ export const getVariantAttribute = async (req: CustomRequest, resp: Response) =>
 
 export const createAttributeList = async (req: CustomRequest, resp: Response) => {
     try {
+        const { groupId } = req.body;
+        const lastAttribute = await AttributesList.findOne({ groupId, isDeleted: false })
+            .sort({ attributeOrder: -1 })
+            .select("attributeOrder");
+
+        req.body.attributeOrder = lastAttribute
+            ? lastAttribute.attributeOrder + 1
+            : 1;
+            
         const attributeList = await AttributesList.create(req.body);
         return resp.status(201).json({
             success: true,
@@ -3245,10 +3254,26 @@ const generateProductSlug = (title: string, fallback: string) => {
   });
 };
 
+const sanitizeObjectId = (value: any) => {
+  if (
+    value === "" ||
+    value === null ||
+    value === undefined ||
+    value === "null" ||
+    value === "undefined" ||
+    value === "brandId"
+  ) {
+    return null;
+  }
+
+  return mongoose.Types.ObjectId.isValid(value)
+    ? value
+    : null;
+};
 
 export const addProduct = async (req: CustomRequest, resp: Response) => {
   try {
-
+    console.log("Received product data:", req.body);
     req.body = qs.parse(req.body, { allowDots: true, depth: 20, arrayLimit: 100 });
     const files: any[] = (req.files as any[]) || [];
     const findFile = (key: string) => files.find(f => f.fieldname === key);
@@ -3285,7 +3310,7 @@ const existingProducts = isUpdate
       launch_date: req.body.launch_date,
       release_date: req.body.release_date,
       vendor_id: req.body.vendor_id,
-      brand_id: req.body.brand_id,
+      brand_id: sanitizeObjectId(req.body.brand_id),
       sku_code: req.body.sku_code,
       tax_code: req.body.tax_code,
       shipping_templates: req.body.shipping_templates,
