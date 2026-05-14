@@ -9282,8 +9282,8 @@ export const addVendor = async (req: Request, resp: Response) => {
         }
 
         let slug = slugify(req.body.shop_name, {
-            lower: true,
-            remove: /[*+~.()'"!:@]/g,
+            strict: true,
+            trim: true,
         });
         const existingVendor = await VendorModel.findOne({ shop_title: req.body.shop_title });
 
@@ -9349,9 +9349,21 @@ export const addVendor = async (req: Request, resp: Response) => {
                 return resp.status(400).json({ message: 'Email already exists.', success: false });
             }
 
+            const oldVendor = await VendorModel.findOne({ user_id: req.body._id });
+            const oldSlug = oldVendor?.slug;
+
             await User.findByIdAndUpdate({ _id: req.body._id }, data);
 
             const user = await User.findOne({ _id: req.body._id });
+
+            if ( oldSlug && oldSlug !== slug) {
+                await UrlRedirect.create({
+                    oldSlug: `store/${oldSlug}`,
+                    newSlug: `store/${slug}`,
+                    entityType: 'store',
+                    entityId: oldVendor?._id
+                });
+            }
 
             const additional_info = {
                 user_id: user?._id,
@@ -12143,7 +12155,7 @@ export const addBanner = async (req: Request, resp: Response) => {
             return resp.status(400).json({ message: 'Banner image is required' });
         }
 
-        const bannerImageFile = req.file;
+        const bannerImageFile = req.file; 
         let fileName = "";
 
         if (bannerImageFile && !(bannerImageFile.mimetype.startsWith('image/'))) {

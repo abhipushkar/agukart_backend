@@ -14,6 +14,8 @@ const vendorSchema = new Schema(
     slug: {
         type: String,
         default: '',
+        unique: true,
+        index: true
     },
     shop_icon: {
         type: String,

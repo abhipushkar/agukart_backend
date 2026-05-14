@@ -68,7 +68,7 @@ import {
 } from "../controllers/Prelogin";
 
 interface CustomRequest extends Request {
-  type?: "category" | "product";
+  type?: "category" | "product" | "store" ;
   data?: any;
 }
 
@@ -83,6 +83,13 @@ const finalHandler = (req: CustomRequest, res: Response) => {
   if (req.type === "product") {
     return res.status(200).json({
       type: "product",
+      data: req.data
+    });
+  }
+
+  if (req.type === "store") {
+    return res.status(200).json({
+      type: "store",
       data: req.data
     });
   }

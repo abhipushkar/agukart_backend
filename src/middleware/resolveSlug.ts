@@ -4,11 +4,12 @@ import Category from "../models/Category";
 import ParentProduct from "../models/ParentProduct";
 import AdminCategory from "../models/AdminCategory";
 import ProductModel from "../models/Product";
+import VendorModel from "../models/VendorDetail";
 import { generateProductSlug } from "../utils/productSlug";
 
 // 🔥 Extend Request properly
 interface CustomRequest extends Request {
-  type?: "category" | "product" | "adminCategory";
+  type?: "category" | "product" | "adminCategory" | "store";
   data?: any;
 }
 
@@ -111,7 +112,23 @@ if (req.params.product_code) {
     }
 
     // =========================
-    // 🔥 STEP 5: NOT FOUND
+    // 🔥 STEP 5: CHECK STORE
+    // =========================
+
+    if (finalSlug.startsWith("store/")) {
+
+    const storeSlug = finalSlug.replace("store/", "");
+
+    const store = await VendorModel.findOne({ slug: storeSlug }).lean();
+    if (store) {
+      req.type = "store";
+      req.data = store;
+      return next();
+    }
+  }
+
+    // =========================
+    // 🔥 STEP 6: NOT FOUND
     // =========================
     return res.status(404).json({
       success: false,
