@@ -4455,6 +4455,13 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
                           in: { $concat: [baseUrl, "$$img"] },
                         },
                       },
+                      edited_image: {
+                        $cond: {
+                            if: { $ne: ["$$pd.edited_image", ""] },
+                            then: { $concat: [baseUrl, "$$pd.edited_image"] },
+                            else: null,
+                        }
+                      },
                       parent_sku: "$seller_sku",
                       shop_name: { $ifNull: ["$$pd.shop_name", "$shop_name"] },
 effectiveQty: {
@@ -4997,6 +5004,13 @@ unionPipeline.push(
           in: { $concat: [baseUrl, "$$img"] },
         },
       },
+      edited_image: {
+        $cond: {
+            if: { $ne: ["$edited_image", ""] },
+            then: { $concat: [baseUrl, "$edited_image"] },
+            else: null,
+        },
+      },
 productStatus: {
   $cond: [
     { $eq: ["$isDeleted", true] }, "delete",
@@ -5065,6 +5079,7 @@ unionPipeline.push({
     description: 1,
     vendor_id: 1,
     image: 1,
+    edited_image: 1,
     type: 1,
     product_bedge: 1,
     updatedAt: 1,
