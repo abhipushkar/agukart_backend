@@ -14,6 +14,10 @@ const brandSchema = new Schema(
       type: String,
       default:''
     },
+    image_alt: {
+      type: String,
+      default:''
+    },
     link: {
       type: String,
       default:''
@@ -21,6 +25,18 @@ const brandSchema = new Schema(
     description:{
       type:String,
       required: true
+    },
+    meta_title: {
+      type: String,
+      default:''
+    },
+    meta_description: {
+      type: String,
+      default:''
+    },
+    meta_keywords: {
+      type: [String],
+      default:[]
     },
     featured: {
       type: Boolean,

@@ -20,6 +20,10 @@ const GiftCardCategorySchema = new Schema(
       type: String,
       default: '', 
     },
+    image_alt: {
+      type: String,
+      default: '',
+    },
     sort_order:{
       type: Number,
       required:true,
@@ -28,7 +32,19 @@ const GiftCardCategorySchema = new Schema(
     description: {
       type: String,
       default: '',
-    }
+    },
+    meta_title: {
+      type: String,
+      default: '',
+    },
+    meta_description: {
+      type: String,
+      default: '',    
+    },
+    meta_keywords: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

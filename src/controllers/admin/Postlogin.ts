@@ -1570,6 +1570,9 @@ export const addBrand = async (req: CustomRequest, resp: Response) => {
         const title = req.body.title;
         const description = req.body.description;
         const link = req.body.link;
+        const meta_title = req.body.meta_title;
+        const meta_description = req.body.meta_description;
+        const meta_keywords = req.body.meta_keywords;
 
         const slug = slugify(title, {
             lower: true,
@@ -1578,13 +1581,13 @@ export const addBrand = async (req: CustomRequest, resp: Response) => {
 
         if (req.body._id == 'new') {
 
-            const data = await Brand.create({ title: title, description: description, slug: slug, link: link });
+            const data = await Brand.create({ title: title, description: description, slug: slug, link: link, meta_title: meta_title, meta_description: meta_description, meta_keywords: meta_keywords });
 
             return resp.status(200).json({ message: 'Brand created successfully.', success: true, data });
         } else {
 
             const query = { _id: req.body._id }
-            const updateData = { $set: { title: title, description: description, slug: slug, link: link } }
+            const updateData = { $set: { title: title, description: description, slug: slug, link: link, meta_title: meta_title, meta_description: meta_description, meta_keywords: meta_keywords } }
 
             await Brand.updateOne(query, updateData);
 
@@ -1622,7 +1625,7 @@ export const addBrandImage = async (req: CustomRequest, resp: Response) => {
         }
 
         const query = { _id: req.body._id };
-        const updateData = { $set: { image: fileName } };
+        const updateData = { $set: { image: fileName, image_alt: req.body.image_alt || req.body.title } };
         await Brand.updateOne(query, updateData);
 
         return resp.status(200).json({ message: 'Image added successfully.' });
@@ -8310,7 +8313,7 @@ export const fetchParentProduct = async (req: CustomRequest, resp: Response) => 
 
 export const addBlog = async (req: CustomRequest, res: Response) => {
     try {
-        const { title, _id, description, short_description, tag_id, author_name } = req.body;
+        const { title, _id, description, short_description, tag_id, author_name, meta_title, meta_description, meta_keywords } = req.body;
 
         if (!title) {
             return res.status(400).json({ message: "Title is required." });
@@ -8322,7 +8325,7 @@ export const addBlog = async (req: CustomRequest, res: Response) => {
             if (existingBlog) {
                 return res.status(400).json({ message: 'Blog already exists.' });
             }
-            blog = await BlogModel.create({ title: title, description: description, short_description: short_description, tag_id: tag_id, author_name: author_name });
+            blog = await BlogModel.create({ title: title, description: description, short_description: short_description, tag_id: tag_id, author_name: author_name, meta_title: meta_title, meta_description: meta_description, meta_keywords: meta_keywords });
 
             const slug = slugify(`${title}`, {
                 lower: true,
@@ -8341,7 +8344,7 @@ export const addBlog = async (req: CustomRequest, res: Response) => {
 
             blog = await BlogModel.findByIdAndUpdate(
                 _id,
-                { title: title, description: description, short_description: short_description, tag_id: tag_id, author_name: author_name },
+                { title: title, description: description, short_description: short_description, tag_id: tag_id, author_name: author_name, meta_title: meta_title, meta_description: meta_description, meta_keywords: meta_keywords },
                 { new: true, runValidators: true }
             );
             if (!blog) {
@@ -8365,6 +8368,8 @@ export const uploadBlogImage = async (req: CustomRequest, res: Response) => {
             return res.status(400).json({ message: 'Image is required' });
         }
 
+        const { image_alt } = req.body;
+
         const categoryImageFile = req.file;
         let fileName = "";
         if (categoryImageFile && !(categoryImageFile.mimetype.startsWith('image/'))) {
@@ -8382,7 +8387,7 @@ export const uploadBlogImage = async (req: CustomRequest, res: Response) => {
             await convertToWebP(categoryImageFile.buffer, destinationPath);
         }
         const query = { _id: req.body._id };
-        const updateData = { $set: { image: fileName } };
+        const updateData = { $set: { image: fileName, image_alt: image_alt || '' } };
         await BlogModel.updateOne(query, updateData);
         return res.status(200).json({ message: 'Image added successfully.' });
     } catch (err) {
@@ -9070,6 +9075,11 @@ export const addDeal = async (req: CustomRequest, resp: Response) => {
         const box2_category = JSON.parse(req.body.box2_category || '[]');
         const box3_category = JSON.parse(req.body.box3_category || '[]');
         const box4_category = JSON.parse(req.body.box4_category || '[]');
+        const deal_1_alt = req.body.deal_1_alt;
+        const deal_2_alt = req.body.deal_2_alt;
+        const meta_title = req.body.meta_title;
+        const meta_description = req.body.meta_description;
+        const meta_keywords = req.body.meta_keywords;
 
         const deal1File = req.files?.["deal1"]?.[0] as Express.Multer.File | undefined;
         const deal2File = req.files?.["deal2"]?.[0] as Express.Multer.File | undefined;
@@ -9131,6 +9141,11 @@ export const addDeal = async (req: CustomRequest, resp: Response) => {
                 deal_2_link,
                 deal_1: fileName1,
                 deal_2: fileName2,
+                deal_1_alt,
+                deal_2_alt,
+                meta_title,
+                meta_description,
+                meta_keywords,
                 box1_title,
                 box2_title,
                 box3_title,
@@ -9144,7 +9159,7 @@ export const addDeal = async (req: CustomRequest, resp: Response) => {
             });
             await deal.save();
         } else if (type === 'update') {
-            await HomeSettingModel.updateOne({}, { $set: { deal_1_link, deal_2_link, deal_1: fileName1, deal_2: fileName2, box1_title, box2_title, box3_title, box4_title, box1_category, box2_category, box3_category, box4_category, header_text, description } });
+            await HomeSettingModel.updateOne({}, { $set: { deal_1_link, deal_2_link, deal_1: fileName1, deal_2: fileName2, deal_1_alt, deal_2_alt, box1_title, box2_title, box3_title, box4_title, box1_category, box2_category, box3_category, box4_category, header_text, description, meta_title, meta_description, meta_keywords } });
         }
 
         return resp.status(200).json({
@@ -9253,7 +9268,10 @@ export const updateInformation = async (req: Request, resp: Response) => {
     try {
         const data: any = {
             type: req.body.type,
-            description: req.body.description
+            description: req.body.description,
+            meta_title: req.body.meta_title || '',
+            meta_description: req.body.meta_description || '',
+            meta_keywords: req.body.meta_keywords || []
         }
 
         if (req.body._id && req.body._id == 'new') {
@@ -10879,7 +10897,10 @@ export const addGiftCardCategory = async (req: Request, resp: Response) => {
         _id,
         title,
         sort_order,
-        description
+        description,
+        meta_title,
+        meta_description,
+        meta_keywords
     } = req.body;
 
     if (!title || title.trim() === '') {
@@ -10888,7 +10909,11 @@ export const addGiftCardCategory = async (req: Request, resp: Response) => {
 
     const categoryData = {
         title,
-        sort_order
+        sort_order,
+        description: description || '',
+        meta_title: meta_title || '',
+        meta_description: meta_description || '',
+        meta_keywords: meta_keywords || [],
     };
 
     try {
@@ -10915,6 +10940,9 @@ export const addGiftCardCategory = async (req: Request, resp: Response) => {
             category.title = title;
             category.sort_order = sort_order;
             category.description = description;
+            category.meta_title = meta_title;
+            category.meta_description = meta_description;
+            category.meta_keywords = meta_keywords;
             await category.save();
         }
         await category.save();
@@ -10934,6 +10962,7 @@ export const addGiftCardCategory = async (req: Request, resp: Response) => {
 export const uploadGiftCardCategoryImage = async (req: Request, resp: Response) => {
     try {
         const id = req.body._id;
+        const image_alt = req.body.image_alt || '';
         if (!req.file) {
             return resp.status(400).json({ message: 'Image is required' });
         }
@@ -10955,7 +10984,7 @@ export const uploadGiftCardCategoryImage = async (req: Request, resp: Response) 
         const destinationPath = path.join(uploadDir, fileName);
         await convertToWebP(imageFile.buffer, destinationPath);
 
-        await GiftCardCategoryModel.findByIdAndUpdate({ _id: id }, { image: fileName }, { new: true });
+        await GiftCardCategoryModel.findByIdAndUpdate({ _id: id }, { image: fileName, image_alt }, { new: true });
 
         return resp.status(200).json({
             message: 'Image uploaded successfully.',
@@ -13410,7 +13439,10 @@ export const addDescription = async (req: CustomRequest, res: Response) => {
     try {
         const data: any = {
             type: req.body.type,
-            description: req.body.description
+            description: req.body.description,
+            meta_title: req.body.meta_title || '',
+            meta_description: req.body.meta_description || '',
+            meta_keywords: req.body.meta_keywords || [],
         }
 
         if (req.body._id && req.body._id == 'new') {

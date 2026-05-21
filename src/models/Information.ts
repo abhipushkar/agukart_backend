@@ -11,6 +11,18 @@ const informationSchema = new Schema(
       type: String,
       default: '',
     },
+    meta_title: {
+      type: String,
+      default: '',
+    },
+    meta_description: {
+      type: String,
+      default: '',
+    },
+    meta_keywords: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

@@ -14,7 +14,15 @@ const HomeSettingSchema = new Schema(
       type: String,
       default: ''
     },
+    deal_1_alt: {
+      type: String,
+      default: ''
+    },
     deal_2: {
+      type: String,
+      default: ''
+    },
+    deal_2_alt: {
       type: String,
       default: ''
     },
@@ -62,6 +70,18 @@ const HomeSettingSchema = new Schema(
       ref: 'AdminCategory',
       default: []
     }],
+    meta_title: {
+      type: String,
+      default: ''
+    },
+    meta_description: {
+      type: String,
+      default: ''
+    },
+    meta_keywords: {
+      type: String,
+      default: ''
+    }  
   },
   {
     timestamps: true,

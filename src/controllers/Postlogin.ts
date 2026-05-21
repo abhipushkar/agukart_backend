@@ -212,6 +212,7 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     });
   }
 };
+
 function findNearestOption(
   products: any[],
   currentIndex: number,

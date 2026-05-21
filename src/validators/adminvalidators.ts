@@ -92,6 +92,9 @@ export const brandValid = Joi.object({
     link: Joi.string().required().messages({
         'string.empty': 'Link is required'
     }),
+    meta_title: Joi.string().trim().allow('').optional(), 
+    meta_description: Joi.string().trim().allow('').optional(), 
+    meta_keywords: Joi.array().items(Joi.string().trim()).default([]).optional(),
 });
 
 export const validateProfile = Joi.object({
@@ -119,6 +122,9 @@ export const informationValid = Joi.object({
         .messages({
             'string.empty': 'Description is required.',
         }),
+    meta_title: Joi.string().allow('').optional(), 
+    meta_description: Joi.string().allow('').optional(),
+    meta_keywords: Joi.alternatives().try( Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),   
 });
 
 export const vendorValid = Joi.object({

@@ -31,6 +31,22 @@ const blogSchema = new Schema(
       type: String,
       default:''
     },
+    image_alt: {
+      type: String,
+      default:''
+    },
+    meta_title: {
+      type: String,
+      default:''
+    },
+    meta_description: {
+      type: String,
+      default:''
+    },
+    meta_keywords: {
+      type: String,
+      default:''
+    },
     status: {
       type: Boolean,
       required: true,
