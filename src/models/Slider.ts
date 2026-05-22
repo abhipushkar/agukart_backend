@@ -6,6 +6,10 @@ const sliderSchema = new Schema(
       type: String,
       default:''
     },
+    image_alt: {
+      type: String,
+      default:''
+    },
     status: {
       type: Boolean,
       required: true,

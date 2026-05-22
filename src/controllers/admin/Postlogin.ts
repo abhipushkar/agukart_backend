@@ -364,7 +364,7 @@ export const addSlider = async (req: Request, resp: Response) => {
         }
 
         if (req.body._id === '0') {
-            await Slider.create({ image: fileName });
+            await Slider.create({ image: fileName, image_alt: req.body.image_alt || '' });
             return resp.status(200).json({ message: 'Slider created successfully.', reset: true });
         } else {
             const existSlider = await Slider.findOne({ _id: req.body._id });
@@ -379,7 +379,7 @@ export const addSlider = async (req: Request, resp: Response) => {
                     fileName = existSlider.image;
                 }
 
-                await Slider.updateOne({ _id: req.body._id }, { $set: { image: fileName } });
+                await Slider.updateOne({ _id: req.body._id }, { $set: { image: fileName, image_alt: req.body.image_alt || existSlider.image_alt } });
                 console.log(req.body._id)
                 return resp.status(200).json({ message: 'Slider updated successfully.' });
             }
@@ -11121,7 +11121,7 @@ export const uploadGiftCardImage = async (req: Request, resp: Response) => {
         const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
         const uploadDir = path.join('uploads', 'giftcard-images');
 
-        await GiftCardModel.findByIdAndUpdate({ _id: id }, { image: fileName }, { new: true });
+        await GiftCardModel.findByIdAndUpdate({ _id: id }, { image: fileName, image_alt: req.body.image_alt || '' }, { new: true });
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -11147,6 +11147,9 @@ export const addGiftCard = async (req: Request, resp: Response) => {
         validity,
         description,
         image,
+        meta_title,
+        meta_description,
+        meta_keywords
     } = req.body;
 
     const giftCardData = {
@@ -11155,6 +11158,9 @@ export const addGiftCard = async (req: Request, resp: Response) => {
         validity,
         description,
         image,
+        meta_title: meta_title || '',
+        meta_description: meta_description || '',
+        meta_keywords: meta_keywords || [],
     };
 
     try {

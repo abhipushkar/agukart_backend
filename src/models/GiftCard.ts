@@ -16,6 +16,10 @@ const GiftCardSchema = new Schema(
       type: String,
       default: '',
     },
+    image_alt: {
+      type: String,
+      default: '',
+    },
     validity: {
       type: Number,
       default: 0,
@@ -29,6 +33,18 @@ const GiftCardSchema = new Schema(
       required: true,
       default: true,
     },
+    meta_title: {
+      type: String,
+      default: '',
+    },
+    meta_description: {
+      type: String,
+      default: '',
+    },
+    meta_keywords: {
+      type: [String],
+      default: [],
+    }
   },
   {
     timestamps: true,

@@ -175,6 +175,11 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       cartItem.original_price = original_price;
       cartItem.affiliate_id = affiliateId;
       cartItem.note = note ?? cartItem.note;
+      cartItem.customizationData = customization;
+      cartItem.customize = customize;
+      cartItem.variants = customVariants;
+      cartItem.variant_id = extVariantIds;
+      cartItem.variant_attribute_id = extAttrIds;
 
       await cartItem.save();
 
@@ -371,6 +376,20 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
       { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
+          from: "parentproducts",
+          localField: "productData.parent_id",
+          foreignField: "_id",
+          as: "parent_id"
+        },
+      },
+      {
+        $unwind: {
+          path: "$parent_id",
+          preserveNullAndEmptyArrays: true
+        },
+      },
+      {
+        $lookup: {
           from: "visitcounts",
           let: { pid: "$product_id" },
           pipeline: [
@@ -520,6 +539,9 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
               isCombination: "$isCombination",
               customize: "$customize",
               customizationData: "$customizationData",
+              productCustomizationData: "$productData.customizationData",
+              form_values: "$productData.form_values",
+              parent_id: "$parent_id",
               shipping_id: "$shipping_id", // ✅ IMPORTANT
               selectedShipping: {
                 // ✅ IMPORTANT
@@ -567,11 +589,14 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                 cart_id: "$$item.cart_id",
                 isCombination: "$$item.isCombination",
                 customize: "$$item.customize",
-                customizationData: "$$item.customizationData",
+                selectedCustomization: "$$item.customizationData",
+                availableCustomization: "$$item.productCustomizationData",
+                form_values: "$$item.form_values",
+                parent_id: "$$item.parent_id",
                 variants: "$$item.variants",
                 // shippingData: "$shippingData",
                 selectedShipping: "$$item.selectedShipping",
-shipping_id: "$$item.shipping_id",
+                shipping_id: "$$item.shipping_id",
                 addressData: "$addressData",
                 variantData: "$$item.variantData",
                 variantAttributeData: "$$item.variantAttributeData",
@@ -5222,45 +5247,250 @@ export const purchaseGiftCard = async (req: CustomRequest, resp: Response) => {
         .add(giftCardData?.validity, "days")
         .format("DD-MMM-YYYY");
 
-      const body = `
-            <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
-                
-                <div style="text-align: center;">
-                    <h1 style="color: #4CAF50; font-size: 22px; margin-bottom: 5px;">You've Received a Gift Card!</h1>
-                    <p style="font-size: 13px; color: #777; margin-bottom: 20px;">Enjoy exclusive benefits and discounts using this card.</p>
-                </div>
+const redeemUrl = `${process.env.FRONTEND_URL}/gift-card/redeem/${gift_code}`;
 
-                <div style="border: 1px solid #ddd; border-radius: 10px; padding: 20px;">
-                    <img src="${process.env.ASSET_URL}/uploads/giftcard-images/${giftCardData?.image}" 
-                        alt="Gift Card" 
-                        style="width: 100%;height: auto; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 10px;" />
+const body = `
+<table width="100%" cellpadding="0" cellspacing="0" border="0" 
+style="background:#f5f5f5;padding:30px 0;font-family:Arial,sans-serif;">
+<tr>
+<td align="center">
 
-                    <h2 style="text-align:center; font-size: 20px; margin: 10px 0;">${message}</h2>
+<table width="600" cellpadding="0" cellspacing="0" border="0" 
+style="background:#ffffff;border-radius:10px;padding:25px;">
 
-                    <table width="100%" style="margin-top: 10px; font-size: 14px;">
-                        <tr>
-                            <td style="font-weight: bold;">₹ ${purchaseGiftCardInstance.amount}</td>
-                            <td align="right" style="color: #777;font-weight:bold">Agukart gift card</td>
-                        </tr>
-                    </table>
+<tr>
+<td align="center">
+<h1 style="color:#4CAF50;font-size:30px;margin:0;">
+🎁 You've Received a Gift Card!
+</h1>
 
-                    <p style="font-size: 12px; color: #555; margin-top: 8px;">Expiry Date: ${expiryDateFormatted}</p>
-                </div>
+<p style="font-size:14px;color:#777;margin-top:10px;">
+Enjoy exclusive benefits and discounts using this card.
+</p>
+</td>
+</tr>
 
-                <div style="text-align:center; margin: 25px 0;">
-                    <p style="font-size: 13px; margin-bottom: 10px;">Use the code below during checkout on <strong>Agukart.com</strong></p>
-                    <div style="font-size: 16px; font-weight: bold; background: #eee; padding: 10px 20px; border: 1px dashed #333; display: inline-block; border-radius: 5px;">${gift_code}</div>
-                </div>
+<tr>
+<td>
 
-                <div style="padding: 15px; background-color: #f5f5f5; border-radius: 8px; margin-bottom: 20px;">
-                    <p style="font-size: 13px; margin: 8px 0;"><strong>Amount:</strong> ₹${purchaseGiftCardInstance.amount}</p>
-                    <p style="font-size: 13px; margin: 8px 0;"><strong>Order ID:</strong> ${purchaseGiftCardInstance.orderId}</p>
-                    <p style="font-size: 13px; margin: 8px 0;"><strong>Valid Until:</strong> ${giftCardData?.validity} days</p>
-                </div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"
+style="border:1px solid #ddd;border-radius:10px;overflow:hidden;margin-top:20px;">
 
-                <p style="text-align: center; color: #aaa; font-size: 12px;">Thank you for choosing us. Happy gifting!</p>
-            </div>
-            `;
+<tr>
+<td align="center" style="padding:0;">
+
+<img 
+src="${process.env.ASSET_URL}/uploads/giftcard-images/${giftCardData?.image}" 
+alt="Gift Card"
+style="
+width:100%;
+max-height:350px;
+object-fit:cover;
+display:block;
+"
+/>
+
+</td>
+</tr>
+
+<tr>
+<td 
+align="center"
+style="
+padding:18px;
+font-size:28px;
+font-weight:bold;
+color:#333;
+border-top:1px solid #ddd;
+border-bottom:1px solid #ddd;
+background:#fafafa;
+"
+>
+${message || "Best Wishes"}
+</td>
+</tr>
+
+<tr>
+<td style="padding:25px;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+
+<tr>
+
+<td 
+style="
+font-size:34px;
+font-weight:bold;
+color:#111;
+vertical-align:top;
+"
+>
+₹ ${purchaseGiftCardInstance.amount}
+
+<div 
+style="
+font-size:16px;
+font-weight:normal;
+margin-top:8px;
+color:#555;
+"
+>
+Agukart Pay Gift Card
+</div>
+
+</td>
+
+<td 
+align="right"
+style="
+font-size:22px;
+font-weight:bold;
+line-height:34px;
+color:#222;
+"
+>
+Agukart<br/>
+gift card
+</td>
+
+</tr>
+
+<tr>
+<td colspan="2"
+style="
+padding-top:25px;
+font-size:14px;
+color:#777;
+"
+>
+Expiry date : ${expiryDateFormatted}
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+
+<tr>
+<td align="center" style="padding-top:25px;">
+
+<div 
+style="
+font-size:20px;
+font-weight:bold;
+margin-bottom:10px;
+color:#333;
+"
+>
+${name || ""}
+</div>
+
+<p 
+style="
+font-size:14px;
+color:#666;
+margin-bottom:15px;
+"
+>
+Use the code below during checkout on 
+<b>Agukart.com</b>
+</p>
+
+<div
+style="
+display:inline-block;
+padding:14px 24px;
+border:2px dashed #4CAF50;
+background:#f9fff9;
+font-size:22px;
+font-weight:bold;
+letter-spacing:2px;
+border-radius:8px;
+color:#111;
+"
+>
+${gift_code}
+</div>
+
+</td>
+</tr>
+
+<tr>
+<td align="center" style="padding-top:25px;">
+
+<a
+href="${redeemUrl}"
+style="
+background:#4CAF50;
+color:#fff;
+text-decoration:none;
+padding:14px 35px;
+border-radius:6px;
+display:inline-block;
+font-size:16px;
+font-weight:bold;
+"
+>
+🎉 Redeem Now
+</a>
+
+</td>
+</tr>
+
+<tr>
+<td style="padding-top:30px;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0"
+style="
+background:#f5f5f5;
+border-radius:8px;
+padding:20px;
+">
+
+<tr>
+<td style="font-size:14px;color:#333;line-height:28px;">
+
+<strong>Amount:</strong> ₹${purchaseGiftCardInstance.amount}
+<br/>
+
+<strong>Order ID:</strong> ${purchaseGiftCardInstance.orderId}
+<br/>
+
+<strong>Valid Until:</strong> ${giftCardData?.validity} days
+
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+
+<tr>
+<td 
+align="center"
+style="
+padding-top:25px;
+font-size:12px;
+color:#aaa;
+"
+>
+Thank you for choosing us. Happy gifting!
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+</table>
+`;
 
       const user = await User.findOne({ _id: user_id });
       if (!user) {
