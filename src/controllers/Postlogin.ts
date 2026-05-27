@@ -5134,12 +5134,27 @@ export const getFollowVendor = async (req: CustomRequest, resp: Response) => {
       follow.map(async (item) => {
         const vendor = await User.findOne({ _id: item.vendor_id });
         const shop = await VendorModel.findOne({ user_id: vendor?._id });
+        const reviews = await RatingModel.find({ vendor_id: vendor?._id,  status: "approved"});
+        let average_rating = 0;
+          if (reviews.length > 0) {
+            const totalRating = reviews.reduce((acc, review) => {
+              const deliveryRating = Number(review.delivery_rating || 0);
+              const itemRating = Number(review.item_rating || 0);
+              return acc + ((deliveryRating + itemRating) / 2);
+            }, 0);
+            average_rating = totalRating / reviews.length;
+          }
         let base_url = process.env.ASSET_URL + "/uploads/shop-icon/";
+        let banner_url = process.env.ASSET_URL + "/uploads/shop-banner/";
         return {
           ...item.toJSON(),
           vendor_name: vendor?.name,
+          shop_name: shop?.shop_name,
           slug: shop?.slug,
+          shop_banner: shop?.shop_banner && shop.shop_banner.length > 0 ? banner_url + shop.shop_banner[0]?.image : null,
           shop_icon: shop?.shop_icon ? base_url + shop?.shop_icon : null,
+          average_rating: Number(average_rating.toFixed(1)),
+          total_reviews: reviews.length,
         };
       }),
     );

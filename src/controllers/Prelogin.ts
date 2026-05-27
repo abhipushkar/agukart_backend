@@ -2110,8 +2110,9 @@ export const getProductList = async (req: Request, resp: Response) => {
         const selTreeIds = Array.from(selTreeIdSet).map((s) => new mongoose.Types.ObjectId(s));
         condFilter.category = { $in: selTreeIds };
       } else {
-        // categoryScope === 'all' OR unspecified => per your requirement automation applies to this category's own products
-        condFilter.category = new mongoose.Types.ObjectId(cat._id);
+        // categoryScope = all
+        // DO NOT APPLY CATEGORY FILTER
+        // Search globally across all products
       }
 
       // Combine autoFilters using conditionType

@@ -5403,42 +5403,38 @@ export const changePopularGiftProduct = async (req: CustomRequest, resp: Respons
 
 export const deleteProduct = async (req: Request, resp: Response) => {
   try {
-    const id = req.params.id;
+    const ids = req.body._id || [];
 
-    const parentProduct = await ParentProduct.findById(id);
+    const parentProduct = await ParentProduct.find({_id: { $in: ids }});
 
-    if (parentProduct) {
-      await ParentProduct.updateOne(
-        { _id: id },
+    if (parentProduct.length) {
+      await ParentProduct.updateMany(
+        { _id: { $in: ids } },
         {
             $set: { isDeleted: true, sku: []}
         }
       );
 
       await Product.updateMany(
-        { parent_id: id },
+        { parent_id: { $in: ids } },
         { $set: { parent_id: null } }
       );
 
       await CombinationProduct.deleteMany({
-        product_id: id
-      });
-      
-      return resp.status(200).json({
-        message: 'Parent product deleted successfully and all child products detached.',
+        product_id: { $in: ids }
       });
     }
-    const product = await Product.findById(id);
+    const product = await Product.find({ _id: { $in: ids }});
 
-    if (product) {
-      await Product.updateOne({ _id: id }, { $set: { isDeleted: true, parent_id: null } });
+    if (product.length) {
+      await Product.updateMany({_id: { $in: ids }}, { $set: { isDeleted: true, parent_id: null } });
 
       return resp.status(200).json({
         message: 'Product deleted successfully and detached from parent.',
       });
     }
 
-    return resp.status(404).json({ message: 'Product not found.' });
+    return resp.status(200).json({ message: 'Products deleted successfully.' });
 
   } catch (error) {
     console.error('Delete error:', error);
@@ -16813,7 +16809,7 @@ export const addVoucher = async (req: Request, res: Response) => {
                 promotionTitle,
                 description,
                 claim_code,
-                usage_limits: usage_limits || [],
+                usage_limits: usage_limits ? Number(usage_limits) : 0,
                 type_of_users,
                 auto_voucher,
                 term_of_use,
@@ -16842,7 +16838,7 @@ export const addVoucher = async (req: Request, res: Response) => {
                 promotionTitle,
                 description,
                 claim_code,
-                usage_limits: usage_limits || [],
+                usage_limits: usage_limits ? Number(usage_limits) : 0,
                 type_of_users,
                 auto_voucher,
                 term_of_use,

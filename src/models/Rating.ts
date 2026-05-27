@@ -20,7 +20,7 @@ const ratingSchema = new Schema(
         },
         vendor_id: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'VendorDetails',
+            ref: 'VendorDetail',
             required: true,
         },
         delivery_rating: {
