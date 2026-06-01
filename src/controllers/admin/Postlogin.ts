@@ -3282,6 +3282,10 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
     const findFile = (key: string) => files.find(f => f.fieldname === key);
     const findFiles = (key: string) => files.filter(f => f.fieldname === key);
     const normalizeNullArray = (arr: any[]) => arr.map(v => (v === "null" ? null : v));
+    const normalizeDeletedImage = (value: any) => {
+        if (value === "__DELETE__") return null;
+        return value || "";
+    };
     const cleanTitle = stripHtml(req.body.product_title || "");
     const isUpdate =
   req.body._id &&
@@ -3492,10 +3496,10 @@ for (const file of optMainImages) {
               ...opt,
               thumbnail: optThumb
                 ? await saveProductFile(optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}`)
-                : opt.thumbnail || "",
+                : normalizeDeletedImage(opt.thumbnail),
               preview_image: optPreview
                 ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
-                : opt.preview_image || "",
+                : normalizeDeletedImage(opt.preview_image),
               main_images: mergedMainImages.length > 0 ? normalizeNullArray(mergedMainImages) : opt.main_images || [],
               edit_main_image: optEditMain
                 ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
@@ -3680,9 +3684,8 @@ for (const file of mainImgs) {
           return {
             ...attr,
 
-            thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : attr.thumbnail || "",
-            preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : attr.preview_image || "",
-
+            thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : normalizeDeletedImage(attr.thumbnail),
+            preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : normalizeDeletedImage(attr.preview_image),
             main_images: normalizeNullArray(mergedMainImages),
 
             edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",

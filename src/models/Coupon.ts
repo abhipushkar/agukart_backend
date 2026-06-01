@@ -91,6 +91,12 @@ const couponSchema = new Schema(
     versionKey: false,
   }
 );
+
+couponSchema.index(
+  { vendor_id: 1, coupon_code: 1 },
+  { unique: true }
+);
+
 const CouponModel = model('Coupon', couponSchema);
 
 export default CouponModel;

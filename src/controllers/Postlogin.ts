@@ -343,34 +343,34 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
           localField: "product_id",
           foreignField: "_id",
           as: "productData",
-          pipeline: [
-            {
-              $lookup: {
-                from: "promotionaloffers",
-                let: { productId: "$_id", vendorId: "$vendor_id" },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ["$status", true] },
-                          { $ne: ["$expiry_status", "expired"] },
-                          {
-                            $in: [
-                              { $toObjectId: "$$productId" },
-                              "$product_id",
-                            ],
-                          },
-                          { $eq: ["$vendor_id", "$$vendorId"] },
-                        ],
-                      },
-                    },
-                  },
-                ],
-                as: "promotionaloffers",
-              },
-            },
-          ],
+          // pipeline: [
+          //   {
+          //     $lookup: {
+          //       from: "promotionaloffers",
+          //       let: { productId: "$_id", vendorId: "$vendor_id" },
+          //       pipeline: [
+          //         {
+          //           $match: {
+          //             $expr: {
+          //               $and: [
+          //                 { $eq: ["$status", true] },
+          //                 { $ne: ["$expiry_status", "expired"] },
+          //                 {
+          //                   $in: [
+          //                     { $toObjectId: "$$productId" },
+          //                     "$product_id",
+          //                   ],
+          //                 },
+          //                 { $eq: ["$vendor_id", "$$vendorId"] },
+          //               ],
+          //             },
+          //           },
+          //         },
+          //       ],
+          //       as: "promotionaloffers",
+          //     },
+          //   },
+          // ],
         },
       },
       { $unwind: { path: "$productData", preserveNullAndEmptyArrays: true } },
@@ -553,14 +553,14 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
               variant_attribute_id: "$variant_attribute_id",
               variant_id: "$variant_id",
               combinationData: "$productData.combinationData",
-              promotionalOfferData: "$productData.promotionaloffers",
+              // promotionalOfferData: "$productData.promotionaloffers",
               qty: "$qty",
               product_id: "$product_id",
               product_image: "$productData.image",
               stock: "$productData.qty",
               product_name: "$productData.product_title",
               product_bedge: "$productData.product_bedge",
-              sale_price: "$price",
+              // sale_price: "$price",
               real_price: "$productData.sale_price",
               original_price: "$original_price",
               discount_amount: "$productData.discount_amount",
@@ -607,7 +607,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                 product_id: "$$item.product_id",
                 product_name: "$$item.product_name",
                 product_bedge: "$$item.product_bedge",
-                sale_price: "$$item.sale_price",
+                // sale_price: "$$item.sale_price",
                 real_price: "$$item.real_price",
                 original_price: "$$item.original_price",
                 firstImage: {
@@ -621,7 +621,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                 stock: "$$item.stock",
                 isDeleted: "$$item.isDeleted",
                 status: "$$item.status",
-                promotionalOfferData: "$$item.promotionalOfferData",
+                // promotionalOfferData: "$$item.promotionalOfferData",
                 viewCount: {
                   $ifNull: [{ $arrayElemAt: ["$viewData.totalViews", 0] }, 0],
                 },
@@ -657,6 +657,13 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
         .json({ message: "Cart list fetched successfully.", result: [] });
     }
 
+    const calculateDiscountedPrice = ( price: number, offerType: string, discountAmount: number ) => {
+      if (offerType === "percentage") {
+        return price - (price * discountAmount) / 100;
+      }
+      return Math.max(price - discountAmount, 0);
+    };
+
     const formattedResult = await Promise.all(
       cartResult.map(async (item) => {
         const shippingData = item.shippingData?.flat() || [];
@@ -675,6 +682,31 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
           globalExpress: [],
           priorityExpress: [],
         };
+
+        const vendorTotalQty = item.products.reduce((acc: number, prod: any) => acc + Number(prod.qty), 0,);
+
+        const vendorSubtotal = item.products.reduce((acc: number, prod: any) => acc + Number(prod.original_price) * Number(prod.qty), 0 );
+
+        let couponData: any = null;
+
+        if (item.vendorCoupon?.vendor_id) {
+          couponData = await CouponModel.findOne({ vendor_id: item.vendorCoupon.vendor_id, coupon_code: item.vendorCoupon.coupon_data.coupon_code },
+            {
+              coupon_code: 1,
+              discount_amount: 1,
+              discount_type: 1,
+              product_id: 1,
+              isSynced: 1,
+              max_discount: 1,
+            },
+          );
+        }
+
+        const isCouponSynced = couponData?.isSynced === true;
+
+        console.log("COUPON DATA", couponData);
+
+        const vendorPromotions = isCouponSynced ? [] : await PromotionalOfferModel.find({ vendor_id: item.vendor_id, status: true, expiry_status: { $ne: "expired" }});
 
         if (userCountry && shippingData.length > 0) {
           for (const shipping of shippingData) {
@@ -711,48 +743,189 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
         let discountAmount = 0;
         let discountEligibleAmount = 0;
 
-        if (item.products?.length > 0) {
-          totalAmount = item.products.reduce((acc: any, prod: any) => {
-            return acc + Number(prod.sale_price) * Number(prod.qty);
-          }, 0);
+        // if (item.products?.length > 0) {
+        //   totalAmount = item.products.reduce((acc: any, prod: any) => {
+        //     return acc + Number(prod.sale_price) * Number(prod.qty);
+        //   }, 0);
+        // }
+
+        const updatedProducts = item.products.map((prod: any) => {
+          const basePrice = Number(prod.original_price || 0);
+          let bestPrice = basePrice;
+          let bestPromotion = null;
+          let maxDiscount = 0;
+          for (const promo of vendorPromotions) {
+            let eligible = false;
+           
+            // qty_per_product
+            if (promo.promotion_type === "qty_per_product") {
+              eligible = Number(prod.qty) >= Number(promo.qty || 0);
+            }
+
+            // qty_total_shop
+            else if (promo.promotion_type === "qty_total_shop") {
+              eligible = vendorTotalQty >= Number(promo.qty || 0);
+            }
+
+            // amount
+            else if (promo.promotion_type === "amount") {
+              eligible = vendorSubtotal >= Number(promo.offer_amount || 0);
+            }
+
+            if (!eligible) continue;
+
+            // product check
+            const promoProductIds = (promo.product_id || []).map((id: any) =>
+              id.toString(),
+            );
+
+            if (promoProductIds.length > 0 && !promoProductIds.includes(prod.product_id.toString())) {
+              continue;
+            }
+
+            const discountedPrice = calculateDiscountedPrice( basePrice, promo.offer_type, Number(promo.discount_amount || 0));
+
+            const discountValue = basePrice - discountedPrice;
+            // BEST PROMOTION
+            if (discountValue > maxDiscount) {
+              maxDiscount = discountValue;
+              bestPrice = discountedPrice;
+              bestPromotion = promo;
+            }
+          }
+
+          const finalLineTotal = bestPrice * Number(prod.qty);
+          totalAmount += finalLineTotal;
+
+          let upsellData = null;
+          const lockedPromotions = vendorPromotions.filter((promo: any) => {
+
+          // skip current applied promotion
+          if ( bestPromotion && promo._id.toString() === bestPromotion._id.toString()) {
+            return false;
+          }
+
+          let isLocked = false;
+
+          // qty_per_product
+          if (promo.promotion_type === "qty_per_product") {
+            isLocked = Number(prod.qty) < Number(promo.qty || 0);
+          }
+
+          // qty_total_shop
+          else if (promo.promotion_type === "qty_total_shop") {
+            isLocked = vendorTotalQty < Number(promo.qty || 0);
+          }
+
+          // amount
+          else if (promo.promotion_type === "amount") {
+            isLocked = vendorSubtotal < Number(promo.offer_amount || 0);
+          }
+
+          return isLocked;
+        });
+
+        if (lockedPromotions.length > 0) {
+
+        const currentSavings = maxDiscount;
+
+        const betterPromotions = lockedPromotions.map((promo: any) => {
+
+        const potentialPrice = calculateDiscountedPrice( basePrice, promo.offer_type, Number(promo.discount_amount || 0),);
+
+        const potentialSavings = basePrice - potentialPrice;
+
+        return { ...promo.toObject(), potentialSavings,};
+        })
+        .filter((promo: any) =>
+          promo.potentialSavings > currentSavings
+        );
+
+        if (betterPromotions.length > 0) {
+
+        const nextBest = betterPromotions.sort((a, b) => b.potentialSavings - a.potentialSavings)[0];
+
+        console.log("NEXT BEST PROMO", nextBest);
+        let message = "";
+        const currencySymbol = req.headers.currency_symbol || "$";
+
+        const extraSavings = (nextBest.potentialSavings - currentSavings).toFixed(2);
+
+        // qty_per_product
+        if (nextBest.promotion_type === "qty_per_product") {
+        const diff = Number(nextBest.qty) - Number(prod.qty);
+        message = `Add ${diff} more quantity to save ` + `${currencySymbol}${extraSavings} more per item`;
         }
 
-        let couponData: any = null;
+        // qty_total_shop
+        else if (nextBest.promotion_type === "qty_total_shop") {
+          const diff = Number(nextBest.qty) - Number(vendorTotalQty);
+          message = `Add ${diff} more items from this shop to save ` + `${currencySymbol}${extraSavings} more per item`;
+        }
+
+        // amount
+        else if (nextBest.promotion_type === "amount") {
+          const rawDiff = Number(nextBest.offer_amount) - Number(vendorSubtotal);
+          const diff = Math.max(1, Math.ceil(rawDiff));
+          message = `Add ${currencySymbol}${diff} more to save ` + `${currencySymbol}${extraSavings} more per item`;
+        }
+        
+        if (message) {
+        upsellData = {
+          promotion_id: nextBest._id,
+          promotion_type: nextBest.promotion_type,
+          promotional_title: nextBest.promotional_title,
+          message,
+        };
+        }
+        }
+      }
+          return {
+            ...prod,
+            original_price: basePrice,
+
+            // FINAL PROMOTION PRICE
+            price: Number(bestPrice.toFixed(2)),
+
+            promotion_discount: Number((maxDiscount * Number(prod.qty)).toFixed(2)),
+
+            appliedPromotion: bestPromotion,
+
+            upsellData,
+
+            line_total: Number(finalLineTotal.toFixed(2)),
+          };
+        });
         if (item.vendorCoupon?.vendor_id) {
-          couponData = await CouponModel.findOne(
-            { vendor_id: item.vendorCoupon.vendor_id },
-            {
-              coupon_code: 1,
-              discount_amount: 1,
-              discount_type: 1,
-              product_id: 1,
-              isSynced: 1,
-            },
-          );
 
           if (couponData?.discount_type && couponData?.discount_amount) {
-            const allowedProductIds = (couponData.product_id || []).map(
-              (id: any) => id.toString(),
-            );
+            const allowedProductIds = (couponData.product_id || []).map((id: any) => id.toString());
 
-            discountEligibleAmount = item.products.reduce(
-              (acc: any, prod: any) => {
-                return allowedProductIds.includes(prod.product_id.toString())
-                  ? acc + Number(prod.sale_price) * Number(prod.qty)
-                  : acc;
-              },
-              0,
-            );
+            const hasProductRestriction = allowedProductIds.length > 0;
+
+            discountEligibleAmount = updatedProducts.reduce((acc: number, prod: any) => {
+
+            const eligible = hasProductRestriction ? allowedProductIds.includes(prod.product_id.toString()) : true;
+
+            return eligible ? acc + Number(prod.line_total) : acc;
+          },
+          0,
+          );
 
             const type = couponData.discount_type;
             const value = Number(couponData.discount_amount);
 
-            discountAmount =
-              type === "percentage"
-                ? (discountEligibleAmount * value) / 100
-                : value;
+            if (type === "percentage") {
+            discountAmount = (discountEligibleAmount * value) / 100;
 
-            discountAmount = Math.min(discountAmount, discountEligibleAmount);
+            if (couponData.max_discount > 0) {
+              discountAmount = Math.min( discountAmount, couponData.max_discount);
+            }
+
+            } else {
+              discountAmount = value;
+            }
+            discountAmount = Math.min( discountAmount, discountEligibleAmount );
           }
         }
 
@@ -778,7 +951,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
           coupon_status: !!item.vendorCoupon,
           totalAmount,
           discountAmount,
-          products: item.products,
+          products: updatedProducts,
         };
       }),
     );
@@ -1472,10 +1645,16 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
         })
       : await CartCouponModel.find({ user_id: req.user._id });
     let couponCode = "";
-    const vendorCouponMap = new Map<
-      string,
-      { coupon_code: string; discount_amount: number }
-    >();
+const vendorCouponMap = new Map<
+  string,
+  {
+    vendor_id: string;
+    coupon_code: string;
+    discount_amount: number;
+    isSynced: boolean;
+  }
+>();
+    const syncedCouponVendorMap: Record<string, boolean> = {};
     const calculateVendorCouponDiscount = async (vendorId: string) => {
       if (vendorCouponMap.has(vendorId)) {
         return vendorCouponMap.get(vendorId)!.discount_amount;
@@ -1487,13 +1666,26 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
       });
       if (!couponMap) return 0;
 
-      const coupon = await CouponModel.findOne({ vendor_id: vendorId });
-      if (!coupon) return 0;
+if (!couponMap?.coupon_data?.coupon_code) {
+  return 0;
+}
 
-      vendorCouponMap.set(vendorId, {
-        coupon_code: coupon.coupon_code,
-        discount_amount: coupon.discount_amount,
-      });
+const coupon = await CouponModel.findOne({
+  vendor_id: vendorId,
+  coupon_code: couponMap.coupon_data.coupon_code,
+});
+
+if (!coupon) return 0;
+
+syncedCouponVendorMap[vendorId] =
+  coupon.isSynced === true;
+
+vendorCouponMap.set(vendorId, {
+  vendor_id: vendorId,
+  coupon_code: coupon.coupon_code,
+  discount_amount: coupon.discount_amount,
+  isSynced: coupon.isSynced,
+});
 
       couponCode = coupon.coupon_code;
       return coupon.discount_amount;
@@ -1510,28 +1702,158 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
   >
 > = {};
 
+const vendorIds = [
+  ...new Set(
+    cartResult.map((x: any) =>
+      x.vendor_id.toString()
+    )
+  ),
+];
+
+const allPromotions =
+  await PromotionalOfferModel.find({
+    vendor_id: { $in: vendorIds },
+    status: true,
+    expiry_status: {
+      $ne: "expired",
+    },
+  });
+
+  const calculateDiscountedPrice = (
+  price: number,
+  offerType: string,
+  discountAmount: number
+) => {
+  if (offerType === "percentage") {
+    return price - (price * discountAmount) / 100;
+  }
+
+  return Math.max(price - discountAmount, 0);
+};
 
     if (cartResult.length !== 0) {
       await Promise.all(
         cartResult.map(async (item) => {
-          const offerPrice = getOfferProductPrice(
-            item.sale_price,
-            item.discount_type,
-            item.discount_amount,
-          );
           const shippingAmount = item.delivery_amount;
+          const basePrice =
+  Number(item.original_price || 0);
+
+await calculateVendorCouponDiscount(
+  String(item.vendor_id)
+);
+
+const vendorPromotions =
+  syncedCouponVendorMap[item.vendor_id.toString()]
+    ? []
+    : allPromotions.filter(
+        (promo: any) =>
+          promo.vendor_id.toString() ===
+          item.vendor_id.toString()
+      );
+const vendorItems =
+  cartResult.filter(
+    (x: any) =>
+      x.vendor_id.toString() ===
+      item.vendor_id.toString()
+  );
+
+const vendorTotalQty =
+  vendorItems.reduce(
+    (acc: number, x: any) =>
+      acc + Number(x.qty),
+    0
+  );
+
+const vendorSubtotal =
+  vendorItems.reduce(
+    (acc: number, x: any) =>
+      acc +
+      Number(x.original_price) *
+        Number(x.qty),
+    0
+  );
+
+  let bestPrice = basePrice;
+  let maxDiscount = 0;
+  let bestPromotion = null;
+  for (const promo of vendorPromotions) {
+  let eligible = false;
+
+  if (promo.promotion_type === "qty_per_product") {
+    eligible =
+      Number(item.qty) >= Number(promo.qty || 0);
+  }
+
+  else if (promo.promotion_type === "qty_total_shop") {
+    eligible =
+      vendorTotalQty >= Number(promo.qty || 0);
+  }
+
+  else if (promo.promotion_type === "amount") {
+    eligible =
+      vendorSubtotal >=
+      Number(promo.offer_amount || 0);
+  }
+
+  if (!eligible) continue;
+
+  const promoProductIds =
+    (promo.product_id || []).map((id: any) =>
+      id.toString()
+    );
+
+  if (
+    promoProductIds.length > 0 &&
+    !promoProductIds.includes(
+      item.product_id.toString()
+    )
+  ) {
+    continue;
+  }
+
+  const discountedPrice =
+    calculateDiscountedPrice(
+      basePrice,
+      promo.offer_type,
+      Number(promo.discount_amount || 0)
+    );
+
+  const discountValue =
+    basePrice - discountedPrice;
+
+  if (discountValue > maxDiscount) {
+    maxDiscount = discountValue;
+    bestPrice = discountedPrice;
+    bestPromotion = promo;
+  }
+}
+
+item.final_price =
+  Number(bestPrice.toFixed(2));
+
+item.appliedPromotion =
+  bestPromotion;
+
+item.promotion_discount =
+  Number(
+    (
+      maxDiscount *
+      Number(item.qty)
+    ).toFixed(2)
+  );
+  promotionDiscount +=
+  item.promotion_discount;
+
           if (!item.vendor_id) {
             throw new Error("Cart item missing vendor_id");
           }
           await calculateVendorCouponDiscount(String(item.vendor_id));
-          subTotal += item.sale_price * item.qty;
+          subTotal +=
+  basePrice * Number(item.qty);
           if (item.delivery === "paid") {
             totalShipping += shippingAmount * item.qty;
           }
 
-          discount += (item.sale_price - offerPrice) * item.qty;
-          promotionDiscount +=
-            (item.original_price - item.sale_price) * item.qty;
 
           // const shippingName =
           //   item.parentCartData?.vendor_data?.[0]?.shippingName;
@@ -1651,9 +1973,97 @@ for (const vendorId in vendorShippingMap) {
       //       });
       //   }
       // }
-      for (const [, coupon] of vendorCouponMap) {
-        discountAmount += coupon.discount_amount;
+      
+for (const couponCartItem of Array.isArray(cartCoupon)
+  ? cartCoupon
+  : [cartCoupon].filter(Boolean))
+{
+  if (!couponCartItem) continue;
+  const couponData =
+    await CouponModel.findOne(
+      {
+        vendor_id:
+          couponCartItem.vendor_id,
+        coupon_code:
+          (couponCartItem.coupon_data as any)?.coupon_code,
+      },
+      {
+        discount_amount: 1,
+        discount_type: 1,
+        product_id: 1,
+        max_discount: 1,
       }
+    );
+
+  if (!couponData) continue;
+
+  const vendorItems =
+    cartResult.filter(
+      (item: any) =>
+        item.vendor_id.toString() ===
+        couponCartItem.vendor_id.toString()
+    );
+
+  const allowedProductIds =
+    (couponData.product_id || [])
+      .map((id: any) =>
+        id.toString()
+      );
+
+  const hasRestriction =
+    allowedProductIds.length > 0;
+
+  const eligibleAmount =
+    vendorItems.reduce(
+      (sum: number, item: any) => {
+        const eligible =
+          hasRestriction
+            ? allowedProductIds.includes(
+                item.product_id.toString()
+              )
+            : true;
+
+        return eligible
+          ? sum +
+              Number(
+                item.final_price
+              ) *
+                Number(item.qty)
+          : sum;
+      },
+      0
+    );
+
+  let vendorDiscount = 0;
+
+  if (
+    couponData.discount_type ===
+    "percentage"
+  ) {
+    vendorDiscount =
+      (eligibleAmount *
+        couponData.discount_amount) /
+      100;
+
+    if (
+      couponData.max_discount > 0
+    ) {
+      vendorDiscount =
+        Math.min(
+          vendorDiscount,
+          couponData.max_discount
+        );
+    }
+  } else {
+    vendorDiscount =
+      couponData.discount_amount;
+  }
+
+  discountAmount += Math.min(
+    vendorDiscount,
+    eligibleAmount
+  );
+}
 
       netAmount = subTotal;
       netAmount -= promotionDiscount;
@@ -1823,14 +2233,7 @@ for (const vendorId in vendorShippingMap) {
                 ) || null;
             }
             const shippingData = item.parentCartData?.shippingData?.[0] || null;
-            const promotionalOfferData =
-              item.original_price > item.sale_price
-                ? {
-                    discount: item.original_price - item.sale_price,
-                    type: item.discount_type,
-                    amount: item.discount_amount,
-                  }
-                : null;
+            const promotionData = item.appliedPromotion ? item.appliedPromotion : null;
 
             const productResultPipeline = [
               {
@@ -2038,12 +2441,12 @@ for (const vendorId in vendorShippingMap) {
               customize: item?.customize,
               customizationData: item?.customizationData,
               sub_total: item?.sale_price * item?.qty,
-              amount: item?.sale_price * item?.qty,
+              amount: Number(item.final_price || item.sale_price) * Number(item.qty),
               variant_id: item?.variant_id,
               variant_attribute_id: item?.variant_attribute_id,
               variants: item?.variants || [],
               affiliate_id: item.affiliate_id ? item.affiliate_id : null,
-              promotional_discount: item.original_price - item.sale_price,
+              promotional_discount: item.promotion_discount || 0,
               shippingId: item.shipping_id,
               shippingName:
                 item.parentCartData?.vendor_data?.[0]?.shippingName || "",
@@ -2067,7 +2470,7 @@ for (const vendorId in vendorShippingMap) {
                 ? vendorCouponMap.get(item.vendor_id.toString()) || null
                 : couponData,
               shippingData: shippingData,
-              promotionalOfferData: promotionalOfferData,
+              promotionData: promotionData,
               buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
             };
 
@@ -2140,13 +2543,38 @@ for (const vendorId in vendorShippingMap) {
       } else {
         await ParentCartModel.deleteOne({ user_id: req.user._id });
       }
-      await CartCouponModel.deleteOne({ user_id: req.user._id });
-      if (couponCode) {
-        await CouponModel.updateOne(
-          { coupon_code: couponCode },
-          { $inc: { total_uses: 1 } },
-        );
-      }
+      if (isVendorCheckout) {
+
+  await CartCouponModel.deleteOne({
+    user_id: req.user._id,
+    vendor_id: req.body.vendor_id,
+  });
+
+} else {
+
+  await CartCouponModel.deleteMany({
+    user_id: req.user._id,
+  });
+
+}
+for (const [
+  vendorId,
+  coupon
+] of vendorCouponMap.entries()) {
+
+  await CouponModel.updateOne(
+    {
+      vendor_id: vendorId,
+      coupon_code:
+        coupon.coupon_code,
+    },
+    {
+      $inc: {
+        total_uses: 1,
+      },
+    }
+  );
+}
       if (req.body.wallet == "1") {
         const transactionHistorydata = {
           user_id: req.user._id,
@@ -4402,10 +4830,13 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
           vendor_id: 1,
           delivery_amount: "$product_data.delivery_amount",
           delivery: "$product_data.delivery_type",
-          sale_price: "$price",
-          offer_price: "$offer_price",
-          discount_type: "$product_data.discount_type",
-          discount_amount: "$product_data.discount_amount",
+          // sale_price: "$price",
+          // offer_price: "$offer_price",
+          // discount_type: "$product_data.discount_type",
+          // discount_amount: "$product_data.discount_amount",
+          original_price: "$original_price",
+          real_price: "$product_data.sale_price",
+          product_title: "$product_data.product_title",
           parentCartData: 1,
         },
       },
@@ -4434,6 +4865,24 @@ const vendorShippingMap: Record<
 > = {};
 
     const cartCoupons = await couponCart.find({ user_id: req.user._id });
+
+    const syncedCouponVendorMap: Record<string, boolean> = {};
+
+    for (const coupon of cartCoupons) {
+      const couponData = await CouponModel.findOne(
+        {
+          vendor_id: coupon.vendor_id,
+          coupon_code: coupon?.coupon_data?.coupon_code,
+        },
+        {
+          isSynced: 1,
+        }
+      );
+
+      if (couponData?.isSynced) {
+        syncedCouponVendorMap[coupon.vendor_id.toString()] = true;
+      }
+    }
 
     let addressData: any = null;
     let country: string | null = null;
@@ -4466,17 +4915,86 @@ const vendorShippingMap: Record<
       });
     }
 
+    const calculateDiscountedPrice = ( price: number, offerType: string, discountAmount: number ) => {
+      if (offerType === "percentage") {
+        return price - (price * discountAmount) / 100;
+      }
+      return Math.max(price - discountAmount, 0);
+      };
+
+    const vendorIds = [...new Set(cartResult.map((x:any) => x.vendor_id.toString()))];
+
+     const allPromotions = await PromotionalOfferModel.find({ vendor_id: { $in: vendorIds }, status: true,
+        expiry_status: { $ne: "expired" },
+      });
+
     await Promise.all(
       cartResult.map(async (item) => {
-        const offerPrice = getOfferProductPrice(
-          item.sale_price,
-          item.discount_type,
-          item.discount_amount,
+        // const offerPrice = getOfferProductPrice(
+        //   item.sale_price,
+        //   item.discount_type,
+        //   item.discount_amount,
+        // );
+        const basePrice = Number(item.original_price || 0);
+
+        const vendorPromotions = syncedCouponVendorMap[item.vendor_id.toString()] ? [] : allPromotions.filter((promo:any) =>
+          promo.vendor_id.toString() === item.vendor_id.toString()
         );
+
+        const vendorItems = cartResult.filter((x:any) =>
+          x.vendor_id.toString() === item.vendor_id.toString()
+        );
+
+        const vendorTotalQty = vendorItems.reduce((acc:number, x:any) => acc + Number(x.qty),0);
+
+        const vendorSubtotal = vendorItems.reduce((acc:number, x:any) =>
+          acc + Number(x.original_price) * Number(x.qty),0 );
+
+        let bestPrice = basePrice;
+        let maxDiscount = 0;
+        let bestPromotion = null;
+
+        for (const promo of vendorPromotions) {
+          let eligible = false;
+
+          if (promo.promotion_type === "qty_per_product") {
+            eligible = Number(item.qty) >= Number(promo.qty || 0);
+          }
+
+          else if (promo.promotion_type === "qty_total_shop") {
+            eligible = vendorTotalQty >= Number(promo.qty || 0);
+          }
+
+          else if (promo.promotion_type === "amount") {
+            eligible = vendorSubtotal >= Number(promo.offer_amount || 0);
+          }
+
+           if (!eligible) continue;
+
+          const promoProductIds = (promo.product_id || []).map((id:any) => id.toString());
+
+          if ( promoProductIds.length > 0 && !promoProductIds.includes(item.product_id.toString())) {
+            continue;
+          }
+
+          const discountedPrice = calculateDiscountedPrice( basePrice, promo.offer_type, Number(promo.discount_amount || 0));
+
+          const discountValue = basePrice - discountedPrice;
+          if (discountValue > maxDiscount) {
+            maxDiscount = discountValue;
+            bestPrice = discountedPrice;
+            bestPromotion = promo;
+          }
+        }
+        item.final_price = Number(bestPrice.toFixed(2));
+        item.sale_price = Number(bestPrice.toFixed(2));
+        item.promotion_discount = Number((maxDiscount * Number(item.qty)).toFixed(2));
+        item.appliedPromotion = bestPromotion;
+        
         const shippingAmount = item.delivery_amount;
 
-        subTotal += item.sale_price * item.qty;
-        discount += (item.sale_price - offerPrice) * item.qty;
+        subTotal += basePrice * item.qty;
+        discount += (basePrice - bestPrice) * item.qty;
 
 const shippingList = item.parentCartData?.vendor_data?.filter(
   (v: any) => v.product_id?.toString() === item.product_id.toString()
@@ -4615,8 +5133,14 @@ for (const vendorId in vendorShippingMap) {
     // ✅ Apply accurate coupon discount logic
     if (cartCoupons?.length > 0) {
       for (const coupon of cartCoupons) {
-        const couponData = await CouponModel.findOne({
-          vendor_id: coupon?.vendor_id,
+        const couponData = await CouponModel.findOne({ vendor_id: coupon?.vendor_id, coupon_code: coupon?.coupon_data?.coupon_code},
+        {
+          coupon_code: 1,
+          discount_amount: 1,
+          discount_type: 1,
+          product_id: 1,
+          max_discount: 1,
+          isSynced: 1,
         });
 
         if (!couponData) continue;
@@ -4627,16 +5151,22 @@ for (const vendorId in vendorShippingMap) {
         const vendorCartItems = cartResult.filter(
           (item) => item.vendor_id.toString() === coupon?.vendor_id.toString(),
         );
+        const hasProductRestriction = eligibleProductIds.length > 0;
+
         const eligibleAmount = vendorCartItems.reduce((sum, item) => {
-          return eligibleProductIds.includes(item.product_id.toString())
-            ? sum + Number(item.sale_price) * Number(item.qty)
-            : sum;
+        const eligible = hasProductRestriction ? eligibleProductIds.includes(item.product_id.toString()) : true;
+
+        return eligible ? sum + Number(item.final_price) * Number(item.qty) : sum;
         }, 0);
 
         let vendorDiscount = 0;
 
         if (couponData.discount_type === "percentage") {
           vendorDiscount = (eligibleAmount * couponData.discount_amount) / 100;
+
+          if (couponData.max_discount > 0) {
+            vendorDiscount = Math.min( vendorDiscount, couponData.max_discount );
+          }
         } else {
           vendorDiscount = couponData.discount_amount;
         }
@@ -4645,18 +5175,20 @@ for (const vendorId in vendorShippingMap) {
       }
     }
 
-    netAmount = subTotal - discountAmount - voucherDiscount + delivery;
+    netAmount = subTotal - discount - discountAmount - voucherDiscount + delivery;
+
+    let grandTotal = netAmount;
 
     if (req.query.wallet === "1") {
       const user = await User.findOne({ _id: req.user._id });
       const walletBalance = user?.wallet_balance || 0;
 
-      if (walletBalance > netAmount) {
-        usedWalletAmount = netAmount;
-        netAmount = 0;
+      if (walletBalance > grandTotal) {
+        usedWalletAmount = grandTotal;
+        grandTotal = 0;
       } else {
         usedWalletAmount = walletBalance;
-        netAmount -= walletBalance;
+        grandTotal -= walletBalance;
       }
     }
 
@@ -4669,6 +5201,7 @@ for (const vendorId in vendorShippingMap) {
       vendorDeliveryMap,
       netAmount,
       walletAmount: usedWalletAmount,
+      grandTotal,
     };
 
     if (errorMessage) {
@@ -4789,10 +5322,13 @@ export const getVendorCartDetails = async (
           vendor_id: 1,
           delivery_amount: "$product_data.delivery_amount",
           delivery: "$product_data.delivery_type",
-          sale_price: "$price",
-          offer_price: "$offer_price",
-          discount_type: "$product_data.discount_type",
-          discount_amount: "$product_data.discount_amount",
+          // sale_price: "$price",
+          // offer_price: "$offer_price",
+          // discount_type: "$product_data.discount_type",
+          // discount_amount: "$product_data.discount_amount",
+          original_price: "$original_price",
+          real_price: "$product_data.sale_price",
+          product_title: "$product_data.product_title",
           parentCartData: 1,
           // parentCartData: {
           //     $cond: {
@@ -4806,6 +5342,32 @@ export const getVendorCartDetails = async (
     ];
 
     const cartResult = await Cart.aggregate(pipeline);
+    const appliedCoupon = await CouponCartModel.findOne({user_id: req.user._id, vendor_id: req.params.id });
+
+    let couponData: any = null;
+
+    if (appliedCoupon?.coupon_data?.coupon_code) {
+      couponData = await CouponModel.findOne(
+      {
+        vendor_id: appliedCoupon.vendor_id,
+        coupon_code: appliedCoupon.coupon_data.coupon_code,
+      },
+      {
+        coupon_code: 1,
+        discount_amount: 1,
+        discount_type: 1,
+        product_id: 1,
+        max_discount: 1,
+        isSynced: 1,
+      }
+      );
+    }
+
+    const vendorPromotions = couponData?.isSynced === true ? [] : await PromotionalOfferModel.find({
+        vendor_id: vendor_id,
+        status: true,
+        expiry_status: { $ne: "expired" },
+      });
     // return resp.status(200).json({ message: 'Cart fetched successfully.', cartResult });
     let subTotal = 0;
     let totalShipping = 0;
@@ -4818,84 +5380,181 @@ export const getVendorCartDetails = async (
 
     // if (cartResult.length !== 0) {
 
-    const cartCoupon = await couponCart.find({ user_id: req.user._id });
+    let addressData: any = null;
+    let country: string | null = null;
+    let isAddressProvided = false;
 
-    let addressData;
-    if (
-      req.query.address_id &&
-      mongoose.Types.ObjectId.isValid(req.query.address_id.toString())
-    ) {
-      addressData = await Address.findOne({
-        _id: new mongoose.Types.ObjectId(req.query.address_id.toString()),
-      });
+    if (req.query.address_id && mongoose.Types.ObjectId.isValid(req.query.address_id.toString())) {
+      const addressQuery = await Address.findById(req.query.address_id);
+
+      if (addressQuery?.country) {
+        addressData = addressQuery;
+        country = addressQuery.country;
+        isAddressProvided = true;
+      }
     }
 
-    if (!addressData || (addressData && addressData?.country === "")) {
+    if (!country && typeof req.query.country === "string" && req.query.country.trim()) {
+      country = req.query.country.trim();
+    }
+
+    if (!country) {
       return resp.status(400).json({
-        status: false,
-        message: "User selected address country not found.",
+      status: false,
+      message: "Either address or country is required to calculate delivery.",
       });
     }
+
+    const vendorShippingMap: Record<string,
+      {
+        qty: number;
+        perOrder: number;
+        perItem: number;
+      }
+    > = {};
+
+    const calculateDiscountedPrice = (price: number, offerType: string, discountAmount: number ) => {
+      if (offerType === "percentage") {
+        return price - (price * discountAmount) / 100;
+      }
+
+      return Math.max(price - discountAmount, 0);
+    };
+
+        const vendorTotalQty = cartResult.reduce((acc, x) => acc + Number(x.qty),
+        0);
+
+        const vendorSubtotal = cartResult.reduce((acc, x) => acc + Number(x.original_price || 0) * Number(x.qty),
+        0);
 
     await Promise.all(
       cartResult.map(async (item) => {
-        const offerPrice = getOfferProductPrice(
-          item.sale_price,
-          item.discount_type,
-          item.discount_amount,
-        );
+        const basePrice = Number(item.original_price || 0);
+
+        let bestPrice = basePrice;
+        let maxDiscount = 0;
+        let bestPromotion = null;
+
+        for (const promo of vendorPromotions) {
+
+  let eligible = false;
+
+  if (promo.promotion_type === "qty_per_product") {
+    eligible = Number(item.qty) >= Number(promo.qty || 0);
+  }
+
+  else if (promo.promotion_type === "qty_total_shop") {
+    eligible =
+      vendorTotalQty >= Number(promo.qty || 0);
+  }
+
+  else if (promo.promotion_type === "amount") {
+    eligible =
+      vendorSubtotal >=
+      Number(promo.offer_amount || 0);
+  }
+
+  if (!eligible) continue;
+
+  const promoProductIds =
+    (promo.product_id || []).map((id:any) =>
+      id.toString()
+    );
+
+  if (
+    promoProductIds.length > 0 &&
+    !promoProductIds.includes(
+      item.product_id.toString()
+    )
+  ) {
+    continue;
+  }
+
+  const discountedPrice =
+    calculateDiscountedPrice(
+      basePrice,
+      promo.offer_type,
+      Number(promo.discount_amount || 0)
+    );
+
+  const discountValue =
+    basePrice - discountedPrice;
+
+  if (discountValue > maxDiscount) {
+    maxDiscount = discountValue;
+    bestPrice = discountedPrice;
+    bestPromotion = promo;
+  }
+}
         const shippingAmount = item.delivery_amount;
-        subTotal += item.sale_price * item.qty;
+        subTotal += basePrice * item.qty;
 
         if (item.delivery === "paid") {
           totalShipping += shippingAmount * item.qty;
         }
 
-        discount += (item.sale_price - offerPrice) * item.qty;
+        discount += (basePrice - bestPrice) * item.qty;
 
-        const shippingName =
-          item.parentCartData?.vendor_data?.[0]?.shippingName;
-        const shippingTemplateData =
-          item.parentCartData?.shippingData?.[0]?.shippingTemplateData;
-        const shippingOptions = {
-          standardShipping: shippingTemplateData?.standardShipping,
-          expedited: shippingTemplateData?.expedited,
-          globalExpress: shippingTemplateData?.globalExpress,
-          priorityExpress: shippingTemplateData?.priorityExpress,
-        };
+        item.final_price = Number(bestPrice.toFixed(2));
 
-        const selectedShipping =
-          shippingOptions[shippingName as keyof typeof shippingOptions] || [];
+        item.appliedPromotion = bestPromotion;
 
-        let perOrderFee = 0;
-        for (const option of selectedShipping) {
-          if (option?.region?.includes(addressData?.country)) {
-            if (item.parentCartData) {
-              delivery += (option?.shippingFee?.perItem || 0) * item.qty;
-              perOrderFee = option?.shippingFee?.perOrder || 0;
-            }
-            break; // exit after first match
-          }
+        item.promotion_discount = Number((maxDiscount * Number(item.qty)).toFixed(2));
+
+        const shippingList = item.parentCartData?.vendor_data?.filter((v: any) => v.product_id?.toString() === item.product_id.toString()
+        );
+
+        if (!shippingList?.length) return;
+
+        const shippingInfo = shippingList.find((v: any) =>
+          v.shippingName !== "standardShipping") ||
+          shippingList.find((v: any) => v.shippingName === "standardShipping"
+        );
+
+        if (!shippingInfo) return;
+
+        if (isAddressProvided && Array.isArray(shippingInfo.region) && !shippingInfo.region.includes(country)) {
+          errorMessage = "Selected shipping does not support the new delivery address. Please reselect shipping.";
+          return;
         }
 
-        const parentCartVendorData = item.parentCartData;
-        parentCartVendorData.vendor_data[0].perOrder = parseFloat(
-          perOrderFee.toString(),
-        );
-        parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
+        const perOrderFee = Number(shippingInfo.perOrder || 0);
+        const perItemFee = Number(shippingInfo.perItem || 0);
+        const shippingKey = `${shippingInfo.shippingName}_${shippingInfo.shipping_id}`;
+
+        if (!vendorShippingMap[shippingKey]) {
+          vendorShippingMap[shippingKey] = { qty: 0, perOrder: perOrderFee, perItem: perItemFee, };
+        }
+
+        vendorShippingMap[shippingKey].qty += item.qty;
+
+        // const parentCartVendorData = item.parentCartData;
+        // parentCartVendorData.vendor_data[0].perOrder = parseFloat(
+        //   perOrderFee.toString(),
+        // );
+        // parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
       }),
     );
 
-    for (const vendorId in parentCartData) {
-      const data = parentCartData[vendorId];
+    // for (const vendorId in parentCartData) {
+    //   const data = parentCartData[vendorId];
 
-      if (data.vendor_data[0]?.perOrder <= 0) {
-        errorMessage = `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`;
+    //   if (data.vendor_data[0]?.perOrder <= 0) {
+    //     errorMessage = `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`;
+    //   }
+    //   delivery += data.vendor_data[0]?.perOrder;
+    // }
+    for (const key in vendorShippingMap) {
+      const d = vendorShippingMap[key];
+
+      delivery += d.perOrder;
+
+      if (d.qty > 1) {
+        delivery += d.perItem * (d.qty - 1);
       }
-      delivery += data.vendor_data[0]?.perOrder;
     }
 
-    netAmount = subTotal;
+    netAmount = subTotal - discount;
 
     // const couponDoc = await CouponModel.findOne({ vendor_id: req.params.id });
 
@@ -4906,14 +5565,35 @@ export const getVendorCartDetails = async (
     //         discountAmount = Number(couponDoc.discount_amount);
     //     }
     // }
-    const appliedCoupon = await CouponCartModel.findOne({
-      user_id: req.user._id,
-      vendor_id: req.params.id,
-    });
 
-    if (appliedCoupon?.coupon_data?.discount_amount) {
-      discountAmount = appliedCoupon.coupon_data.discount_amount;
+    if (couponData) {
+      const allowedProductIds = (couponData.product_id || []).map((id: any) => id.toString()
+    );
+
+    const hasRestriction = allowedProductIds.length > 0;
+
+    const eligibleAmount = cartResult.reduce((sum, item: any) => {
+      const eligible = hasRestriction ? allowedProductIds.includes(item.product_id.toString()) : true;
+      return eligible ? sum + Number(item.final_price) * Number(item.qty) : sum;
+    },
+    0
+    );
+
+    if (couponData.discount_type === "percentage") {
+      discountAmount = (eligibleAmount * couponData.discount_amount) / 100;
+
+      if (couponData.max_discount > 0) {
+        discountAmount = Math.min(
+          discountAmount,
+          couponData.max_discount
+        );
+      }
+    } else {
+      discountAmount = couponData.discount_amount;
     }
+
+    discountAmount = Math.min( discountAmount, eligibleAmount );
+  }
 
     netAmount = netAmount - discountAmount;
 

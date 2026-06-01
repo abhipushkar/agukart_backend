@@ -59,6 +59,10 @@ const salesDetailsSchema = new Schema(
             type: Number,
             default: 0
         },
+        promotionData: {
+            type: Object,
+            default: {}
+        },
         discount: {
             type: Number,
             default: 0
