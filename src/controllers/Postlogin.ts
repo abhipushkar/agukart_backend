@@ -1469,6 +1469,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
   try {
     console.log("Checkout Request Body:", req.body); // Debug log
     const isVendorCheckout = !!req.body.vendor_id;
+    const couponVendorIds = req.body.coupon_vendor_ids || [];
     const shopCount = Number(req.body.shop_count || 1);
     if (shopCount <= 0) {
       return resp.status(400).json({ message: "Invalid shop_count" });
@@ -1629,6 +1630,8 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
     let delivery = 0;
     let parentCartData: any = {};
 
+    const vendorCouponDiscountMap: Record<string, number> = {};
+
     const vendorDeliveryMap: Record<string, number> = {};
 
     if (!address || (address && address?.country === "")) {
@@ -1637,55 +1640,72 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
         message: "User selected address country not found.",
       });
     }
+    
+  const cartCoupon = isVendorCheckout
+  ? await couponCart.findOne({
+      user_id: req.user._id,
+      vendor_id: req.body.vendor_id,
+    })
+    : await couponCart.find({
+    user_id: req.user._id,
+    ...(couponVendorIds.length > 0
+      ? {
+          vendor_id: {
+            $in: couponVendorIds.map(
+              (id: string) =>
+                new mongoose.Types.ObjectId(id)
+            ),
+          },
+        }
+      : {}),
+  });
 
-    const cartCoupon = isVendorCheckout
-      ? await couponCart.findOne({
-          user_id: req.user._id,
-          vendor_id: req.body.vendor_id,
-        })
-      : await CartCouponModel.find({ user_id: req.user._id });
     let couponCode = "";
-const vendorCouponMap = new Map<
-  string,
-  {
-    vendor_id: string;
-    coupon_code: string;
-    discount_amount: number;
-    isSynced: boolean;
-  }
->();
+    const vendorCouponMap = new Map<
+      string,
+    {
+      vendor_id: string;
+      coupon_code: string;
+      discount_amount: number;
+      isSynced: boolean;
+    }>();
     const syncedCouponVendorMap: Record<string, boolean> = {};
     const calculateVendorCouponDiscount = async (vendorId: string) => {
       if (vendorCouponMap.has(vendorId)) {
         return vendorCouponMap.get(vendorId)!.discount_amount;
       }
 
-      const couponMap = await couponCart.findOne({
-        user_id: req.user._id,
-        vendor_id: vendorId,
-      });
+const couponMap: any = Array.isArray(cartCoupon)
+  ? cartCoupon.find(
+      (x: any) =>
+        x.vendor_id?.toString() === vendorId
+    )
+  : cartCoupon &&
+    cartCoupon.vendor_id?.toString() === vendorId
+  ? cartCoupon
+  : null;
+
       if (!couponMap) return 0;
 
-if (!couponMap?.coupon_data?.coupon_code) {
-  return 0;
-}
+    if (!couponMap?.coupon_data?.coupon_code) {
+      return 0;
+    }
 
-const coupon = await CouponModel.findOne({
-  vendor_id: vendorId,
-  coupon_code: couponMap.coupon_data.coupon_code,
-});
+    const coupon = await CouponModel.findOne({
+      vendor_id: vendorId,
+      coupon_code: couponMap.coupon_data.coupon_code,
+    });
 
-if (!coupon) return 0;
+    if (!coupon) return 0;
 
-syncedCouponVendorMap[vendorId] =
-  coupon.isSynced === true;
+    syncedCouponVendorMap[vendorId] = coupon.isSynced === true;
 
-vendorCouponMap.set(vendorId, {
-  vendor_id: vendorId,
-  coupon_code: coupon.coupon_code,
-  discount_amount: coupon.discount_amount,
-  isSynced: coupon.isSynced,
-});
+    vendorCouponMap.set(vendorId, {
+      vendor_id: vendorId,
+      coupon_code: coupon.coupon_code,
+      discount_amount: coupon.discount_amount,
+      isSynced: coupon.isSynced,
+    });
 
       couponCode = coupon.coupon_code;
       return coupon.discount_amount;
@@ -1698,38 +1718,33 @@ vendorCouponMap.set(vendorId, {
       qty: number;
       perOrder: number;
       perItem: number;
-    }
-  >
-> = {};
+    }>> = {};
 
-const vendorIds = [
-  ...new Set(
-    cartResult.map((x: any) =>
-      x.vendor_id.toString()
-    )
-  ),
-];
+    const vendorIds = [...new Set(cartResult.map((x: any) =>
+        x.vendor_id.toString()
+      )
+      ),
+    ];
 
-const allPromotions =
-  await PromotionalOfferModel.find({
-    vendor_id: { $in: vendorIds },
-    status: true,
-    expiry_status: {
+    const allPromotions = await PromotionalOfferModel.find({
+      vendor_id: { $in: vendorIds },
+      status: true,
+      expiry_status: {
       $ne: "expired",
     },
-  });
+    });
 
   const calculateDiscountedPrice = (
   price: number,
   offerType: string,
   discountAmount: number
-) => {
+  ) => {
   if (offerType === "percentage") {
     return price - (price * discountAmount) / 100;
   }
 
   return Math.max(price - discountAmount, 0);
-};
+  };
 
     if (cartResult.length !== 0) {
       await Promise.all(
@@ -1738,33 +1753,32 @@ const allPromotions =
           const basePrice =
   Number(item.original_price || 0);
 
-await calculateVendorCouponDiscount(
-  String(item.vendor_id)
-);
+   await calculateVendorCouponDiscount(
+    String(item.vendor_id)
+  );
 
-const vendorPromotions =
-  syncedCouponVendorMap[item.vendor_id.toString()]
+   const vendorPromotions = syncedCouponVendorMap[item.vendor_id.toString()]
     ? []
     : allPromotions.filter(
         (promo: any) =>
           promo.vendor_id.toString() ===
           item.vendor_id.toString()
       );
-const vendorItems =
-  cartResult.filter(
+    const vendorItems =
+      cartResult.filter(
     (x: any) =>
       x.vendor_id.toString() ===
       item.vendor_id.toString()
   );
 
-const vendorTotalQty =
-  vendorItems.reduce(
+    const vendorTotalQty =
+      vendorItems.reduce(
     (acc: number, x: any) =>
       acc + Number(x.qty),
     0
   );
 
-const vendorSubtotal =
+    const vendorSubtotal =
   vendorItems.reduce(
     (acc: number, x: any) =>
       acc +
@@ -1826,23 +1840,23 @@ const vendorSubtotal =
     bestPrice = discountedPrice;
     bestPromotion = promo;
   }
-}
+  }
 
-item.final_price =
-  Number(bestPrice.toFixed(2));
+    item.final_price =
+      Number(bestPrice.toFixed(2));
 
-item.appliedPromotion =
-  bestPromotion;
+  item.appliedPromotion =
+    bestPromotion;
 
-item.promotion_discount =
-  Number(
-    (
-      maxDiscount *
-      Number(item.qty)
-    ).toFixed(2)
-  );
-  promotionDiscount +=
-  item.promotion_discount;
+  item.promotion_discount =
+    Number(
+      (
+        maxDiscount *
+        Number(item.qty)
+      ).toFixed(2)
+    );
+    promotionDiscount +=
+    item.promotion_discount;
 
           if (!item.vendor_id) {
             throw new Error("Cart item missing vendor_id");
@@ -1901,169 +1915,170 @@ item.promotion_discount =
       //     );
       //     parentCartData[parentCartVendorData.vendor_id] = parentCartVendorData;
       const savedShipping =
-  item.parentCartData?.vendor_data?.find(
-    (v: any) =>
-      v.product_id?.toString() === item.product_id?.toString()
-  );
+    item.parentCartData?.vendor_data?.find(
+      (v: any) =>
+        v.product_id?.toString() === item.product_id?.toString()
+    );
 
-if (!savedShipping) {
-  return resp.status(400).json({
-    status: false,
-    message: "Shipping not selected for product",
-  });
-}
-
-const perItem = Number(savedShipping.perItem || 0);
-const perOrder = Number(savedShipping.perOrder || 0);
-
-const vendorId = item.vendor_id.toString();
-const shippingKey = `${savedShipping.shippingName}_${savedShipping.shipping_id}`;
-
-if (!vendorShippingMap[vendorId]) {
-  vendorShippingMap[vendorId] = {};
-}
-
-if (!vendorShippingMap[vendorId][shippingKey]) {
-  vendorShippingMap[vendorId][shippingKey] = {
-    qty: 0,
-    perOrder: Number(savedShipping.perOrder || 0),
-    perItem: Number(savedShipping.perItem || 0),
-  };
-}
-
-// 🔑 CRITICAL: qty across PRODUCTS
-vendorShippingMap[vendorId][shippingKey].qty += Number(item.qty);
-
-// store meta only (NO calculation)
-item._shippingMeta = {
-  shippingKey,
-};
-
-         }),
-       );
-
-
-for (const vendorId in vendorShippingMap) {
-  let vendorDelivery = 0;
-
-  for (const key in vendorShippingMap[vendorId]) {
-    const d = vendorShippingMap[vendorId][key];
-
-    vendorDelivery += d.perOrder;
-
-    if (d.qty > 1) {
-      vendorDelivery += d.perItem * (d.qty - 1);
-    }
+  if (!savedShipping) {
+    return resp.status(400).json({
+      status: false,
+      message: "Shipping not selected for product",
+    });
   }
 
-  vendorDeliveryMap[vendorId] = vendorDelivery;
-  delivery += vendorDelivery;
-}
+  const perItem = Number(savedShipping.perItem || 0);
+  const perOrder = Number(savedShipping.perOrder || 0);
+
+  const vendorId = item.vendor_id.toString();
+  const shippingKey = `${savedShipping.shippingName}_${savedShipping.shipping_id}`;
+
+  if (!vendorShippingMap[vendorId]) {
+    vendorShippingMap[vendorId] = {};
+  }
+
+  if (!vendorShippingMap[vendorId][shippingKey]) {
+    vendorShippingMap[vendorId][shippingKey] = {
+      qty: 0,
+      perOrder: Number(savedShipping.perOrder || 0),
+      perItem: Number(savedShipping.perItem || 0),
+    };
+  }
+
+  // 🔑 CRITICAL: qty across PRODUCTS
+  vendorShippingMap[vendorId][shippingKey].qty += Number(item.qty);
+
+  // store meta only (NO calculation)
+  item._shippingMeta = {
+    shippingKey,
+  };
+
+          }),
+        );
 
 
-      // for (const vendorId in parentCartData) {
-      //   const data = parentCartData[vendorId];
+  for (const vendorId in vendorShippingMap) {
+    let vendorDelivery = 0;
 
-      //   if (data.vendor_data[0]?.perOrder <= 0) {
-      //     return resp
-      //       .status(200)
-      //       .json({
-      //         status: false,
-      //         message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`,
-      //       });
-      //   }
-      // }
-      
-for (const couponCartItem of Array.isArray(cartCoupon)
-  ? cartCoupon
-  : [cartCoupon].filter(Boolean))
-{
-  if (!couponCartItem) continue;
-  const couponData =
-    await CouponModel.findOne(
-      {
-        vendor_id:
-          couponCartItem.vendor_id,
-        coupon_code:
-          (couponCartItem.coupon_data as any)?.coupon_code,
-      },
-      {
-        discount_amount: 1,
-        discount_type: 1,
-        product_id: 1,
-        max_discount: 1,
+    for (const key in vendorShippingMap[vendorId]) {
+      const d = vendorShippingMap[vendorId][key];
+
+      vendorDelivery += d.perOrder;
+
+      if (d.qty > 1) {
+        vendorDelivery += d.perItem * (d.qty - 1);
       }
-    );
+    }
 
-  if (!couponData) continue;
+    vendorDeliveryMap[vendorId] = vendorDelivery;
+    delivery += vendorDelivery;
+  }
 
-  const vendorItems =
-    cartResult.filter(
-      (item: any) =>
-        item.vendor_id.toString() ===
-        couponCartItem.vendor_id.toString()
-    );
 
-  const allowedProductIds =
-    (couponData.product_id || [])
-      .map((id: any) =>
-        id.toString()
+        // for (const vendorId in parentCartData) {
+        //   const data = parentCartData[vendorId];
+
+        //   if (data.vendor_data[0]?.perOrder <= 0) {
+        //     return resp
+        //       .status(200)
+        //       .json({
+        //         status: false,
+        //         message: `${data.vendorDetails[0].vendorprofile[0].shop_name} doesn't allow the delivery for your selected address country`,
+        //       });
+        //   }
+        // }
+      
+  for (const couponCartItem of Array.isArray(cartCoupon)
+    ? cartCoupon
+    : [cartCoupon].filter(Boolean))
+  {
+    if (!couponCartItem) continue;
+    const couponData =
+      await CouponModel.findOne(
+        {
+          vendor_id:
+            couponCartItem.vendor_id,
+          coupon_code:
+            (couponCartItem.coupon_data as any)?.coupon_code,
+        },
+        {
+          discount_amount: 1,
+          discount_type: 1,
+          product_id: 1,
+          max_discount: 1,
+        }
       );
 
-  const hasRestriction =
-    allowedProductIds.length > 0;
+    if (!couponData) continue;
 
-  const eligibleAmount =
-    vendorItems.reduce(
-      (sum: number, item: any) => {
-        const eligible =
-          hasRestriction
-            ? allowedProductIds.includes(
-                item.product_id.toString()
-              )
-            : true;
+    const vendorItems =
+      cartResult.filter(
+        (item: any) =>
+          item.vendor_id.toString() ===
+          couponCartItem.vendor_id.toString()
+      );
 
-        return eligible
-          ? sum +
-              Number(
-                item.final_price
-              ) *
-                Number(item.qty)
-          : sum;
-      },
-      0
-    );
+    const allowedProductIds =
+      (couponData.product_id || [])
+        .map((id: any) =>
+          id.toString()
+        );
 
-  let vendorDiscount = 0;
+    const hasRestriction =
+      allowedProductIds.length > 0;
 
-  if (
-    couponData.discount_type ===
-    "percentage"
-  ) {
-    vendorDiscount =
-      (eligibleAmount *
-        couponData.discount_amount) /
-      100;
+    const eligibleAmount =
+      vendorItems.reduce(
+        (sum: number, item: any) => {
+          const eligible =
+            hasRestriction
+              ? allowedProductIds.includes(
+                  item.product_id.toString()
+                )
+              : true;
+
+          return eligible
+            ? sum +
+                Number(
+                  item.final_price
+                ) *
+                  Number(item.qty)
+            : sum;
+        },
+        0
+      );
+
+    let vendorDiscount = 0;
 
     if (
-      couponData.max_discount > 0
+      couponData.discount_type ===
+      "percentage"
     ) {
       vendorDiscount =
-        Math.min(
-          vendorDiscount,
-          couponData.max_discount
-        );
-    }
-  } else {
-    vendorDiscount =
-      couponData.discount_amount;
-  }
+        (eligibleAmount *
+          couponData.discount_amount) /
+        100;
 
-  discountAmount += Math.min(
-    vendorDiscount,
-    eligibleAmount
-  );
-}
+      if (
+        couponData.max_discount > 0
+      ) {
+        vendorDiscount =
+          Math.min(
+            vendorDiscount,
+            couponData.max_discount
+          );
+      }
+    } else {
+      vendorDiscount =
+        couponData.discount_amount;
+    }
+
+    const finalVendorDiscount = Math.min( vendorDiscount, eligibleAmount);
+
+      discountAmount += finalVendorDiscount;
+
+      vendorCouponDiscountMap[couponCartItem.vendor_id.toString()] = finalVendorDiscount;
+  }
 
       netAmount = subTotal;
       netAmount -= promotionDiscount;
@@ -2379,14 +2394,6 @@ for (const couponCartItem of Array.isArray(cartCoupon)
         selectedValues.includes(v)
       );
 
-      console.log("FINAL DEBUG", {
-        group: group.variant_name,
-        combValues,
-        selectedValues,
-        isPartialMatch,
-        qty: comb.qty
-      });
-
       if (isPartialMatch && comb.qty !== "") {
         const currentCombQty = Number(comb.qty || 0);
         const newQty = currentCombQty - Number(item.qty);
@@ -2408,7 +2415,7 @@ for (const couponCartItem of Array.isArray(cartCoupon)
   if (!deducted) {
     throw new Error("Failed to deduct stock correctly");
   }
-} else {
+  } else {
               productData.qty = String(updatedQty);
             }
 
@@ -2469,6 +2476,7 @@ for (const couponCartItem of Array.isArray(cartCoupon)
               couponData: isVendorCheckout
                 ? vendorCouponMap.get(item.vendor_id.toString()) || null
                 : couponData,
+              couponDiscountAmount: vendorCouponDiscountMap[ item.vendor_id.toString()] || 0,
               shippingData: shippingData,
               promotionData: promotionData,
               buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
@@ -2550,17 +2558,16 @@ for (const couponCartItem of Array.isArray(cartCoupon)
     vendor_id: req.body.vendor_id,
   });
 
-} else {
+  } else {
 
   await CartCouponModel.deleteMany({
     user_id: req.user._id,
   });
-
-}
-for (const [
+  }
+  for (const [
   vendorId,
   coupon
-] of vendorCouponMap.entries()) {
+  ] of vendorCouponMap.entries()) {
 
   await CouponModel.updateOne(
     {
@@ -2574,7 +2581,7 @@ for (const [
       },
     }
   );
-}
+  }
       if (req.body.wallet == "1") {
         const transactionHistorydata = {
           user_id: req.user._id,
