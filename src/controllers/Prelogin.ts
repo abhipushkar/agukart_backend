@@ -948,7 +948,9 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       product_code: 1,
       slug: 1,
       videos: 1,
+      edited_image: 1,
       image: 1,
+      altText: 1,
       product_bedge: 1,
       userReviewCount: 1,
       createdAt: 1,
@@ -956,6 +958,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       zoom: 1,
       product_variants: 1,
       dynamicFields: 1,
+      form_values: 1,
       search_terms: 1,
       shop_name: { $ifNull: ["$vendor.shop_name", ""] },
     }
@@ -988,7 +991,8 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
 
     // 8️⃣ Promotions (unchanged)
     const productIds = products.map(p => p._id);
-    const vendorIds = products.map(p => p.vendor_id);
+    const vendorIds = [...new Set(products.map((p: any) => p.vendor_id.toString()))
+      ].map(id => new mongoose.Types.ObjectId(id));
 
     const promotions = await PromotionalOfferModel.find({
       product_id: { $in: productIds },
@@ -998,11 +1002,18 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     }).lean();
 
     const promoMap = new Map<string, any[]>();
-    promotions.forEach(p => {
-    const key = p.product_id.toString();
-    if (!promoMap.has(key)) promoMap.set(key, []);
+
+    promotions.forEach((p: any) => {
+      (p.product_id || []).forEach((pid: any) => {
+        const key = pid.toString();
+
+      if (!promoMap.has(key)) {
+        promoMap.set(key, []);
+      }
+
       promoMap.get(key)!.push(p);
-   });
+      });
+    });
 
     products = products.map(p => {
     let originalPrice = +p.sale_price;
@@ -1015,26 +1026,20 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
         finalPrice = originalPrice;
       }
 
-    const promos = promoMap.get(p._id.toString()) || [];
-    if (promos.length) {
-        const bestPromo = promos.reduce((best: any, cur: any) =>
-        !best || cur.qty < best.qty ? cur : best, null);
-    if (bestPromo) {
-      finalPrice = calculatePriceAfterDiscount(
-        bestPromo.offer_type,
-        +bestPromo.discount_amount,
-        originalPrice
-      );
-    }
-  }
+      const promos = promoMap.get(p._id.toString()) || [];
 
-   return {
-     ...p,
-     originalPrice,
-     finalPrice,
-     promotionData: promos
-    };
-   });
+      const promotionResult = getProductPromotionData( promos, originalPrice, p.shop_name || "" );
+ 
+      return {
+        ...p,
+        originalPrice: promotionResult.originalPrice,
+        finalPrice: promotionResult.finalPrice,
+        currentPromotion: promotionResult.currentPromotion,
+        nextPromotion: promotionResult.nextPromotion,
+        promotionLabel: promotionResult.promotionLabel,
+        promotionData: promotionResult.promotionData
+      };
+      });
 
     return resp.status(200).json({
       message: "Products fetched successfully.",
@@ -1049,9 +1054,6 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     return resp.status(500).json({ message: "Error fetching products", error: error.message });
   }
 };
-
-
-
 
 export const getPopularGiftProducts = async (req: Request, resp: Response) => {
   try {
@@ -1776,50 +1778,163 @@ const buildCond = (cond: any, lookup: any) => {
   // --------------------------
   // Attributes Tag
   // --------------------------
-  if (field === "Attributes Tag") {
-    const attrId = cond.value?.attributeId;
-    const valueIds = cond.value?.valueIds || [];
-    if (!attrId || !Array.isArray(valueIds) || valueIds.length === 0) return null;
+if (field === "Attributes Tag") {
+  const attrId = cond.value?.attributeId;
+  const valueIds = cond.value?.valueIds || [];
 
-    const attrDoc = (lookup.attributeData || []).find(
-      (a: any) => String(a._id) === String(attrId)
-    );
-    if (!attrDoc) return null;
+  if (!attrId || !Array.isArray(valueIds) || valueIds.length === 0) {
+    return null;
+  }
 
-    const finalValues: string[] = [];
+  const attrDoc = (lookup.attributeData || []).find(
+    (a: any) => String(a._id) === String(attrId)
+  );
 
-    // normal attribute values
+  if (!attrDoc) return null;
+
+  const attrName = attrDoc.name;
+
+  let finalValues: string[] = [];
+
+  // Dropdown / Compound attributes
+  if (
+    (attrDoc.values && attrDoc.values.length > 0) ||
+    (attrDoc.subAttributes && attrDoc.subAttributes.length > 0)
+  ) {
     for (const v of attrDoc.values || []) {
-      if (valueIds.includes(String(v._id))) finalValues.push(v.value);
-    }
-
-    // subattribute values
-    for (const s of attrDoc.subAttributes || []) {
-      for (const v of s.values || []) {
-        if (valueIds.includes(String(v._id))) finalValues.push(v.value);
+      if (valueIds.includes(String(v._id))) {
+        finalValues.push(v.value);
       }
     }
 
-    if (finalValues.length === 0) return null;
-
-    const attrName = attrDoc.name;
-
-    const orConditions = finalValues.map((val: string) => {
-      const regex = buildRegex(val, operator);
-      return {
-        $or: [
-          { [`dynamicFields.${attrName}`]: { $regex: regex } },
-          { [`dynamicFields.${attrName}`]: { $elemMatch: { $regex: regex } } }
-        ]
-      };
-    });
-
-    return orConditions.length === 1 ? orConditions[0] : { $or: orConditions };
+    for (const s of attrDoc.subAttributes || []) {
+      for (const v of s.values || []) {
+        if (valueIds.includes(String(v._id))) {
+          finalValues.push(v.value);
+        }
+      }
+    }
   }
+  // Text / Number / Yes-No attributes
+  else {
+    finalValues = valueIds.map((v: string) => String(v).trim());
+  }
+
+  if (!finalValues.length) return null;
+
+  const orConditions = finalValues.map((val: string) => {
+    const regex = buildRegex(val, operator);
+
+    return {
+      $or: [
+        { [`dynamicFields.${attrName}`]: { $regex: regex } },
+        { [`dynamicFields.${attrName}`]: { $elemMatch: { $regex: regex } } }
+      ]
+    };
+  });
+
+  return orConditions.length === 1
+    ? orConditions[0]
+    : { $or: orConditions };
+}
 
   return null;
 };
 
+const getDiscountText = (promotion: any) => {
+  if (promotion.offer_type === "percentage") {
+    return `${promotion.discount_amount}%`;
+  }
+
+  return `$${promotion.discount_amount}`;
+};
+
+export const getProductPromotionData = (
+  promotions: any[],
+  originalPrice: number,
+  shopName = ""
+) => {
+  const now = new Date();
+
+  const validPromotions = promotions.filter((p) => {
+    return (
+      p.status === true &&
+      new Date(p.start_date) <= now &&
+      (!p.expiry_date || new Date(p.expiry_date) >= now)
+    );
+  });
+
+  let currentPromotion = null;
+  let nextPromotion = null;
+  let promotionLabel = "";
+  let finalPrice = originalPrice;
+
+  // Current promotion = qty_per_product with qty = 1
+  const qtyOnePromotion = validPromotions.find(
+    (p) =>
+      p.promotion_type === "qty_per_product" &&
+      Number(p.qty) === 1
+  );
+
+  currentPromotion = qtyOnePromotion || null;
+
+  if (currentPromotion) {
+    finalPrice = calculatePriceAfterDiscount(
+      currentPromotion.offer_type,
+      Number(currentPromotion.discount_amount),
+      originalPrice
+    );
+  }
+
+  // Remaining promotions except current
+  const candidatePromotions = validPromotions.filter((p) => {
+    if (!currentPromotion) return true;
+    return p._id.toString() !== currentPromotion._id.toString();
+  });
+
+  const getPromotionValue = (promotion: any) => {
+    if (promotion.offer_type === "percentage") {
+      return (
+        originalPrice *
+        Number(promotion.discount_amount)
+      ) / 100;
+    }
+
+    return Number(promotion.discount_amount || 0);
+  };
+
+  candidatePromotions.sort(
+    (a, b) => getPromotionValue(b) - getPromotionValue(a)
+  );
+
+  nextPromotion = candidatePromotions[0] || null;
+
+  if (nextPromotion) {
+
+    if (nextPromotion.promotion_type === "qty_per_product") {
+
+      promotionLabel = `Eligible orders get ${getDiscountText(nextPromotion)} OFF when you buy ${nextPromotion.qty} items`;
+
+    } else if (nextPromotion.promotion_type === "amount") {
+
+      promotionLabel = `Buy items worth $${nextPromotion.offer_amount} from ${shopName} and get ${getDiscountText(nextPromotion)} OFF`;
+
+    } else if (nextPromotion.promotion_type === "qty_total_shop") {
+
+      promotionLabel = `Buy ${nextPromotion.qty} items from ${shopName} and get ${getDiscountText(nextPromotion)} OFF`;
+
+    }
+  }
+
+  return {
+    originalPrice,
+    finalPrice,
+    currentPromotion,
+    nextPromotion,
+    promotionLabel,
+    promotionData: validPromotions
+  };
+};
 
 export const getProductList = async (req: Request, resp: Response) => {
   try {
@@ -1919,6 +2034,8 @@ export const getProductList = async (req: Request, resp: Response) => {
         product_title: 1,
         sale_price: 1,
         image: 1,
+        edited_image: 1,
+        altText: 1,
         product_variants: 1,
         dynamicFields: 1,
         vendor_id: 1,
@@ -2001,6 +2118,8 @@ export const getProductList = async (req: Request, resp: Response) => {
       product_title: 1,
       sale_price: 1,
       image: 1,
+      edited_image: 1,
+      altText: 1,
       product_variants: 1,
       dynamicFields: 1,
       vendor_id: 1,
@@ -2175,6 +2294,8 @@ export const getProductList = async (req: Request, resp: Response) => {
     product_title: 1,
     sale_price: 1,
     image: 1,
+    edited_image: 1,
+    altText: 1,
     product_variants: 1,
     dynamicFields: 1,
     vendor_id: 1,
@@ -2241,8 +2362,7 @@ const vendorIds = Array.from(
         product_id: { $in: productIds },
         vendor_id: { $in: vendorIds },
         status: true,
-        expiry_status: { $ne: "expired" }
-    }).select("product_id promotional_title offer_type discount_amount qty").lean();
+    }).select("product_id promotional_title offer_type offer_amount promotion_type discount_amount qty start_date expiry_date status").lean();
 
 const promoMap = new Map<string, any[]>();
 
@@ -2280,25 +2400,17 @@ promotions.forEach(p => {
 
     // 🔹 Apply best promotion
     const promo = promoMap.get(item._id.toString()) || [];
-    if (promo.length) {
-      const bestPromo = promo.reduce((best: any, cur: any) =>
-        !best || cur.qty < best.qty ? cur : best
-      , null);
 
-      if (bestPromo) {
-        finalPrice = calculatePriceAfterDiscount(
-          bestPromo.offer_type,
-          +bestPromo.discount_amount,
-          originalPrice
-        );
-      }
-    }
+    const promotionResult = getProductPromotionData( promo, originalPrice, item.shop_name || "" );
 
      return {
       ...item,
-      originalPrice,
-      finalPrice,
-      promotionData: promo
+      originalPrice: promotionResult.originalPrice,
+      finalPrice: promotionResult.finalPrice,
+      currentPromotion: promotionResult.currentPromotion,
+      nextPromotion: promotionResult.nextPromotion,
+      promotionLabel: promotionResult.promotionLabel,
+      promotionData: promotionResult.promotionData
     };
     });
   }

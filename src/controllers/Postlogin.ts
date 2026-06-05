@@ -60,6 +60,7 @@ import couponCart from "../models/CouponCart";
 import got from "got";
 import BuyerNoteModel from "../models/BuyerNote";
 import Shipping from "../models/Shipping";
+import SaveForLater from "../models/SaveForLater";
 
 interface CustomRequest extends Request {
   user?: any;
@@ -1057,6 +1058,245 @@ export const deleteCompleteCart = async (
   }
 };
 
+export const moveToSaveForLater = async ( req: CustomRequest, resp: Response ) => {
+  try {
+    const userId = req.user._id;
+    const { cart_id } = req.body;
+
+    const cartItem = await Cart.findOne({
+      _id: cart_id,
+      user_id: userId
+    });
+
+    if (!cartItem) {
+      return resp.status(404).json({
+        message: "Cart item not found"
+      });
+    }
+
+    await SaveForLater.create({
+      user_id: cartItem.user_id,
+      vendor_id: cartItem.vendor_id,
+      product_id: cartItem.product_id,
+      qty: cartItem.qty,
+      isCombination: cartItem.isCombination,
+      customize: cartItem.customize,
+      customizationData: cartItem.customizationData,
+      variant_id: cartItem.variant_id,
+      variant_attribute_id: cartItem.variant_attribute_id,
+      variants: cartItem.variants,
+      saved_price: cartItem.price,
+      saved_original_price: cartItem.original_price,
+      affiliate_id: cartItem.affiliate_id,
+      shipping_id: cartItem.shipping_id,
+      shippingName: cartItem.shippingName,
+      note: cartItem.note
+    });
+
+    await Cart.deleteOne({
+      _id: cartItem._id
+    });
+
+    return resp.status(200).json({
+      message: "Moved to Save For Later successfully"
+    });
+  } catch (error) {
+    console.log(error);
+
+    return resp.status(500).json({
+      message: "Something went wrong"
+    });
+  }
+};
+
+export const getSaveForLater = async ( req: CustomRequest, resp: Response ) => {
+  try {
+    const userId = req.user._id;
+
+    const data: any[] = await SaveForLater.find({
+      user_id: userId
+    })
+      .populate({
+        path: "product_id",
+        select: "product_title slug image product_code"
+      })
+      .populate({
+        path: "variant_id",
+        select: "variant_name"
+      })
+      .populate({
+        path: "variant_attribute_id",
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+      for (const item of data) {
+        const vendor = await VendorModel.findOne({
+          user_id: item.vendor_id._id
+        }).select("shop_name slug shop_icon").lean();
+        item.shop = vendor;
+      }
+
+    return resp.status(200).json({
+      data
+    });
+  } catch (error) {
+    return resp.status(500).json({
+      message: "Something went wrong"
+    });
+  }
+};
+
+export const deleteSaveForLater = async ( req: CustomRequest, resp: Response ) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    await SaveForLater.deleteOne({
+      _id: id,
+      user_id: userId
+    });
+
+    return resp.status(200).json({
+      message: "Deleted successfully"
+    });
+  } catch (error) {
+    return resp.status(500).json({
+      message: "Something went wrong"
+    });
+  }
+};
+
+export const moveToCart = async ( req: CustomRequest, resp: Response ) => {
+  try {
+    const userId = req.user._id;
+    const { save_id } = req.body;
+
+    const saveItem = await SaveForLater.findOne({
+      _id: save_id,
+      user_id: userId
+    });
+
+    if (!saveItem) {
+      return resp.status(404).json({
+        message: "Saved item not found"
+      });
+    }
+
+    const product = await ProductModel.findById(saveItem.product_id);
+    if (!product || !product.status || product.isDeleted) {
+      return resp.status(400).json({
+        message: "This item is currently unavailable or out of stock and cannot be added to your cart."
+      });
+    }
+
+    const customVariants = Array.isArray(saveItem.variants) ? saveItem.variants : [];
+    const customization = Array.isArray(saveItem.customizationData) ? saveItem.customizationData : [];
+    const hasExternalVariants = saveItem.variant_id.length > 0 || saveItem.variant_attribute_id.length > 0;
+    const hasInternalVariants = customVariants.length > 0;
+
+    const query: any = {
+      user_id: userId,
+      product_id: saveItem.product_id,
+      vendor_id: saveItem.vendor_id,
+      isCombination: saveItem.isCombination,
+      customizationData: customization,
+    };
+
+    query.$expr = { $and: [] };
+
+    if (hasExternalVariants) {
+      query.$expr.$and.push(
+        {
+          $and: [
+            { $eq: [{ $size: "$variant_id" }, saveItem.variant_id.length] },
+            { $setEquals: ["$variant_id", saveItem.variant_id] },
+          ],
+        },
+        {
+          $and: [
+            {
+              $eq: [
+                { $size: "$variant_attribute_id" },
+                saveItem.variant_attribute_id.length,
+              ],
+            },
+            {
+              $setEquals: [
+              "$variant_attribute_id",
+              saveItem.variant_attribute_id,
+              ],
+            },
+          ],
+        },
+      );
+    }
+
+    if (hasInternalVariants) {
+      query.variants = {
+        $all: customVariants.map((v: any) => ({
+          $elemMatch: {
+            variantName: v.variantName,
+            attributeName: v.attributeName,
+          },
+        })),
+      };
+
+      query.$expr.$and.push({
+        $eq: [{ $size: "$variants" }, customVariants.length],
+      });
+    }
+
+    if (query.$expr.$and.length === 0) {
+      delete query.$expr;
+    }
+
+    const existingCart = await Cart.findOne(query);
+
+    if (existingCart) {
+      return resp.status(400).json({
+        message: "Product already added in cart"
+      });
+    } 
+        await Cart.create(
+          {
+            user_id: saveItem.user_id,
+            vendor_id: saveItem.vendor_id,
+            product_id: saveItem.product_id,
+            qty: saveItem.qty,
+            isCombination: saveItem.isCombination,
+            customize: saveItem.customize,
+            customizationData: saveItem.customizationData,
+            variant_id: saveItem.variant_id,
+            variant_attribute_id: saveItem.variant_attribute_id,
+            variants: saveItem.variants,
+            price: saveItem.saved_price,
+            original_price: saveItem.saved_original_price,
+            affiliate_id: saveItem.affiliate_id,
+            shipping_id: saveItem.shipping_id,
+            shippingName: saveItem.shippingName,
+            note: saveItem.note
+          }
+        );
+
+
+    await SaveForLater.deleteOne(
+      {
+        _id: saveItem._id
+      },
+    );
+
+    return resp.status(200).json({
+      message: "Moved to cart successfully"
+    });
+  } catch (error) {
+
+    return resp.status(500).json({
+      message: "Something went wrong"
+    });
+  }  
+};
+
 export const addAddress = async (req: CustomRequest, resp: Response) => {
   try {
     const data: any = {
@@ -1711,9 +1951,9 @@ const couponMap: any = Array.isArray(cartCoupon)
       return coupon.discount_amount;
     };
     const vendorShippingMap: Record<
-  string,
-  Record<
-    string,
+      string,
+      Record<
+      string,
     {
       qty: number;
       perOrder: number;
@@ -4859,53 +5099,50 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
     let usedWalletAmount = 0;
     let voucherDiscount = Number(req.query.voucher_discount) || 0;
     let parentCartData: any = {};
-const vendorShippingMap: Record<
-  string,
-  Record<
-    string,
-    {
-      qty: number;
-      perOrder: number;
-      perItem: number;
-    }
-  >
-> = {};
+    const vendorShippingMap: Record<string,
+      Record<string,
+      {
+        qty: number;
+        perOrder: number;
+        perItem: number;
+      }
+      >
+      > = {};
 
-    const cartCoupons = await couponCart.find({ user_id: req.user._id });
+      const cartCoupons = await couponCart.find({ user_id: req.user._id });
 
-    const syncedCouponVendorMap: Record<string, boolean> = {};
+      const syncedCouponVendorMap: Record<string, boolean> = {};
 
-    for (const coupon of cartCoupons) {
-      const couponData = await CouponModel.findOne(
-        {
-          vendor_id: coupon.vendor_id,
-          coupon_code: coupon?.coupon_data?.coupon_code,
-        },
-        {
-          isSynced: 1,
+      for (const coupon of cartCoupons) {
+        const couponData = await CouponModel.findOne(
+          {
+            vendor_id: coupon.vendor_id,
+            coupon_code: coupon?.coupon_data?.coupon_code,
+          },
+          {
+            isSynced: 1,
+          }
+        );
+
+        if (couponData?.isSynced) {
+          syncedCouponVendorMap[coupon.vendor_id.toString()] = true;
         }
-      );
-
-      if (couponData?.isSynced) {
-        syncedCouponVendorMap[coupon.vendor_id.toString()] = true;
       }
-    }
 
-    let addressData: any = null;
-    let country: string | null = null;
-    let isAddressProvided = false;
+      let addressData: any = null;
+      let country: string | null = null;
+      let isAddressProvided = false;
 
-    if (
-      req.query.address_id &&
-      mongoose.Types.ObjectId.isValid(req.query.address_id.toString())
-    ) {
-      const addressQuery = await Address.findById(req.query.address_id);
-      if (addressQuery?.country) {
-        addressData = addressQuery;
-        country = addressQuery.country;
-        isAddressProvided = true;
+      if (
+        req.query.address_id && mongoose.Types.ObjectId.isValid(req.query.address_id.toString())
+      ) {
+        const addressQuery = await Address.findById(req.query.address_id);
+        if (addressQuery?.country) {
+          addressData = addressQuery;
+          country = addressQuery.country;
+          isAddressProvided = true;
+        }
       }
-    }
 
     if (
       !country &&
@@ -4998,33 +5235,26 @@ const vendorShippingMap: Record<
         item.promotion_discount = Number((maxDiscount * Number(item.qty)).toFixed(2));
         item.appliedPromotion = bestPromotion;
         
-        const shippingAmount = item.delivery_amount;
+         const shippingAmount = item.delivery_amount;
 
         subTotal += basePrice * item.qty;
         discount += (basePrice - bestPrice) * item.qty;
 
-const shippingList = item.parentCartData?.vendor_data?.filter(
-  (v: any) => v.product_id?.toString() === item.product_id.toString()
-);
+        const shippingList = item.parentCartData?.vendor_data?.filter(
+          (v: any) => v.product_id?.toString() === item.product_id.toString()
+        );
 
-if (!shippingList || shippingList.length === 0) return;
+        if (!shippingList || shippingList.length === 0) return;
 
-// 1️⃣ Prefer non-standard (user-selected)
-const shippingInfo =
-  shippingList.find((v: any) => v.shippingName !== "standardShipping") ||
-  shippingList.find((v: any) => v.shippingName === "standardShipping");
+        // 1️⃣ Prefer non-standard (user-selected)
+        const shippingInfo = shippingList.find((v: any) => v.shippingName !== "standardShipping") || shippingList.find((v: any) => v.shippingName === "standardShipping");
 
-if (!shippingInfo) return;
+        if (!shippingInfo) return;
 
-if (
-  isAddressProvided &&
-  Array.isArray(shippingInfo.region) &&
-  !shippingInfo.region.includes(country)
-) {
-  errorMessage =
-    "Selected shipping does not support the new delivery address. Please reselect shipping.";
-  return;
-}
+        if ( isAddressProvided && Array.isArray(shippingInfo.region) && !shippingInfo.region.includes(country)) {
+          errorMessage = "Selected shipping does not support the new delivery address. Please reselect shipping.";
+          return;
+        }
 
 
         // const shippingName = shippingInfo.shippingName;
@@ -5068,29 +5298,29 @@ if (
         //   return;
         // }
          // ✅ TRUST SAVED SHIPPING (NO REGION CHECK, NO TEMPLATE LOOKUP)
-const perOrderFee = Number(shippingInfo.perOrder || 0);
-const perItemFee = Number(shippingInfo.perItem || 0);
+      const perOrderFee = Number(shippingInfo.perOrder || 0);
+      const perItemFee = Number(shippingInfo.perItem || 0);
 
-// 🔑 unique identity per shipping template + fee
-const vendorId = item.vendor_id.toString();
+      // 🔑 unique identity per shipping template + fee
+      const vendorId = item.vendor_id.toString();
 
-if (!vendorShippingMap[vendorId]) {
-  vendorShippingMap[vendorId] = {};
-}
+      if (!vendorShippingMap[vendorId]) {
+        vendorShippingMap[vendorId] = {};
+      }
 
-const selectedShipping = shippingInfo.shippingName;
-const shippingKey = `${selectedShipping}_${shippingInfo.shipping_id}`;
+      const selectedShipping = shippingInfo.shippingName;
+      const shippingKey = `${selectedShipping}_${shippingInfo.shipping_id}`;
 
 
-if (!vendorShippingMap[vendorId][shippingKey]) {
-  vendorShippingMap[vendorId][shippingKey] = {
-    qty: 0,
-    perOrder: perOrderFee,
-    perItem: perItemFee,
-  };
-}
+      if (!vendorShippingMap[vendorId][shippingKey]) {
+        vendorShippingMap[vendorId][shippingKey] = {
+          qty: 0,
+          perOrder: perOrderFee,
+          perItem: perItemFee,
+        };
+      }
 
-vendorShippingMap[vendorId][shippingKey].qty += item.qty;
+      vendorShippingMap[vendorId][shippingKey].qty += item.qty;
 
 
         // const perOrderFee = Number(matchedOption.shippingFee?.perOrder || 0);
@@ -5119,21 +5349,21 @@ vendorShippingMap[vendorId][shippingKey].qty += item.qty;
       }),
     );
     const vendorDeliveryMap: Record<string, number> = {};
-for (const vendorId in vendorShippingMap) {
-  const vendorMap = vendorShippingMap[vendorId];
-  let vendorDelivery = 0;
+    for (const vendorId in vendorShippingMap) {
+      const vendorMap = vendorShippingMap[vendorId];
+      let vendorDelivery = 0;
 
-  for (const key in vendorMap) {
-    const d = vendorMap[key];
-    vendorDelivery += d.perOrder;
-    if (d.qty > 1) {
-      vendorDelivery += d.perItem * (d.qty - 1);
-    }
-  }
+      for (const key in vendorMap) {
+        const d = vendorMap[key];
+        vendorDelivery += d.perOrder;
+        if (d.qty > 1) {
+          vendorDelivery += d.perItem * (d.qty - 1);
+        }
+      }
 
-  vendorDeliveryMap[vendorId] = vendorDelivery;
-  delivery += vendorDelivery;
-}
+      vendorDeliveryMap[vendorId] = vendorDelivery;
+        delivery += vendorDelivery;
+      }
 
 
 

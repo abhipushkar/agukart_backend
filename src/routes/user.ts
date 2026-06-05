@@ -56,7 +56,11 @@ import {
     checkVoucherForProduct,
     saveNote,
     getUserOrders,
-    captureOrder
+    captureOrder,
+    moveToSaveForLater,
+    getSaveForLater,
+    deleteSaveForLater,
+    moveToCart
 } from "../controllers/Postlogin";
 
 import multer from 'multer';
@@ -85,6 +89,10 @@ routes.post('/update-profile-image',multer().single('profileImage'), updateProfi
 routes.post('/add-to-cart', addToCart)
 routes.get('/cart-list', listofCart)
 routes.post('/add-parent-cart', addParentCart)
+routes.post('/save-for-later',  moveToSaveForLater);
+routes.get('/get-save-for-later', getSaveForLater);
+routes.delete('/delete-save-for-later/:id', deleteSaveForLater);
+routes.post('/move-to-cart', moveToCart);
 routes.get('/get-wishlist',getWishlist )
 routes.post('/add-delete-wishlist',addDeleteWishlist)
 routes.post('/delete-cart', deleteCart)
