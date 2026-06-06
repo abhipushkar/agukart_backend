@@ -4774,6 +4774,8 @@ export const getWishlist = async (req: CustomRequest, resp: Response) => {
             {
               $project: {
                 product_title: 1,
+                product_code: 1,
+                slug: 1,
                 sku_code: 1,
                 qty: 1,
                 image: 1,
@@ -4795,6 +4797,61 @@ export const getWishlist = async (req: CustomRequest, resp: Response) => {
         $unwind: {
           path: "$product_id",
           preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "ratings",
+          let: {
+            productId: "$product_id._id",
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$product_id", "$$productId"] },
+                    { $eq: ["$status", "approved"] },
+                  ],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: "$product_id",
+                reviewCount: {
+                  $sum: 1,
+                },
+                averageRating: {
+                  $avg: {
+                  $toDouble: "$item_rating",
+                },
+                },
+              },
+            },
+          ],
+          as: "ratingData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$ratingData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          "product_id.rating": {
+            $round: [
+              {
+                $ifNull: ["$ratingData.averageRating", 0],
+              },
+              1,
+            ],
+          },
+          "product_id.reviewCount": {
+            $ifNull: ["$ratingData.reviewCount", 0],
+          },
         },
       },
       {
@@ -4834,10 +4891,10 @@ export const addDeleteWishlist = async (req: CustomRequest, resp: Response) => {
       product_id,
       price,
       original_price,
-      isCombination,
       variant_id,
       variant_attribute_id,
     } = req.body;
+    const isCombination = req.body.isCombination ?? false;
     let wishlist = await wishlistModel.findOne({
       user_id: user,
       product_id: product_id,
@@ -5714,15 +5771,14 @@ export const getVendorCartDetails = async (
       Number(promo.discount_amount || 0)
     );
 
-  const discountValue =
-    basePrice - discountedPrice;
+    const discountValue = basePrice - discountedPrice;
 
-  if (discountValue > maxDiscount) {
-    maxDiscount = discountValue;
-    bestPrice = discountedPrice;
-    bestPromotion = promo;
+    if (discountValue > maxDiscount) {
+      maxDiscount = discountValue;
+      bestPrice = discountedPrice;
+      bestPromotion = promo;
+    }
   }
-}
         const shippingAmount = item.delivery_amount;
         subTotal += basePrice * item.qty;
 
