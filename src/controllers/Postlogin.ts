@@ -7560,8 +7560,9 @@ export const checkVoucherForProduct = async (
         voucher.cart_amount &&
         eligibleAmount < Number(voucher.cart_amount)
       ) {
+        const requiredAmount = Number(voucher.cart_amount);
         return resp.status(400).json({
-          message: `Minimum eligible amount of ${voucher.cart_amount} is required`,
+          message: `Your eligible purchase amount is ${eligibleAmount.toFixed(2)}, but ${requiredAmount.toFixed(2)} is required  for this voucher.`,
         });
       }
 
@@ -7652,8 +7653,10 @@ console.log("Eligible Amount:", eligibleAmount);
         voucher.cart_amount &&
         eligibleAmount < Number(voucher.cart_amount)
       ) {
+        const requiredAmount = Number(voucher.cart_amount);
+        const shortfall = requiredAmount - eligibleAmount;
         return resp.status(400).json({
-          message: `Minimum eligible amount of ${voucher.cart_amount} is required`,
+          message: `This voucher is valid only for selected stores. Your eligible purchase amount is ${eligibleAmount.toFixed(2)}, but ${requiredAmount.toFixed(2)} is required. Add ${shortfall.toFixed(2)} more from eligible stores.`,
         });
       }
 
