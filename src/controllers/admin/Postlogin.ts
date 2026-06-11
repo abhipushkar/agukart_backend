@@ -9928,10 +9928,25 @@ export const getAllActiveVendor = async (req: Request, resp: Response) => {
     }
 }
 
+const getRatingFilter = (type: string) => {
+  const filters: Record<string, any> = {
+    new: { status: "new" },
+    completed: { status: "approved" },
+    archival: { status: "rejected" },
+    flagged: { is_flagged: true },
+    replied: { "seller_reply.replied_at": { $ne: null } },
+    all: {},
+  };
+
+  return filters[type] || {};
+};
+
 export const getRatingByType = async (req: CustomRequest, resp: Response) => {
     try {
         const vendorid = req.user._id;
         const type = req.params.type;
+        const ratingMatch = getRatingFilter(type);
+        const ratingImageBaseUrl = process.env.ASSET_URL + "/uploads/ratings/";
         const product_id: any = req.query.product_id || null;
         let startDate = req.query.startDate ? resp.locals.currentdate(req.query.startDate).startOf('day').toDate() : null;
         let endDate = req.query.endDate ? resp.locals.currentdate(req.query.endDate).endOf('day').toDate() : null;
@@ -9940,9 +9955,7 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
 
         const pipe: any = [
             {
-                '$match': {
-                    'status': type
-                }
+                '$match': ratingMatch
             },
             {
                 '$lookup': {
@@ -10062,6 +10075,11 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
                 }
             ] : []),
             {
+                '$sort': {
+                    'createdAt': -1
+                }
+            },
+            {
                 '$lookup': {
                     'from': 'users',
                     'localField': 'user_id',
@@ -10077,19 +10095,32 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
             },
             {
                 '$project': {
-                    '__id': 1,
+                    '_id': 1,
                     'user_id': 1,
                     'saledetail_id': 1,
                     'product_id': 1,
+                    'rating': 1,
+                    'customer_service_rating': 1,
                     'delivery_rating': 1,
                     'item_rating': 1,
+                    'images': 1,
                     'additional_comment': 1,
                     'recommended': 1,
                     'status': 1,
                     'reject_remark': 1,
+                    'seller_reply': 1,
+                    'is_flagged': 1,
+                    'flag_reason': 1,
+                    'is_locked': 1,
+                    'is_hidden': 1,
                     'product_name': '$productData.product_title',
                     'user_name': '$userData.name',
+                    'user_image': '$userData.image',
+                    'customer_id': '$userData.id_number',
                     'productSku': '$productData.sku_code',
+                    'productCode': '$productData.product_code',
+                    'productImage': { $arrayElemAt: ['$productData.image', 0] },
+                    'productEditedImage': '$productData.edited_image',
                     'orderId': '$salesData.order_id',
                     'shopName': '$vendorDetailsData.shop_name',
                     'createdAt': 1,
@@ -10101,7 +10132,7 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
         ];
 
         const ratingData = await RatingModel.aggregate(pipe);
-        return resp.status(200).json({ message: "Rating fetched successfully.", ratingData });
+        return resp.status(200).json({ message: "Rating fetched successfully.", ratingData, imageBaseUrl: ratingImageBaseUrl });
     } catch (err) {
         console.log(err);
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
@@ -10179,6 +10210,160 @@ export const changeRatingStatus = async (req: CustomRequest, resp: Response) => 
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
     }
 }
+
+export const replyToRating = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { rating_id, message } = req.body;
+
+    if (!rating_id) {
+      return resp.status(400).json({
+        message: "Rating id is required."
+      });
+    }
+
+    if (!message?.trim()) {
+      return resp.status(400).json({
+        message: "Reply message is required."
+      });
+    }
+
+    const rating = await RatingModel.findById(rating_id);
+
+    if (!rating) {
+      return resp.status(400).json({
+        message: "Rating not found."
+      });
+    }
+
+    if (rating.status === "rejected") {
+      return resp.status(400).json({
+        message: "Cannot reply to rejected review."
+      });
+    }
+
+    if (rating.is_locked) {
+      return resp.status(400).json({
+        message: "This review is locked and cannot be modified."
+      });
+    }
+
+    const isEdit = !!rating.seller_reply?.message;
+
+    await RatingModel.updateOne(
+      { _id: rating_id },
+      {
+        $set: {
+          seller_reply: {
+            message: message.trim(),
+            replied_at: new Date(),
+            replied_by: req.user._id
+          }
+        }
+      }
+    );
+
+    return resp.status(200).json({
+      message: isEdit
+        ? "Reply updated successfully."
+        : "Reply submitted successfully."
+    });
+
+  } catch (error: any) {
+    console.error(error);
+
+    return resp.status(500).json({
+      message: "Something went wrong.",
+      error: error.message
+    });
+  }
+};
+
+export const ratingAction = async (
+  req: CustomRequest,
+  resp: Response
+) => {
+  try {
+    const { rating_id, action } = req.body;
+
+    const rating = await RatingModel.findById(rating_id);
+
+    if (!rating) {
+      return resp.status(400).json({
+        message: "Rating not found."
+      });
+    }
+
+    switch (action) {
+      case "lock":
+        await RatingModel.updateOne(
+          { _id: rating_id },
+          {
+            $set: {
+              is_locked: true,
+              locked_at: new Date(),
+              locked_by: req.user._id
+            }
+          }
+        );
+        break;
+
+      case "unlock":
+        await RatingModel.updateOne(
+          { _id: rating_id },
+          {
+            $set: {
+              is_locked: false
+            },
+            $unset: {
+              locked_at: 1,
+              locked_by: 1
+            }
+          }
+        );
+        break;
+
+      case "hide":
+        await RatingModel.updateOne(
+          { _id: rating_id },
+          {
+            $set: {
+              is_hidden: true,
+              hidden_at: new Date()
+            }
+          }
+        );
+        break;
+
+      case "unhide":
+        await RatingModel.updateOne(
+          { _id: rating_id },
+          {
+            $set: {
+              is_hidden: false
+            },
+            $unset: {
+              hidden_at: 1
+            }
+          }
+        );
+        break;
+
+      default:
+        return resp.status(400).json({
+          message: "Invalid action."
+        });
+    }
+
+    return resp.status(200).json({
+      message: `Rating ${action} successful.`
+    });
+
+  } catch (error: any) {
+    return resp.status(500).json({
+      message: error.message
+    });
+  }
+};
 
 export const uploadShopVideo = async (req: Request, resp: Response) => {
 

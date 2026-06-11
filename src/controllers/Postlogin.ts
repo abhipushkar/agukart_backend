@@ -6026,8 +6026,10 @@ export const sendRating = async (req: CustomRequest, resp: Response) => {
       imagePaths.push(fileName);
     }
     }
-    const delivery_rating = req.body.delivery_rating;
-    const item_rating = req.body.item_rating;
+    const rating = Number(req.body.rating);
+    const customer_service_rating = Number(req.body.customer_service_rating);
+    const delivery_rating = Number(req.body.delivery_rating);
+    const item_rating = Number(req.body.item_rating);
     const additional_comment = req.body.additional_comment;
     const recommended = req.body.recommended;
     const saleDetailId = req.body.saleDetailId;
@@ -6049,6 +6051,8 @@ export const sendRating = async (req: CustomRequest, resp: Response) => {
     }
 
     const data = {
+      rating: rating,
+      customer_service_rating: customer_service_rating,
       delivery_rating: delivery_rating,
       item_rating: item_rating,
       additional_comment: additional_comment,

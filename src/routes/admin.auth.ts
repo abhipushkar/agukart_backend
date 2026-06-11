@@ -268,7 +268,9 @@ import {
     reorderAttributeGroups,
     getAttributeGroups,
     reorderAttributes,
-    getAttributeDropdown
+    getAttributeDropdown,
+    replyToRating,
+    ratingAction
 } from "../controllers/admin/Postlogin";
 
 
@@ -562,6 +564,8 @@ routes.get('/getAllActiveVendor',getAllActiveVendor)
 routes.get('/getRatingByType/:type', getRatingByType)
 routes.get('/getAllVendorProduct', getAllVendorProduct)
 routes.post('/changeRatingStatus', changeRatingStatus)
+routes.post('/reply-rating', replyToRating)
+routes.post('/rating-action', ratingAction)
 
 routes.post('/updateProductQuantity', updateProductQuantity)
 
