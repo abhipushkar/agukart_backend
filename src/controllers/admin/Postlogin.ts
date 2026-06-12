@@ -9948,6 +9948,9 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
         const ratingMatch = getRatingFilter(type);
         const ratingImageBaseUrl = process.env.ASSET_URL + "/uploads/ratings/";
         const product_id: any = req.query.product_id || null;
+        const page = Number(req.query.page || 1);
+        const limit = Number(req.query.limit || 10);
+        const skip = (page - 1) * limit;
         let startDate = req.query.startDate ? resp.locals.currentdate(req.query.startDate).startOf('day').toDate() : null;
         let endDate = req.query.endDate ? resp.locals.currentdate(req.query.endDate).endOf('day').toDate() : null;
         const delivery_rating: any = req.query.delivery_rating || null;
@@ -10094,6 +10097,35 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
                 }
             },
             {
+                '$lookup': {
+                    'from': 'users',
+                    'localField': 'seller_reply.replied_by',
+                    'foreignField': '_id',
+                    'as': 'replyUserData'
+
+                }
+            },
+            {
+                '$unwind': {
+                    'path': '$replyUserData',
+                    'preserveNullAndEmptyArrays': true
+                }
+            },
+            {
+                '$lookup': {
+                    'from': 'vendordetails',
+                    'localField': 'replyUserData._id',
+                    'foreignField': 'user_id',
+                    'as': 'replyVendorData' 
+                }
+            },
+            {
+                '$unwind': {
+                    'path': '$replyVendorData',
+                    'preserveNullAndEmptyArrays': true
+                }
+            },
+            {
                 '$project': {
                     '_id': 1,
                     'user_id': 1,
@@ -10109,6 +10141,21 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
                     'status': 1,
                     'reject_remark': 1,
                     'seller_reply': 1,
+                    'replyShopName': {
+                        $switch: {
+                            branches: [
+                                {
+                                    case: { $eq: ['$seller_reply.replied_by', null] },
+                                    then: null
+                                },
+                                {
+                                    case: { $eq: ['$replyUserData.designation_id', 2] },
+                                    then: 'Agukart'
+                                }
+                            ],
+                            default: '$replyVendorData.shop_name'
+                        }
+                    },
                     'is_flagged': 1,
                     'flag_reason': 1,
                     'is_locked': 1,
@@ -10131,8 +10178,148 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
             }
         ];
 
-        const ratingData = await RatingModel.aggregate(pipe);
-        return resp.status(200).json({ message: "Rating fetched successfully.", ratingData, imageBaseUrl: ratingImageBaseUrl });
+        const result = await RatingModel.aggregate([
+            ...pipe,
+            {
+                $facet: {
+                    ratingData: [
+                        { $skip: skip },
+                        { $limit: limit }
+                    ],
+                    totalCount: [
+                        { $count: "count" }
+                    ]
+                }
+            }
+        ]);
+
+        const ratingData = result[0]?.ratingData || [];
+        const totalRecords = result[0]?.totalCount?.[0]?.count || 0;
+
+        const tabPipeline: any[] = [];
+
+        if (req.user.designation_id === 3) {
+            tabPipeline.push(
+                {
+                    $lookup: {
+                        from: "products",
+                        localField: "product_id",
+                        foreignField: "_id",
+                        as: "productData"
+                    }
+                },
+                {
+                    $unwind: "$productData"
+                },
+                {
+                    $match: {
+                        "productData.vendor_id": new mongoose.Types.ObjectId(vendorid)
+                    }
+                }
+            );
+        }
+
+        const tabResult = await RatingModel.aggregate([
+            ...tabPipeline,
+                {
+                    $group: {
+                        _id: null,
+
+                        new: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ["$status", "new"] },
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
+
+                        completed: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ["$status", "approved"] },
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
+
+                        archival: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ["$status", "rejected"] },
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
+
+                        flagged: {
+                            $sum: {
+                                $cond: [
+                                    "$is_flagged",
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
+
+                        replied: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            {
+                                                $ne: [
+                                                    "$seller_reply.replied_at",
+                                                    null
+                                                ]
+                                            },
+                                            {
+                                                $eq: [
+                                                    { $type: "$seller_reply.replied_at" },
+                                                    "date"
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
+
+                        all: {
+                            $sum: 1
+                        }
+                    }
+                }
+            ]);
+
+        const tabCounts = tabResult[0] || {
+            new: 0,
+            completed: 0,
+            archival: 0,
+            flagged: 0,
+            replied: 0,
+            all: 0
+        };
+
+        return resp.status(200).json({
+            message: "Rating fetched successfully.",
+            ratingData,
+            imageBaseUrl: ratingImageBaseUrl,
+            tabCounts,
+            pagination: {
+                page,
+                limit,
+                totalRecords,
+                totalPages: Math.ceil(totalRecords / limit),
+                hasNextPage: page < Math.ceil(totalRecords / limit),
+                hasPreviousPage: page > 1
+            }
+        });
     } catch (err) {
         console.log(err);
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
@@ -10142,23 +10329,48 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
 
 export const getAllVendorProduct = async (req: CustomRequest, resp: Response) => {
     try {
-        const vendorid = req.user._id;
-        const product = await Product.find({ vendor_id: vendorid });
+        let vendorId: any;
 
-        const data = await Promise.all(product.map(async (item: any) => {
-            return {
-                product_id: item._id,
-                product_title: item.product_title,
-                qty: item.qty
+        if (req.user.designation_id === 2) {
+            vendorId = req.query.vendor_id;
+
+            if (!vendorId) {
+                return resp.status(400).json({
+                    message: "vendor_id is required."
+                });
             }
+        } else {
+            vendorId = req.user._id;
+        }
+
+        const products = await Product.find(
+            { vendor_id: vendorId },
+            {
+                product_title: 1,
+                qty: 1
+            }
+        );
+
+        const data = products.map((item: any) => ({
+            product_id: item._id,
+            product_title: item.product_title,
+            qty: item.qty
         }));
 
-        return resp.status(200).json({ message: "Fetched Product Data.", success: true, data: data });
+        return resp.status(200).json({
+            message: "Fetched Product Data.",
+            success: true,
+            data
+        });
 
     } catch (err) {
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+        console.log(err);
+
+        return resp.status(500).json({
+            message: "Something went wrong. Please try again."
+        });
     }
-}
+};
 
 export const changeRatingStatus = async (req: CustomRequest, resp: Response) => {
     try {
@@ -17182,7 +17394,7 @@ export const deleteVoucher = async (req: Request, res: Response) => {
     }
 };
 
-export const getVoucherById = async (req: Request, res: Response) => {
+export const getVoucherById =  async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const voucher = await VoucherModel.findById(id);
