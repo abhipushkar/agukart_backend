@@ -103,8 +103,7 @@ const ratingSchema = new Schema(
       type: Date,
       default: null,
     },
-    internal_notes: [
-      {
+    internal_note: {
         note: String,
         created_at: {
           type: Date,
@@ -114,10 +113,8 @@ const ratingSchema = new Schema(
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
         },
-      },
-    ],
-    buyer_notes: [
-      {
+    },
+    buyer_note: {
         note: String,
         created_at: {
           type: Date,
@@ -127,8 +124,18 @@ const ratingSchema = new Schema(
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
         },
-      },
-    ],
+    },
+    seller_note: {
+        note: String,
+        created_at: {
+          type: Date,
+          default: Date.now,
+        },
+        created_by: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+    },
     is_edited: {
       type: Boolean,
       default: false,

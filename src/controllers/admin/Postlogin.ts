@@ -9948,6 +9948,7 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
         const ratingMatch = getRatingFilter(type);
         const ratingImageBaseUrl = process.env.ASSET_URL + "/uploads/ratings/";
         const product_id: any = req.query.product_id || null;
+        const search = String(req.query.search || "");
         const page = Number(req.query.page || 1);
         const limit = Number(req.query.limit || 10);
         const skip = (page - 1) * limit;
@@ -10096,6 +10097,44 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
                     'preserveNullAndEmptyArrays': true
                 }
             },
+            ...(search ? [
+            {
+                $match: {
+                    $or: [
+                        {
+                            "userData.name": {
+                            $regex: search,
+                            $options: "i"
+                            }
+                        },
+                        {
+                            "userData.id_number": {
+                            $regex: search,
+                            $options: "i"
+                            }
+                        },
+                        {
+                            "productData.product_title": {
+                            $regex: search,
+                            $options: "i"
+                            }
+                        },
+                        {
+                            "productData.sku_code": {
+                            $regex: search,
+                            $options: "i"
+                            }
+                        },
+                        {
+                            "productData.product_code": {
+                            $regex: search,
+                            $options: "i"
+                            }
+                        }
+                    ]
+                }
+            }
+            ] : []),
             {
                 '$lookup': {
                     'from': 'users',
@@ -10141,6 +10180,9 @@ export const getRatingByType = async (req: CustomRequest, resp: Response) => {
                     'status': 1,
                     'reject_remark': 1,
                     'seller_reply': 1,
+                    'seller_note': 1,
+                    'internal_note': 1,
+                    'buyer_note': 1,
                     'replyShopName': {
                         $switch: {
                             branches: [
@@ -10560,6 +10602,32 @@ export const ratingAction = async (
         );
         break;
 
+      case "flag":
+        await RatingModel.updateOne(
+          { _id: rating_id },
+          {
+            $set: {
+              is_flagged: true,
+              flagged_at: new Date()
+            }
+          }
+        );
+        break;
+
+        case "unflag":
+            await RatingModel.updateOne(
+                { _id: rating_id },
+                {
+                    $set: {
+                        is_flagged: false
+                    },
+                    $unset: {
+                        flagged_at: 1
+                    }
+                }
+            );
+            break;
+
       default:
         return resp.status(400).json({
           message: "Invalid action."
@@ -10575,6 +10643,58 @@ export const ratingAction = async (
       message: error.message
     });
   }
+};
+
+export const addRatingNote = async ( req: CustomRequest, resp: Response ) => {
+    try {
+        const { rating_id, type, note } = req.body;
+
+        const allowedTypes = [
+            "internal_note",
+            "buyer_note",
+            "seller_note"
+        ];
+
+        if (!allowedTypes.includes(type)) {
+            return resp.status(400).json({
+                message: "Invalid note type."
+            });
+        }
+
+        const rating: any = await RatingModel.findById(rating_id);
+
+        if (!rating) {
+            return resp.status(404).json({
+                message: "Rating not found."
+            });
+        }
+
+        const isEdit = !!rating[type]?.note;
+
+        await RatingModel.updateOne(
+            { _id: rating_id },
+            {
+                $set: {
+                    [type]: {
+                        note,
+                        created_by: req.user._id,
+                        created_at: new Date()
+                    }
+                }
+            }
+        );
+
+        return resp.status(200).json({
+            message: isEdit
+                ? "Note updated successfully."
+                : "Note added successfully."
+        });
+
+    } catch (error: any) {
+        return resp.status(500).json({
+            message: error.message
+        });
+    }
 };
 
 export const uploadShopVideo = async (req: Request, resp: Response) => {
@@ -10917,7 +11037,7 @@ export const deleteCoupon = async (req: Request, resp: Response) => {
     }
 };
 
-export const listCoupons = async (req: Request, resp: Response) => {
+export const  listCoupons = async (req: Request, resp: Response) => {
     try {
         const user_id = (req as any).user?._id;
         const coupons = await CouponModel.find({ vendor_id: user_id });
