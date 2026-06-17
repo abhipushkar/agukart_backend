@@ -64,7 +64,8 @@ import {
     increaseGiftCardVisitCount,
     getShopDetail,
     getSimilarProduct,
-    getSimilarVendorProduct
+    getSimilarVendorProduct,
+    getProductReviews
 } from "../controllers/Prelogin";
 
 interface CustomRequest extends Request {
@@ -139,6 +140,7 @@ routes.get('/get-recommended-blog/:slug', getRecommendedBlog);
 routes.get('/get-blog-tags', blogTagsList);
 routes.post('/get-blog', blogList);
 routes.get('/get-productById', getProductById)
+routes.get('/product-reviews', getProductReviews)
 routes.get('/get-similar-product', getSimilarProduct);
 routes.get('/get-similar-vendor-product', getSimilarVendorProduct);
 routes.get('/bestsellerCategory', bestsellerCategory)

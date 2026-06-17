@@ -2528,7 +2528,7 @@ const data = await ProductModel.findOne(query)
         category_chain.unshift({
           _id: currentCategory._id,
           title: currentCategory.title,
-          slug: currentCategory.slug
+          slug: currentCategory.fullSlug
         });
         if (!currentCategory.parent_id) break;
         currentCategory = await Category.findOne({
@@ -2702,6 +2702,385 @@ const data = await ProductModel.findOne(query)
       message: 'Error fetching product.',
       error: error.message,
       data: []
+    });
+  }
+};
+
+export const getProductReviews = async ( req: Request, resp: Response ) => {
+  try {
+    const {
+      product_id,
+      vendor_id,
+      review_type = "item",   // shop
+      page = 1,
+      limit = 10
+    } = req.query as any;
+
+    if (review_type === "shop") {
+      if (!vendor_id) {
+        return resp.status(400).json({
+          message: "vendor_id is required"
+        });
+      }
+    }
+
+     if (review_type === "item") {
+        if (!product_id || !vendor_id) {
+          return resp.status(400).json({
+            message: "product_id and vendor_id are required"
+          });
+        }
+      }
+
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const vendorObjectId = new mongoose.Types.ObjectId(vendor_id);
+
+    let productObjectId = null;
+
+    if (product_id) {
+      productObjectId = new mongoose.Types.ObjectId(product_id);
+    }
+
+    const reviewMatch =
+      review_type === "shop"
+        ? {
+            vendor_id: vendorObjectId,
+            is_hidden: false,
+            is_flagged: false
+          }
+        : {
+            product_id: productObjectId,
+            is_hidden: false,
+            is_flagged: false
+          };
+    
+    const photoMatch =
+      review_type === "shop"
+        ? {
+            vendor_id: vendorObjectId,
+            is_hidden: false,
+            is_flagged: false,
+            images: { $ne: [] }
+          }
+        : {
+            product_id: productObjectId,
+            is_hidden: false,
+            is_flagged: false,
+            images: { $ne: [] }
+          };      
+    
+    const ratingBreakdownMatch = review_type === "shop"
+      ? {
+        vendor_id: vendorObjectId,
+        is_hidden: false,
+        is_flagged: false
+      }
+    : {
+        product_id: productObjectId,
+        is_hidden: false,
+        is_flagged: false
+      };      
+
+    const [
+      shopReviewCount,
+      itemReviewCount,
+      shopRatingSummary,
+      itemRatingSummary,
+      ratingBreakdown,
+      reviewPhotos,
+      totalReviews
+    ] = await Promise.all([
+      RatingModel.countDocuments({
+        vendor_id: vendorObjectId,
+        is_hidden: false,
+        is_flagged: false
+      }),
+
+      RatingModel.countDocuments({
+        product_id: productObjectId,
+        is_hidden: false,
+        is_flagged: false
+      }),
+
+      RatingModel.aggregate([
+        {
+          $match: {
+            vendor_id: vendorObjectId,
+            is_flagged: false,
+            is_hidden: false
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgRating: { $avg: "$rating" }
+          }
+        }
+      ]),
+
+      RatingModel.aggregate([
+        {
+          $match: {
+            product_id: productObjectId,
+            is_hidden: false,
+            is_flagged: false
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgRating: { $avg: "$rating" }
+          }
+        }
+      ]),
+
+      RatingModel.aggregate([
+        {
+          $match: ratingBreakdownMatch
+        },
+        {
+          $group: {
+            _id: "$rating",
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+
+      RatingModel.aggregate([
+        {
+          $match: photoMatch
+        },
+        {
+          $unwind: "$images"
+        },
+        {
+          $project: {
+            image: "$images"
+          }
+        },
+        {
+          $limit: 30
+        }
+      ]),
+
+      RatingModel.countDocuments(reviewMatch)
+    ]);
+
+    const reviews = await RatingModel.aggregate([
+      {
+        $match: reviewMatch
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "user_id",
+          foreignField: "_id",
+          as: "userData"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$userData",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "productData"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$productData",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "seller_reply.replied_by",
+          foreignField: "_id",
+          as: "replyUserData"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$replyUserData",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "vendordetails",
+          localField: "replyUserData._id",
+          foreignField: "user_id",
+          as: "replyVendorData"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$replyVendorData",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $addFields: {
+          seller_reply: {
+            message: "$seller_reply.message",
+
+            replied_on: "$seller_reply.replied_at",
+
+            shop_name: {
+              $switch: {
+                branches: [
+                  {
+                    case: {
+                      $eq: [
+                        "$replyUserData.designation_id",
+                        2
+                      ]
+                    },
+                    then: "Agukart"
+                  }
+                ],
+                default: "$replyVendorData.shop_name"
+              }
+            },
+
+            shop_image: {
+              $cond: [
+                {
+                  $eq: [
+                    "$replyUserData.designation_id",
+                    2
+                  ]
+                },
+                null,
+                "$replyVendorData.shop_icon"
+              ]
+            }
+          }
+        }
+      },
+
+      {
+        $project: {
+          _id: 1,
+
+          user_name: "$userData.name",
+
+          user_image: "$userData.image",
+          rating: 1,
+
+          item_rating: "$item_rating",
+
+          customer_service_rating: 1,
+
+          delivery_rating: 1,
+
+          recommended: 1,
+
+          additional_comment: 1,
+
+          createdAt: 1,
+
+          photos: "$images",
+
+          seller_reply: 1,
+
+          purchased_item: {
+            _id: "$productData._id",
+            title: "$productData.product_title",
+            slug: "$productData.slug",
+            product_code: "$productData.product_code",
+
+            image: {
+              $arrayElemAt: [
+                "$productData.image",
+                0
+              ]
+            }
+          }
+        }
+      },
+
+      {
+        $sort: {
+          createdAt: -1
+        }
+      },
+
+      {
+        $skip: skip
+      },
+
+      {
+        $limit: limitNumber
+      }
+    ]);
+
+    const breakdown: Record<number, number> = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0
+    };
+
+    ratingBreakdown.forEach((item: any) => {
+      breakdown[Number(item._id)] = item.count;
+    });
+
+    return resp.status(200).json({
+      message: "Reviews fetched successfully",
+
+      summary: {
+        shopReviewCount,
+
+        itemReviewCount,
+
+        shopRatingAvg:
+          shopRatingSummary?.[0]?.avgRating || 0,
+
+        itemRatingAvg:
+          itemRatingSummary?.[0]?.avgRating || 0
+      },
+
+      ratingBreakdown: breakdown,
+
+      reviewPhotos,
+
+      reviews,
+
+      pagination: {
+        page: pageNumber,
+        limit: limitNumber,
+        total: totalReviews,
+        pages: Math.ceil(
+          totalReviews / limitNumber
+        )
+      }
+    });
+  } catch (error: any) {
+    console.log(error);
+
+    return resp.status(500).json({
+      message: error.message
     });
   }
 };
