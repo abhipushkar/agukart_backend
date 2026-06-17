@@ -3874,6 +3874,89 @@ export const orderList = async (req: CustomRequest, resp: Response) => {
             },
             {
               $lookup: {
+                from: "ratings",
+                let: { saleDetailId: "$_id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $eq: ["$saledetail_id", "$$saleDetailId"]
+                      }
+                    }
+                  },
+                  {
+                    $lookup: {
+                      from: "users",
+                      localField: "seller_reply.replied_by",
+                      foreignField: "_id",
+                      as: "replyUserData"
+                    }
+                  },
+                  {
+                    $unwind: {
+                      path: "$replyUserData",
+                      preserveNullAndEmptyArrays: true
+                    }
+                  },
+                  {
+                    $lookup: {
+                      from: "vendordetails",
+                      localField: "replyUserData._id",
+                      foreignField: "user_id",
+                      as: "replyVendorData"
+                    }
+                  },
+                  {
+                    $unwind: {
+                      path: "$replyVendorData",
+                      preserveNullAndEmptyArrays: true
+                    }
+                  },
+                  {
+                    $addFields: {
+                      replyShopName: {
+                        $switch: {
+                          branches: [
+                            {
+                              case: {$eq: ["$seller_reply.replied_by", null]},
+                              then: null
+                            },
+                            {
+                              case: {$eq: ["$replyUserData.designation_id", 2]},
+                              then: "Agukart"
+                            }
+                          ],
+                          default: "$replyVendorData.shop_name"
+                        }
+                      },
+                      replyShopIcon: {
+                        $cond: [
+                          { $eq: ["$replyUserData.designation_id", 2] },
+                          null,
+                          "$replyVendorData.shop_icon"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    $project: {
+                      replyUserData: 0,
+                      replyVendorData: 0
+                    }
+                  },
+                ],
+                as: "ratingData"
+              }
+            },
+            {
+              $addFields: {
+                is_reviewed: {
+                  $gt: [{ $size: "$ratingData" }, 0]
+                }
+              }
+            },
+            {
+              $lookup: {
                 from: "variantattributes",
                 localField: "variant_attribute_id",
                 foreignField: "_id",
@@ -3968,8 +4051,19 @@ export const orderList = async (req: CustomRequest, resp: Response) => {
       },
     );
 
+    const countFilter: any = {
+      user_id: new mongoose.Types.ObjectId(user_id)
+    };
+
+    if (startDate && endDate) {
+      countFilter.createdAt = {
+        $gte: startDate,
+        $lte: endDate
+      };
+    }
+
     const sales = await Sales.aggregate(pipe);
-    const salesCount = await Sales.countDocuments({ user_id: user_id });
+    const salesCount = await Sales.countDocuments(countFilter);
     const base_url = process.env.ASSET_URL + "/uploads/product/";
     const shop_base_url = process.env.ASSET_URL + "/uploads/shop-icon/";
 
@@ -6078,6 +6172,153 @@ export const sendRating = async (req: CustomRequest, resp: Response) => {
   }
 };
 
+export const editRating = async (req: CustomRequest, resp: Response) => {
+  try {
+    const rating_id = req.params.rating_id;
+    const {
+      rating,
+      customer_service_rating,
+      delivery_rating,
+      item_rating,
+      additional_comment,
+      recommended
+    } = req.body;
+
+    console.log(req.body.existingImages);
+    console.log("type =>", typeof req.body.existingImages);
+
+    const ratingData = await RatingModel.findOne({
+      _id: rating_id,
+      user_id: req.user._id
+    });
+
+    if (!ratingData) {
+      return resp.status(404).json({
+        message: "Review not found."
+      });
+    }
+
+    if (ratingData.is_locked) {
+      return resp.status(400).json({
+        message: "Review is locked and cannot be edited."
+      });
+    }
+
+    const files = (req.files as Express.Multer.File[]) || [];
+    const newImagePaths: string[] = [];
+
+    if (files.length > 0) {
+      const uploadDir = path.join("uploads", "ratings");
+
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      for (const file of files) {
+        const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.webp`;
+        const fullPath = path.join(uploadDir, fileName);
+
+        await sharp(file.path)
+          .webp({ quality: 80 })
+          .toFile(fullPath);
+
+        try {
+          await fs.promises.unlink(file.path);
+        } catch (err) {
+          console.warn("File delete failed:", file.path);
+        }
+
+        newImagePaths.push(fileName);
+      }
+    }
+
+    let existingImages: string[] = [];
+
+    if (req.body.existingImages) {
+      existingImages =
+        typeof req.body.existingImages === "string"
+          ? JSON.parse(req.body.existingImages)
+          : req.body.existingImages;
+    }
+
+    const validExistingImages = existingImages.filter(
+      (img: string) => ratingData.images.includes(img)
+    );
+
+    const finalImages = [
+      ...validExistingImages,
+      ...newImagePaths
+    ];
+
+    if (finalImages.length > 5) {
+
+      for (const image of newImagePaths) {
+        const imagePath = path.join(
+          "uploads",
+          "ratings",
+          image
+        );
+
+        if (fs.existsSync(imagePath)) {
+          await fs.promises.unlink(imagePath);
+        }
+      }
+
+      return resp.status(400).json({
+        message: "Maximum 5 images allowed."
+      });
+    }
+
+    const removedImages = ratingData.images.filter(
+      (img: string) => !validExistingImages.includes(img)
+    );
+
+    for (const image of removedImages) {
+      const imagePath = path.join(
+        "uploads",
+        "ratings",
+        image
+      );
+
+      if (fs.existsSync(imagePath)) {
+        await fs.promises.unlink(imagePath);
+      }
+    }
+
+    await RatingModel.updateOne(
+      {
+        _id: rating_id,
+        user_id: req.user._id
+      },
+      {
+        $set: {
+          rating: Number(rating),
+          customer_service_rating: Number(customer_service_rating),
+          delivery_rating: Number(delivery_rating),
+          item_rating: Number(item_rating),
+          additional_comment,
+          recommended: recommended === true || recommended === "true",
+          images: finalImages,
+          is_edited: true,
+          edited_at: new Date()
+        }
+      }
+    );
+
+    return resp.status(200).json({
+      message: "Review updated successfully."
+    });
+
+  } catch (error: any) {
+    console.error(error);
+
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again.",
+      error: error.message
+    });
+  }
+};
+
 export const followVendor = async (req: CustomRequest, resp: Response) => {
   try {
     const user = req.user._id;
@@ -7633,17 +7874,6 @@ export const checkVoucherForProduct = async (
               : sum,
           0
         );
-
-        console.log(
-  "Cart Items:",
-  userCartData.map((x: any) => ({
-    vendor: x.vendor_id.toString(),
-    price: x.price,
-    qty: x.qty,
-    total: Number(x.price) * Number(x.qty)
-  }))
-);
-console.log("Eligible Amount:", eligibleAmount);
 
         if (eligibleAmount <= 0) {
           return resp.status(400).json({

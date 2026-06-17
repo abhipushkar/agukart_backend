@@ -60,7 +60,8 @@ import {
     moveToSaveForLater,
     getSaveForLater,
     deleteSaveForLater,
-    moveToCart
+    moveToCart,
+    editRating
 } from "../controllers/Postlogin";
 
 import multer from 'multer';
@@ -116,7 +117,6 @@ routes.post('/vendorWiseCheckout', vendorWiseCheckout)
 routes.get('/orderList', orderList)
 routes.get('/getOrderDetail/:orderId', getOrderDetail)
 routes.get('/searchorder',searchOrder)
-
 routes.post(
   "/sendRating",
   (req: CustomRequest, res: Response, next: NextFunction) => {
@@ -125,6 +125,15 @@ routes.post(
   },
   upload.array("images", 5),
   sendRating
+);
+routes.put(
+  "/editRating/:rating_id",
+  (req: CustomRequest, res: Response, next: NextFunction) => {
+    req.filepath = "ratings";
+    next();
+  },
+  upload.array("images", 5),
+  editRating
 );
 
 routes.post('/sub-order-list', subOrderList)
