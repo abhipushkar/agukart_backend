@@ -105,6 +105,75 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     const extVariantIds = normalizeIds(variant_id);
     const extAttrIds = normalizeIds(variant_attribute_id);
 
+    const product = await Product.findById(product_id).lean();
+
+    if (!product) {
+      return resp.status(404).json({
+        message: "Product not found.",
+      });
+    }
+
+    const quantityByVariant = product?.form_values?.isCheckedQuantity === true || product?.form_values?.isCheckedQuantity === "true";
+
+    let availableQty = Number(product.qty || 0);
+
+    if (quantityByVariant && customVariants.length > 0) {
+      const selectedCombination = (product.combinationData || [])
+        .flatMap((group: any) => group.combinations || [])
+          .find((comb: any) => {
+            const combValues = (comb.combValues || []).map((v: string) => String(v).trim()).sort();
+            const selectedValues = customVariants.map(v => String(v.attributeName).trim()).sort();
+            return (
+              combValues.length === selectedValues.length &&
+              combValues.every((v: string, i: number) => v === selectedValues[i]
+          )
+        );
+      });
+
+    if (!selectedCombination) {
+      return resp.status(400).json({
+        message: "Selected variant combination not found.",
+      });
+    }
+
+      availableQty = Number(selectedCombination.qty || 0);
+    }
+
+    let currentInventoryQty = 0;
+
+    const existingCartItems = await Cart.find({
+      user_id: userId,
+      product_id,
+    });
+
+    if (quantityByVariant) {
+      const selectedValues = customVariants.map(v => String(v.attributeName).trim()).sort();
+
+      currentInventoryQty = existingCartItems.filter((item: any) => {
+      const cartValues = (item.variants || []).map((v: any) => String(v.attributeName).trim()).sort();
+
+      return (
+        cartValues.length === selectedValues.length &&
+        cartValues.every(
+          (v: string, i: number) => v === selectedValues[i]
+        )
+      );
+
+        }).reduce((sum: number, item: any) => sum + Number(item.qty || 0),
+        0
+      );
+      } else {
+          currentInventoryQty = existingCartItems.reduce((sum: number, item: any) => sum + Number(item.qty || 0),
+          0
+          );
+        }
+
+      if (qty > 0 && currentInventoryQty + qty > availableQty) {
+        return resp.status(400).json({
+          message: quantityByVariant ? `You already have ${currentInventoryQty} quantity of this variant in your cart. Only ${availableQty} quantity is available` : `You already have ${currentInventoryQty} quantity of this product in your cart. Only ${availableQty} quantity is available`,
+        });
+      }
+
     let affiliateId: any = null;
     if (affiliate_id) {
       const affiliateUser = await User.findOne(

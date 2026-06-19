@@ -705,16 +705,6 @@ for (const child of children) {
   fullSlug
 });
 
-console.log("CHILD DEBUG", {
-  id: childDoc._id,
-  oldSlug,
-  newFullSlug: fullSlug
-});
-console.log("MAIN CATEGORY:", {
-  oldFullSlug,
-  newFullSlug: categoryDoc.fullSlug
-});
-
 if (!fullSlug || fullSlug.trim() === "") {
   console.error("❌ INVALID CHILD SLUG", {
     childId: childDoc._id,
@@ -1392,9 +1382,7 @@ export const updateUserStatus = async (req: CustomRequest, resp: Response) => {
     if (user_id === null || user_id === undefined || user_id === '') {
         return resp.status(403).json({ message: 'User ID Param not found.' });
     }
-
     try {
-
         const user = await User.findOne({ designation_id: '1', _id: user_id });
 
         if (user) {
@@ -3914,11 +3902,11 @@ if (req.body.customizationData !== undefined) {
           return {
             ...oldOpt,
             ...newOpt,
-            thumbnail: newOpt.thumbnail ?? oldOpt.thumbnail,
-            preview_image: newOpt.preview_image ?? oldOpt.preview_image,
-            main_images: newOpt.main_images ?? oldOpt.main_images,
-            edit_main_image: newOpt.edit_main_image ?? oldOpt.edit_main_image,
-            edit_preview_image: newOpt.edit_preview_image ?? oldOpt.edit_preview_image,
+            thumbnail: newOpt.thumbnail !== undefined ? newOpt.thumbnail : oldOpt.thumbnail,
+            preview_image: newOpt.preview_image !== undefined ? newOpt.preview_image : oldOpt.preview_image,
+            main_images: newOpt.main_images !== undefined ? newOpt.main_images : oldOpt.main_images,
+            edit_main_image: newOpt.edit_main_image !== undefined ? newOpt.edit_main_image : oldOpt.edit_main_image,
+            edit_preview_image: newOpt.edit_preview_image !== undefined ? newOpt.edit_preview_image : oldOpt.edit_preview_image,
           };
         });
       }
@@ -6698,6 +6686,111 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                                 localField: "variant_attribute_id",
                                 foreignField: "_id",
                                 as: "variantAttributeData",
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: "ratings",
+                                let: {
+                                    saleDetailId: "$_id"
+                                },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $eq: [
+                                                    "$saledetail_id",
+                                                    "$$saleDetailId"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    {
+                                        $lookup: {
+                                            from: "users",
+                                            localField: "seller_reply.replied_by",
+                                            foreignField: "_id",
+                                            as: "replyUserData"
+                                        }
+                                    },
+                                    {
+                                        $unwind: {
+                                            path: "$replyUserData",
+                                            preserveNullAndEmptyArrays: true
+                                        }
+                                    },
+                                    {
+                                        $lookup: {
+                                            from: "vendordetails",
+                                            localField: "replyUserData._id",
+                                            foreignField: "user_id",
+                                            as: "replyVendorData"
+                                        }
+                                    },
+                                    {
+                                        $unwind: {
+                                            path: "$replyVendorData",
+                                            preserveNullAndEmptyArrays: true
+                                        }
+                                    },
+                                    {
+                                        $addFields: {
+                                            replyShopName: {
+                                                $switch: {
+                                                    branches: [
+                                                        {
+                                                            case: {
+                                                                $eq: [
+                                                                    "$replyUserData.designation_id",
+                                                                    1
+                                                                ]
+                                                            },
+                                                            then: "Agukart"
+                                                        }
+                                                    ],
+                                                    default: "$replyVendorData.shop_name"
+                                                }
+                                            },
+                                            replyShopIcon: {
+                                                $cond: [
+                                                    {
+                                                        $eq: [
+                                                            "$replyUserData.designation_id",
+                                                            1
+                                                        ]
+                                                    },
+                                                    null,
+                                                    "$replyVendorData.shop_icon"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    {
+                                        $unset: [
+                                            "replyUserData",
+                                            "replyVendorData"
+                                        ]
+                                    }
+                                ],
+                                as: "reviewData"
+                            }
+                        },
+                        {
+                            $addFields: {
+                                is_reviewed: {
+                                    $gt: [
+                                        {
+                                            $size: "$reviewData"
+                                        },
+                                        0
+                                    ]
+                                },
+                                reviewData: {
+                                    $arrayElemAt: [
+                                        "$reviewData",
+                                        0
+                                    ]
+                                }
                             }
                         },
                         {
