@@ -118,26 +118,36 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     let availableQty = Number(product.qty || 0);
 
     if (quantityByVariant && customVariants.length > 0) {
-      const selectedCombination = (product.combinationData || [])
-        .flatMap((group: any) => group.combinations || [])
-          .find((comb: any) => {
-            const combValues = (comb.combValues || []).map((v: string) => String(v).trim()).sort();
-            const selectedValues = customVariants.map(v => String(v.attributeName).trim()).sort();
-            return (
-              combValues.length === selectedValues.length &&
-              combValues.every((v: string, i: number) => v === selectedValues[i]
-          )
-        );
-      });
+  const quantityVariantName = product?.form_values?.quantities;
 
-    if (!selectedCombination) {
-      return resp.status(400).json({
-        message: "Selected variant combination not found.",
-      });
-    }
+  const selectedVariant = customVariants.find(
+    (v: any) => v.variantName === quantityVariantName
+  );
 
-      availableQty = Number(selectedCombination.qty || 0);
-    }
+  if (!selectedVariant) {
+    return resp.status(400).json({
+      message: "Quantity variant not selected.",
+    });
+  }
+
+  const quantityGroup = (product.combinationData || []).find(
+    (group: any) => group.variant_name === quantityVariantName
+  );
+
+  const selectedCombination = quantityGroup?.combinations?.find(
+    (comb: any) =>
+      String(comb.value1).trim().toLowerCase() ===
+      String(selectedVariant.attributeName).trim().toLowerCase()
+  );
+
+  if (!selectedCombination) {
+    return resp.status(400).json({
+      message: "Selected variant not found.",
+    });
+  }
+
+  availableQty = Number(selectedCombination.qty || 0);
+}
 
     let currentInventoryQty = 0;
 
@@ -147,22 +157,29 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     });
 
     if (quantityByVariant) {
-      const selectedValues = customVariants.map(v => String(v.attributeName).trim()).sort();
+  const quantityVariantName = product?.form_values?.quantities;
 
-      currentInventoryQty = existingCartItems.filter((item: any) => {
-      const cartValues = (item.variants || []).map((v: any) => String(v.attributeName).trim()).sort();
+  const selectedVariant = customVariants.find(
+    (v: any) => v.variantName === quantityVariantName
+  );
+
+  currentInventoryQty = existingCartItems
+    .filter((item: any) => {
+      const cartVariant = (item.variants || []).find(
+        (v: any) => v.variantName === quantityVariantName
+      );
 
       return (
-        cartValues.length === selectedValues.length &&
-        cartValues.every(
-          (v: string, i: number) => v === selectedValues[i]
-        )
+        cartVariant &&
+        String(cartVariant.attributeName).trim().toLowerCase() ===
+        String(selectedVariant?.attributeName).trim().toLowerCase()
       );
-
-        }).reduce((sum: number, item: any) => sum + Number(item.qty || 0),
-        0
-      );
-      } else {
+    })
+    .reduce(
+      (sum: number, item: any) => sum + Number(item.qty || 0),
+      0
+    );
+} else {
           currentInventoryQty = existingCartItems.reduce((sum: number, item: any) => sum + Number(item.qty || 0),
           0
           );
@@ -5221,9 +5238,13 @@ export const becauseViewedProducts = async (
   }
 };
 
+const stripHtml = (str: string = "") =>
+  str.replace(/<\/?[^>]+(>|$)/g, "");
+
 export const getCartDetails = async (req: CustomRequest, resp: Response) => {
   try {
-    let errorMessage;
+    let errorMessage = "";
+    const stockErrors: string[] = [];
 
     const pipeline = [
       {
@@ -5319,6 +5340,10 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
           real_price: "$product_data.sale_price",
           product_title: "$product_data.product_title",
           parentCartData: 1,
+          isCombination: 1,
+          variant_id: 1,
+          variant_attribute_id: 1,
+          variants: 1,
         },
       },
     ];
@@ -5468,6 +5493,28 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
         item.sale_price = Number(bestPrice.toFixed(2));
         item.promotion_discount = Number((maxDiscount * Number(item.qty)).toFixed(2));
         item.appliedPromotion = bestPromotion;
+
+        const product = await Product.findById(item.product_id);
+
+        if (!product) {
+           errorMessage = `${item.product_title} not found`;
+          return;
+        }
+
+        const { qty: availableQty } = resolvePriceAndQty({ product, cartItem: item });
+
+        item.availableQty = availableQty;
+        item.stockValid = availableQty >= Number(item.qty);
+
+        if (availableQty <= 0) {
+          errorMessage = `${stripHtml(product.product_title)} is out of stock`;
+          return;
+        }
+
+        if (availableQty < Number(item.qty)) {
+          errorMessage = `Only ${availableQty} available for ${stripHtml(product.product_title)}`;
+          return;
+        }
         
          const shippingAmount = item.delivery_amount;
 
