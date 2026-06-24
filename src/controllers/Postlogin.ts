@@ -119,15 +119,26 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
     let availableQty = Number(product.qty || 0);
 
 if (quantityByVariant && customVariants.length > 0) {
+  const quantitySource = product?.form_values?.quantities || "";
+
+  const quantityParts = quantitySource
+    .split(" and ")
+    .map((v: string) => v.trim())
+    .filter(Boolean);
+
+  const selectedQuantityVariants = customVariants.filter(
+    (v: any) => quantityParts.includes(v.variantName)
+  );
+
+  const selectedValues = selectedQuantityVariants
+    .map((v: any) => String(v.attributeName).trim())
+    .sort();
+
   const selectedCombination = (product.combinationData || [])
     .flatMap((group: any) => group.combinations || [])
     .find((comb: any) => {
       const combValues = (comb.combValues || [])
         .map((v: string) => String(v).trim())
-        .sort();
-
-      const selectedValues = customVariants
-        .map((v: any) => String(v.attributeName).trim())
         .sort();
 
       return (
@@ -152,13 +163,22 @@ if (quantityByVariant && customVariants.length > 0) {
     });
 
 if (quantityByVariant) {
+  const quantitySource = product?.form_values?.quantities || "";
+
+  const quantityParts = quantitySource
+    .split(" and ")
+    .map((v: string) => v.trim())
+    .filter(Boolean);
+
   const selectedValues = customVariants
+    .filter((v: any) => quantityParts.includes(v.variantName))
     .map((v: any) => String(v.attributeName).trim())
     .sort();
 
   currentInventoryQty = existingCartItems
     .filter((item: any) => {
       const cartValues = (item.variants || [])
+        .filter((v: any) => quantityParts.includes(v.variantName))
         .map((v: any) => String(v.attributeName).trim())
         .sort();
 
