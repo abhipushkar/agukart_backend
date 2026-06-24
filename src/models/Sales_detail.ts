@@ -255,6 +255,20 @@ const salesDetailsSchema = new Schema(
         seller_note:{
             type: String,
             default: ''
+        },
+        inventory_status: {
+            type: String,
+            enum: ["allocated", "out_of_stock", "backorder"],
+            default: "allocated"
+        },
+        inventory_note: {
+            type: String,
+            default: ""
+        },
+        fulfillment_status: {
+            type: String,
+            enum: [ "awaiting_review", "accepted", "backordered", "rejected", "refunded", "shipped", "delivered" ],
+            default: "awaiting_review"
         }
     },
     {

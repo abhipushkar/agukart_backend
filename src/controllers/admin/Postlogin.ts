@@ -95,6 +95,7 @@ import { buildCategoryMeta } from "../../helpers/category.helper";
 import UrlRedirect from "../../models/UrlRedirect";
 import { buildAdminCategoryFullSlug, updateAdminCategoryChildrenSlugs } from "../../helpers/adminCategory.helper";
 import AttributeGroup from "../../models/AttributeGroup";
+import { allocateInventory } from "../../helpers/inventory";
 
 interface CustomRequest extends Request {
     user?: any;
@@ -6174,6 +6175,8 @@ export const editVariantProductByID = async (req: CustomRequest, resp: Response)
 
 export const salesList = async (req: CustomRequest, resp: Response) => {
     try {
+        const vendorId = req.user?._id;
+        const isVendor = req.user?.designation_id === 3;
         const order_status = req.params.type;
         const isPinned = req.query.isPinned;
         const startDate = req.query.startDate
@@ -6217,6 +6220,9 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                     pipeline: [
                         {
                             $match: {
+                                  ...(isVendor ? {
+                                    vendor_id: new mongoose.Types.ObjectId(vendorId)
+                                  } : {}),  
                                   ...( isPinnedFilter === true ? {} : (order_status ? { order_status } : {})),
                                   ...(isPinnedFilter !== null ? { isPinned: isPinnedFilter } : {}),
                                 }
@@ -6329,6 +6335,49 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                         {
                             $project: {
                                 deliveryServiceData: 0
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: "ratings",
+                                let: {
+                                    salesDetailId: "$_id",
+                                    ratingStatus: "$ratingStatus"
+                                },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $and: [
+                                                    { $eq: ["$$ratingStatus", true] },
+                                                    { $eq: ["$saledetail_id", "$$salesDetailId"] }
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    {
+                                        $project: {
+                                            rating: 1,
+                                            customer_service_rating: 1,
+                                            delivery_rating: 1,
+                                            item_rating: 1,
+                                            additional_comment: 1,
+                                            recommended: 1,
+                                            seller_reply: 1,
+                                            images: 1,
+                                            createdAt: 1,
+                                            status: 1
+                                        }
+                                    }
+                                ],
+                                as: "ratingData"
+                            }
+                        },
+                        {
+                            $addFields: {
+                                ratingData: {
+                                    $arrayElemAt: ["$ratingData", 0]
+                                }
                             }
                         },
                         {
@@ -10979,6 +11028,75 @@ export const updateProductQuantity = async (req: Request, resp: Response) => {
         console.error(error);
         return resp.status(500).json({ message: "Something went wrong. Please try again." });
     }
+};
+
+export const recheckInventory = async ( req: CustomRequest, resp: Response ) => {
+  try {
+    const { id } = req.params;
+
+    const order = await SalesDetailsModel.findById(id);
+
+    if (!order) {
+      return resp.status(404).json({
+        status: false,
+        message: "Order not found",
+      });
+    }
+
+    if (order.inventory_status === "allocated") {
+      return resp.status(400).json({
+        status: false,
+        message: "Inventory already allocated",
+      });
+    }
+
+    if (
+      ["shipped", "delivered", "refunded", "rejected"].includes(
+        order.fulfillment_status
+      )
+    ) {
+      return resp.status(400).json({
+        status: false,
+        message: `Order already ${order.fulfillment_status}`,
+      });
+    }
+
+    const allocationResult = await allocateInventory(
+      order.product_id.toString(),
+      {
+        qty: order.qty,
+        variants: order.variants || [],
+        variant_id: order.variant_id || [],
+        variant_attribute_id: order.variant_attribute_id || [],
+      }
+    );
+
+    if (!allocationResult.success) {
+      return resp.status(400).json({
+        status: false,
+        message: allocationResult.inventoryNote,
+      });
+    }
+
+    order.inventory_status = "allocated";
+    order.inventory_note = "";
+    order.fulfillment_status = "accepted";
+
+    await order.save();
+
+    return resp.status(200).json({
+      status: true,
+      message: "Inventory allocated successfully",
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("RECHECK INVENTORY ERROR:", error);
+
+    return resp.status(500).json({
+      status: false,
+      message: error.message || "Something went wrong",
+    });
+  }
 };
 
 export const addCoupon = async (req: CustomRequest, resp: Response) => {

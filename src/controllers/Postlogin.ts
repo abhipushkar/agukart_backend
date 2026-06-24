@@ -61,6 +61,7 @@ import got from "got";
 import BuyerNoteModel from "../models/BuyerNote";
 import Shipping from "../models/Shipping";
 import SaveForLater from "../models/SaveForLater";
+import { allocateInventory } from "../helpers/inventory";
 
 interface CustomRequest extends Request {
   user?: any;
@@ -117,38 +118,32 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
 
     let availableQty = Number(product.qty || 0);
 
-    if (quantityByVariant && customVariants.length > 0) {
-  const quantityVariantName = product?.form_values?.quantities;
+if (quantityByVariant && customVariants.length > 0) {
+  const selectedCombination = (product.combinationData || [])
+    .flatMap((group: any) => group.combinations || [])
+    .find((comb: any) => {
+      const combValues = (comb.combValues || [])
+        .map((v: string) => String(v).trim())
+        .sort();
 
-  const selectedVariant = customVariants.find(
-    (v: any) => v.variantName === quantityVariantName
-  );
+      const selectedValues = customVariants
+        .map((v: any) => String(v.attributeName).trim())
+        .sort();
 
-  if (!selectedVariant) {
-    return resp.status(400).json({
-      message: "Quantity variant not selected.",
+      return (
+        combValues.length === selectedValues.length &&
+        combValues.every((v: string, i: number) => v === selectedValues[i])
+      );
     });
-  }
-
-  const quantityGroup = (product.combinationData || []).find(
-    (group: any) => group.variant_name === quantityVariantName
-  );
-
-  const selectedCombination = quantityGroup?.combinations?.find(
-    (comb: any) =>
-      String(comb.value1).trim().toLowerCase() ===
-      String(selectedVariant.attributeName).trim().toLowerCase()
-  );
 
   if (!selectedCombination) {
     return resp.status(400).json({
-      message: "Selected variant not found.",
+      message: "Selected variant combination not found.",
     });
   }
 
   availableQty = Number(selectedCombination.qty || 0);
 }
-
     let currentInventoryQty = 0;
 
     const existingCartItems = await Cart.find({
@@ -156,23 +151,22 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       product_id,
     });
 
-    if (quantityByVariant) {
-  const quantityVariantName = product?.form_values?.quantities;
-
-  const selectedVariant = customVariants.find(
-    (v: any) => v.variantName === quantityVariantName
-  );
+if (quantityByVariant) {
+  const selectedValues = customVariants
+    .map((v: any) => String(v.attributeName).trim())
+    .sort();
 
   currentInventoryQty = existingCartItems
     .filter((item: any) => {
-      const cartVariant = (item.variants || []).find(
-        (v: any) => v.variantName === quantityVariantName
-      );
+      const cartValues = (item.variants || [])
+        .map((v: any) => String(v.attributeName).trim())
+        .sort();
 
       return (
-        cartVariant &&
-        String(cartVariant.attributeName).trim().toLowerCase() ===
-        String(selectedVariant?.attributeName).trim().toLowerCase()
+        cartValues.length === selectedValues.length &&
+        cartValues.every(
+          (v: string, i: number) => v === selectedValues[i]
+        )
       );
     })
     .reduce(
@@ -2536,28 +2530,29 @@ const couponMap: any = Array.isArray(cartCoupon)
     //     }
 
     // }));
-    for (const item of cartResult) {
-      const product = await Product.findById(item.product_id);
-      if (!product) {
-        return resp.status(400).json({ message: "Product not found" });
-      }
 
-      const { qty: availableQty } = resolvePriceAndQty({
-        product,
-        cartItem: item,
-      });
+    // for (const item of cartResult) {
+    //   const product = await Product.findById(item.product_id);
+    //   if (!product) {
+    //     return resp.status(400).json({ message: "Product not found" });
+    //   }
 
-      if (availableQty <= 0) {
-        return resp.status(400).json({
-          message: `${removeHtmlTags(product.product_title)} is out of stock`,
-        });
-      }
-      if (availableQty < Number(item.qty)) {
-        return resp.status(400).json({
-          message: `${removeHtmlTags(product.product_title)} has only ${availableQty} left`,
-        });
-      }
-    }
+    //   const { qty: availableQty } = resolvePriceAndQty({
+    //     product,
+    //     cartItem: item,
+    //   });
+
+    //   if (availableQty <= 0) {
+    //     return resp.status(400).json({
+    //       message: `${removeHtmlTags(product.product_title)} is out of stock`,
+    //     });
+    //   }
+    //   if (availableQty < Number(item.qty)) {
+    //     return resp.status(400).json({
+    //       message: `${removeHtmlTags(product.product_title)} has only ${availableQty} left`,
+    //     });
+    //   }
+    // }
 
     if (!error) {
       const sales = await Sales.create(salesData);
@@ -2688,73 +2683,87 @@ const couponMap: any = Array.isArray(cartCoupon)
             // const updatedQty = currentQty - Number(item?.qty);
             // let finalQty = updatedQty.toString();
 
-            const { qty: availableQty } = resolvePriceAndQty({
-              product: productData,
-              cartItem: item,
-            });
+          //   const { qty: availableQty } = resolvePriceAndQty({
+          //     product: productData,
+          //     cartItem: item,
+          //   });
 
-            const updatedQty = availableQty - Number(item.qty);
+          //   const updatedQty = availableQty - Number(item.qty);
 
-            if (updatedQty < 0) {
-              return resp.status(400).json({
-                message: `${removeHtmlTags(productData.product_title)} is out of stock`,
-              });
-            }
+          //   let inventoryStatus = "allocated";
+          //   let inventoryNote = "";
 
-            // Decide WHO owns the quantity
-            const qtyDrivenByCombination =
-              productData.form_values?.isCheckedQuantity === true &&
-              Number(productData.qty) === 0;
+          //   if (updatedQty < 0) {
+          //     inventoryStatus = "out_of_stock";
+          //     inventoryNote = "Stock unavailable after payment";
+          //   }
 
-            if (qtyDrivenByCombination) {
-  const normalize = (str: any) =>
-    String(str).trim().toLowerCase();
+          //   // Decide WHO owns the quantity
+          //   const qtyDrivenByCombination =
+          //     productData.form_values?.isCheckedQuantity === true &&
+          //     Number(productData.qty) === 0;
+          // if (inventoryStatus === "allocated") {
+          //   if (qtyDrivenByCombination) {
+          //     const normalize = (str: any) =>
+          //       String(str).trim().toLowerCase();
 
-  const qtyGroupName = productData.form_values?.quantities;
+          //       const qtyGroupName = productData.form_values?.quantities;
 
-  let deducted = false;
+          //       let deducted = false;
 
-  const selectedValues = (item.variants || []).map((v: any) =>
-    normalize(v.attributeName)
-  );
+          //       const selectedValues = (item.variants || []).map((v: any) => normalize(v.attributeName));
 
-  for (const group of productData.combinationData || []) {
-    // ✅ FIXED GROUP MATCH
-    if (normalize(group.variant_name) !== normalize(qtyGroupName)) continue;
+          //       for (const group of productData.combinationData || []) {
+          //       // ✅ FIXED GROUP MATCH
+          //         if (normalize(group.variant_name) !== normalize(qtyGroupName)) continue;
 
-    for (const comb of group.combinations || []) {
-      const combValues = (comb.combValues || []).map((v: any) =>
-        normalize(v)
-      );
+          //         for (const comb of group.combinations || []) {
+          //           const combValues = (comb.combValues || []).map((v: any) =>
+          //             normalize(v)
+          //           );
 
-      const isPartialMatch = combValues.every((v: string) =>
-        selectedValues.includes(v)
-      );
+          //         const isPartialMatch = combValues.every((v: string) =>
+          //           selectedValues.includes(v)
+          //         );
 
-      if (isPartialMatch && comb.qty !== "") {
-        const currentCombQty = Number(comb.qty || 0);
-        const newQty = currentCombQty - Number(item.qty);
+          //         if (isPartialMatch && comb.qty !== "") {
+          //           const currentCombQty = Number(comb.qty || 0);
+          //           const newQty = currentCombQty - Number(item.qty);
 
-        if (newQty < 0) {
-          throw new Error("Stock mismatch during deduction");
-        }
+          //         if (newQty < 0) {
+          //           inventoryStatus = "out_of_stock";
+          //           inventoryNote = "Variant stock unavailable after payment";
+          //           deducted = true;
+          //           break;
+          //         }
 
-        comb.qty = String(newQty);
-        productData.markModified("combinationData");
-        deducted = true;
-        break;
-      }
-    }
+          //         comb.qty = String(newQty);
+          //          productData.markModified("combinationData");
+          //          deducted = true;
+          //          break;
+          //         }
+          //         }
 
-    if (deducted) break;
-  }
+          //         if (deducted) break;
+          //         }
 
-  if (!deducted) {
-    throw new Error("Failed to deduct stock correctly");
-  }
-  } else {
-              productData.qty = String(updatedQty);
-            }
+          //         if (!deducted && inventoryStatus === "allocated") {
+          //           inventoryStatus = "out_of_stock";
+          //           inventoryNote = "Variant stock unavailable after payment";
+          //         }
+          //   } else {
+          //     productData.qty = String(updatedQty);
+          //   }
+          //    await productData.save();
+          // }
+
+          const allocationResult = await allocateInventory( productData._id.toString(), item );
+
+          const inventoryStatus = allocationResult.inventoryStatus;
+
+          const inventoryNote = allocationResult.inventoryNote;
+
+          const latestProductData = allocationResult.productData || productData;
 
             const vendorId = item.vendor_id.toString();
             let subOrderId = vendorSubOrderMap.get(String(vendorId));
@@ -2778,7 +2787,7 @@ const couponMap: any = Array.isArray(cartCoupon)
               sub_order_id: subOrderId,
               item_id: itemId,
               product_id: productResult?.product_id,
-              productData: productData ? productData : {},
+              productData: latestProductData ? latestProductData : {},
               original_price: Number(item.original_price),
               qty: Number(item.qty),
               isCombination: item?.isCombination,
@@ -2817,6 +2826,9 @@ const couponMap: any = Array.isArray(cartCoupon)
               shippingData: shippingData,
               promotionData: promotionData,
               buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
+              inventory_status: inventoryStatus,
+              inventory_note: inventoryNote,
+              fulfillment_status: "awaiting_review",
             };
 
             // if (item?.isCombination) {
@@ -2858,9 +2870,8 @@ const couponMap: any = Array.isArray(cartCoupon)
             // } else {
             //     productData.qty = finalQty;
             // }
-            await productData.save();
-
             await Salesdetail.create(data);
+           
           }
   
       }
@@ -5506,13 +5517,16 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
         item.availableQty = availableQty;
         item.stockValid = availableQty >= Number(item.qty);
 
+        const shortTitle = stripHtml(product.product_title || "");
+        const displayTitle = shortTitle.length > 40 ? `${shortTitle.substring(0, 40)}...` : shortTitle;
+
         if (availableQty <= 0) {
-          errorMessage = `${stripHtml(product.product_title)} is out of stock`;
+          errorMessage = `${displayTitle} is out of stock`;
           return;
         }
 
         if (availableQty < Number(item.qty)) {
-          errorMessage = `Only ${availableQty} available for ${stripHtml(product.product_title)}`;
+          errorMessage = `Only ${availableQty} available for ${displayTitle}`;
           return;
         }
         

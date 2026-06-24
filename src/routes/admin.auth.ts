@@ -271,7 +271,8 @@ import {
     getAttributeDropdown,
     replyToRating,
     ratingAction,
-    addRatingNote
+    addRatingNote,
+    recheckInventory
 } from "../controllers/admin/Postlogin";
 
 
@@ -570,6 +571,7 @@ routes.post('/rating-action', ratingAction)
 routes.post('/rating-notes', addRatingNote)
 
 routes.post('/updateProductQuantity', updateProductQuantity)
+routes.post('/recheck-inventory/:id', recheckInventory)
 
 //affiliate user api's
 routes.get('/get-affiliate-user/:status', getAffiliateUser)
