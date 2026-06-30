@@ -1,4 +1,3 @@
-import { ref, required } from "joi";
 import mongoose, {Schema, model } from "mongoose";
 
 const refundItemSchema = new Schema({
@@ -23,6 +22,10 @@ const refundItemSchema = new Schema({
         required: true
     },
     voucher_adjustment_amount: {
+        type: Number,
+        default: 0
+    },
+    coupon_amount: {
         type: Number,
         default: 0
     },

@@ -96,6 +96,7 @@ import UrlRedirect from "../../models/UrlRedirect";
 import { buildAdminCategoryFullSlug, updateAdminCategoryChildrenSlugs } from "../../helpers/adminCategory.helper";
 import AttributeGroup from "../../models/AttributeGroup";
 import { allocateInventory } from "../../helpers/inventory";
+import SalesModel from "../../models/Sales";
 
 interface CustomRequest extends Request {
     user?: any;
@@ -6381,6 +6382,65 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                             }
                         },
                         {
+                            $lookup: {
+                                from: "refunditems",
+                                let: { itemId: "$item_id" },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $and: [
+                                                    { $eq: ["$item_id", "$$itemId"] },
+                                                    { $eq: ["$type", "Item"] }
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    {
+                                        $lookup: {
+                                            from: "refunds",
+                                            localField: "refund_id",
+                                            foreignField: "_id",
+                                            as: "refund"
+                                        }
+                                    },
+                                    {
+                                        $unwind: "$refund"
+                                    },
+                                    {
+                                        $sort: {
+                                            "refund.createdAt": -1
+                                        }
+                                    },
+                                    {
+                                        $limit: 1
+                                    },
+                                    {
+                                        $project: {
+                                            _id: 0,
+                                            reason_code: 1
+                                        }
+                                    }
+                                ],
+                                as: "latestRefund"
+                            }
+                        },
+                        {
+                            $addFields: {
+                                latest_refund_reason: {
+                                    $ifNull: [
+                                        { $arrayElemAt: ["$latestRefund.reason_code", 0] },
+                                        ""
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $project: {
+                                latestRefund: 0
+                            }
+                        },
+                        {
                         $group: {
                             _id: "$sub_order_id",
                             sub_order_id: { $first: "$sub_order_id" },
@@ -7538,6 +7598,60 @@ export const getRefundContext = async (req: CustomRequest, resp: Response) => {
             return resp.status(400).json({ message: 'Suborder not found' });
         }
 
+        const refundHistory = await RefundItemModel.aggregate([
+            {
+                $lookup: {
+                    from: "refunds",
+                    localField: "refund_id",
+                    foreignField: "_id",
+                    as: "refund"
+                }
+            },
+            {
+                $unwind: "$refund"
+            },
+            {
+                $match: {
+                    "refund.sub_order_id": sub_order_id,
+                }
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "refund.performed_by",
+                    foreignField: "_id",
+                    as: "performed_by"
+                }
+            },
+            {
+                $unwind: {
+                    path: "$performed_by",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    refund_id: "$refund._id",
+                    item_id: 1,
+                    type: 1,
+                    entered_refund_amount: 1,
+                    voucher_adjustment_amount: 1,
+                    net_refund_amount: 1,
+                    reason_code: 1,
+                    performed_by: "$performed_by.name",
+                    performed_role: "$refund.performed_role",
+                    notes: "$refund.notes",
+                    createdAt: "$refund.createdAt"
+                }
+            },
+            {
+                $sort: {
+                    createdAt: 1
+                }
+            }
+        ]);
+
         if(req.user.designation_id === 3 && items.some(i => i.vendor_id.toString() !== req.user._id.toString())){
             return resp.status(403).json({ message: 'Unauthorized access.' });
         }
@@ -7550,15 +7664,23 @@ export const getRefundContext = async (req: CustomRequest, resp: Response) => {
             items: items.map(i => ({
                 item_id: i.item_id,
                 title: i.productData?.product_title || "",
+                coupon_discount: i.couponDiscountAmount || 0,
+                voucher_discount: i.voucherDiscountAmount || 0,
                 image: i.productData?.image?.length ? i.productData.image[0] : "",
                 quantity: i.qty,
                 amount: i.amount,
                 refunded_cash_amount: i.refunded_cash_amount,
                 refunded_voucher_amount: i.refunded_voucher_amount,
+                refunded_coupon_amount: i.refunded_coupon_amount || 0,
+                history: refundHistory.filter(h => h.item_id === i.item_id)
             })),
             shipping: {
                 paid: items[0].shippingAmount || 0,
-                refunded: items[0].shipping_refunded_amount || 0
+                refunded: items[0].shipping_refunded_amount || 0,
+                history: refundHistory.filter(h => h.type === "Shipping")
+            },
+            coupon: {
+                amount: items[0].couponDiscountAmount || 0
             }
         });
     } catch (error) {
@@ -7580,6 +7702,16 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
             return resp.status(404).json({ message: 'Suborder not found' });
         }
 
+        const sale = await SalesModel.findById(orderItems[0].sale_id).lean();
+
+        if (!sale) {
+            return resp.status(404).json({ message: "Sale not found." });
+        }
+
+        if (sale.payment_status !== "completed") {
+            return resp.status(400).json({ message: "Refund is only allowed for completed payments." });
+        }
+
         if(req.user.designation_id === 3 && orderItems.some(i => i.vendor_id.toString() !== req.user._id.toString())){
             return resp.status(403).json({ message: 'Unauthorized access.' });
         }
@@ -7590,12 +7722,12 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
                 throw new Error(`Invalid item id: ${r.item_id}`);
             }
 
-            const maxCash = item.amount - item.refunded_cash_amount;
+            const maxCash = item.amount - (item.couponDiscountAmount || 0) - (item.voucherDiscountAmount || 0) - (item.refunded_cash_amount || 0);
             if(r.net_refund_amount > maxCash) {
                 throw new Error(`Refund amount exceeds for item id: ${r.item_id}`);
             }
 
-            const maxVoucher = item.couponDiscountAmount - item.refunded_voucher_amount;
+            const maxVoucher = (item.voucherDiscountAmount || 0) - (item.refunded_voucher_amount || 0);
             if (r.voucher_adjustment_amount > maxVoucher) {
                 throw new Error(`Voucher refund exceeds for item: ${r.item_id}`);
             }
@@ -7638,6 +7770,7 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
             type: "Item",
             entered_refund_amount: r.entered_refund_amount,
             voucher_adjustment_amount: r.voucher_adjustment_amount,
+            coupon_amount: r.coupon_amount,
             net_refund_amount: r.net_refund_amount,
             reason_code: r.reason_code,
             currency: "USD",
@@ -7649,6 +7782,7 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
                 $inc: {
                     refunded_cash_amount: r.net_refund_amount,
                     refunded_voucher_amount: r.voucher_adjustment_amount,
+                    refunded_coupon_amount: r.coupon_amount
                 }
             }
         );
@@ -7682,7 +7816,7 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
 
     const updatedItems = await SalesDetailsModel.find({ sub_order_id }).lean();
 
-    const totalItemsAmount  = updatedItems.reduce((sum, i) => sum + i.amount, 0);
+    const totalItemsAmount = updatedItems.reduce((sum, i) => sum + Number(i.amount || 0) - Number(i.couponDiscountAmount || 0) -Number(i.voucherDiscountAmount || 0), 0);
 
     const totalItemsRefunded = updatedItems.reduce((sum, i) => sum + i.refunded_cash_amount + i.refunded_voucher_amount, 0);
 
@@ -7690,7 +7824,7 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
     const updatedShippingRefunded = updatedItems[0].shipping_refunded_amount || 0;
 
     const totalOrderAmount = totalItemsAmount + shippingAmount;
-    const totalRefundedAmount = totalItemsRefunded + updatedShippingRefunded;
+    const totalRefundedAmount = updatedItems.reduce((sum, i) => sum + Number(i.refunded_cash_amount || 0), 0) +  updatedShippingRefunded;
 
     let finalRefundStatus = "none";
     if (totalRefundedAmount > 0 && totalRefundedAmount < totalOrderAmount) {
@@ -7715,6 +7849,7 @@ export const refundSuborder = async (req: CustomRequest, resp: Response) => {
         refund_id: refund[0]._id,
     })
     } catch (error) {
+        console.error("REFUND ERROR =>", error);
         return resp.status(500).json({ message: "Failed to process refund", error });
     }
 }

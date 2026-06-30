@@ -1936,6 +1936,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
       },
       {
         $project: {
+          _id: 1,
           qty: 1,
           product_id: 1,
           vendor_id: 1,
@@ -1977,6 +1978,8 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
     let promotionDiscount = 0;
     let delivery = 0;
     let parentCartData: any = {};
+
+    const voucherBreakdown: any[] = req.body.voucherBreakdown || [];
 
     const vendorCouponDiscountMap: Record<string, number> = {};
 
@@ -2777,6 +2780,10 @@ const couponMap: any = Array.isArray(cartCoupon)
           //    await productData.save();
           // }
 
+          const vendorVoucher = voucherBreakdown.find((v: any) => v.vendor_id?.toString() === item.vendor_id?.toString());
+
+          const productVoucher = vendorVoucher?.products?.find((p: any) => p.cart_id?.toString() === item._id?.toString());
+
           const allocationResult = await allocateInventory( productData._id.toString(), item );
 
           const inventoryStatus = allocationResult.inventoryStatus;
@@ -2843,7 +2850,9 @@ const couponMap: any = Array.isArray(cartCoupon)
                 ? vendorCouponMap.get(item.vendor_id.toString()) || null
                 : couponData,
               couponDiscountAmount: vendorCouponDiscountMap[ item.vendor_id.toString()] || 0,
+              voucherDiscountAmount: Number(productVoucher?.discount || 0),
               shippingData: shippingData,
+              order_status: req.body.payment_status === "completed" ? "unshipped" : "new",
               promotionData: promotionData,
               buyer_note: buyerNoteMap.get(item.vendor_id.toString()) || null,
               inventory_status: inventoryStatus,
@@ -2906,18 +2915,12 @@ const couponMap: any = Array.isArray(cartCoupon)
           : {}),
       });
       if (isVendorCheckout) {
-        await ParentCartModel.updateOne(
-          { user_id: req.user._id },
-          {
-            $pull: {
-              vendor_data: {
-                vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id),
-              },
-            },
-          },
-        );
+        await ParentCartModel.deleteOne({
+          user_id: req.user._id,
+          vendor_id: new mongoose.Types.ObjectId(req.body.vendor_id),
+        });
       } else {
-        await ParentCartModel.deleteOne({ user_id: req.user._id });
+        await ParentCartModel.deleteMany({ user_id: req.user._id });
       }
       if (isVendorCheckout) {
 
@@ -3387,6 +3390,7 @@ export const vendorWiseCheckout = async (
 
     // NEW: voucher amount (same behavior as checkout)
     let voucherDiscount = Number(req.body.voucher_discount || 0);
+    const voucherBreakdown = req.body.voucherBreakdown || [];
 
     const cartCoupon = await CartCouponModel.findOne({ user_id: req.user._id });
     let couponCode = "";
@@ -7757,10 +7761,7 @@ export const verifyToken = async (req: Request, resp: Response) => {
   }
 };
 
-export const checkVoucherForProduct = async (
-  req: CustomRequest,
-  resp: Response,
-) => {
+export const checkVoucherForProduct = async ( req: CustomRequest, resp: Response ) => {
   try {
     let userStatus = "all";
 
@@ -7878,13 +7879,14 @@ export const checkVoucherForProduct = async (
     );
 
     let discount = 0;
+    let eligibleAmount = 0;
+    let eligibleItems: any[] = [];
+    let vendors: any[] = [];
 
     if (voucher.type === "product") {
       const products = await ProductModel.find({
         _id: { $in: productIdsInCart },
       });
-
-      let eligibleAmount = 0;
 
       if (voucher.wiseType === "all") {
         const excludedProducts = products.filter(
@@ -7896,22 +7898,30 @@ export const checkVoucherForProduct = async (
           (product: any) => product._id.toString()
         );
 
-        eligibleAmount = userCartData.reduce(
-          (sum: number, item: any) =>
-            !excludedProductIds.includes(
-              item.product_id.toString()
-            )
-              ? sum +
-                Number(item.price) *
-                  Number(item.qty)
-              : sum,
-          0
-        );
+        eligibleAmount = 0;
+        eligibleItems = [];
+
+        for (const item of userCartData) {
+
+          if (excludedProductIds.includes(item.product_id.toString())) continue;
+
+          const amount = Number(item.price) * Number(item.qty);
+
+          eligibleAmount += amount;
+
+          eligibleItems.push({
+            cart_id: item._id,
+            vendor_id: item.vendor_id,
+            product_id: item.product_id,
+            qty: item.qty,
+            amount
+          });
+
+        }
 
         if (eligibleAmount <= 0) {
           return resp.status(400).json({
-            message:
-              "No eligible products in your cart for this voucher",
+            message: "No eligible products in your cart for this voucher",
           });
         }
       } else {
@@ -7931,17 +7941,25 @@ export const checkVoucherForProduct = async (
           (product: any) => product._id.toString()
         );
 
-        eligibleAmount = userCartData.reduce(
-          (sum: number, item: any) =>
-            eligibleProductIds.includes(
-              item.product_id.toString()
-            )
-              ? sum +
-                Number(item.price) *
-                  Number(item.qty)
-              : sum,
-          0
-        );
+        eligibleAmount = 0;
+        eligibleItems = [];
+
+        for (const item of userCartData) {
+
+          if (!eligibleProductIds.includes(item.product_id.toString())) continue;
+
+          const amount = Number(item.price) * Number(item.qty);
+
+          eligibleAmount += amount;
+
+          eligibleItems.push({
+            cart_id: item._id,
+            vendor_id: item.vendor_id,
+            product_id: item.product_id,
+            qty: item.qty,
+            amount
+          });
+        }
 
         if (eligibleAmount <= 0) {
           return resp.status(400).json({
@@ -7951,10 +7969,7 @@ export const checkVoucherForProduct = async (
         }
       }
 
-      if (
-        voucher.cart_amount &&
-        eligibleAmount < Number(voucher.cart_amount)
-      ) {
+      if ( voucher.cart_amount && eligibleAmount < Number(voucher.cart_amount)) {
         const requiredAmount = Number(voucher.cart_amount);
         return resp.status(400).json({
           message: `Your eligible purchase amount is ${eligibleAmount.toFixed(2)}, but ${requiredAmount.toFixed(2)} is required  for this voucher.`,
@@ -7962,15 +7977,8 @@ export const checkVoucherForProduct = async (
       }
 
       if (voucher.discount_type === "percentage") {
-        discount =
-          (eligibleAmount *
-            voucher.discount_amount) /
-          100;
-
-        if (
-          voucher.max_amount &&
-          discount > voucher.max_amount
-        ) {
+        discount = (eligibleAmount * voucher.discount_amount) / 100;
+        if ( voucher.max_amount && discount > voucher.max_amount ) {
           discount = voucher.max_amount;
         }
       } else {
@@ -7982,24 +7990,31 @@ export const checkVoucherForProduct = async (
     }
 
     if (voucher.type === "shop") {
-      let eligibleAmount = 0;
 
       if (voucher.wiseType === "all") {
         const excludedShopIds = voucher.shop_ids.map(
           (id: any) => id.toString()
         );
 
-        eligibleAmount = userCartData.reduce(
-          (sum: number, item: any) =>
-            !excludedShopIds.includes(
-              item.vendor_id.toString()
-            )
-              ? sum +
-                Number(item.price) *
-                  Number(item.qty)
-              : sum,
-          0
-        );
+      eligibleAmount = 0;
+      eligibleItems = [];
+
+      for (const item of userCartData) {
+
+        if (excludedShopIds.includes(item.vendor_id.toString())) continue;
+
+        const amount = Number(item.price) * Number(item.qty);
+
+        eligibleAmount += amount;
+
+        eligibleItems.push({
+          cart_id: item._id,
+          vendor_id: item.vendor_id,
+          product_id: item.product_id,
+          qty: item.qty,
+          amount
+        });
+      }
 
         if (eligibleAmount <= 0) {
           return resp.status(400).json({
@@ -8013,17 +8028,25 @@ export const checkVoucherForProduct = async (
         );
         console.log("Voucher Shop IDs:", eligibleShopIds);
 
-        eligibleAmount = userCartData.reduce(
-          (sum: number, item: any) =>
-            eligibleShopIds.includes(
-              item.vendor_id.toString()
-            )
-              ? sum +
-                Number(item.price) *
-                  Number(item.qty)
-              : sum,
-          0
-        );
+        eligibleAmount = 0;
+        eligibleItems = [];
+
+        for (const item of userCartData) {
+
+          if (!eligibleShopIds.includes(item.vendor_id.toString())) continue;
+
+          const amount = Number(item.price) * Number(item.qty);
+
+          eligibleAmount += amount;
+
+          eligibleItems.push({
+            cart_id: item._id,
+            vendor_id: item.vendor_id,
+            product_id: item.product_id,
+            qty: item.qty,
+            amount
+          });
+        }
 
         if (eligibleAmount <= 0) {
           return resp.status(400).json({
@@ -8064,10 +8087,93 @@ export const checkVoucherForProduct = async (
       }
     }
 
+      const vendorMap = new Map();
+
+      for (const item of eligibleItems) {
+
+        const vendorId = item.vendor_id.toString();
+
+        if (!vendorMap.has(vendorId)) {
+
+          vendorMap.set(vendorId,{
+            vendor_id: vendorId,
+            eligible_amount: 0,
+            discount: 0,
+            products:[]
+          });
+
+        }
+
+          const vendor = vendorMap.get(vendorId);
+
+          vendor.eligible_amount += item.amount;
+
+          vendor.products.push(item);
+
+        }
+
+        vendors = [...vendorMap.values()];
+
+        let allocated = 0;
+
+        vendors.forEach((vendor,index)=>{
+
+        if(index===vendors.length-1){
+
+          vendor.discount = discount-allocated;
+
+        }else{
+
+        vendor.discount = Number(
+            (
+                vendor.eligible_amount/
+                eligibleAmount*
+                discount
+            ).toFixed(2)
+        );
+
+        allocated += vendor.discount;
+
+      }
+
+    });
+
+    vendors.forEach(vendor=>{
+
+    let allocatedProduct = 0;
+
+    vendor.products.forEach((product:any,index:number)=>{
+
+        if(index===vendor.products.length-1){
+
+            product.discount =
+                vendor.discount-
+                allocatedProduct;
+
+        }else{
+
+            product.discount = Number(
+                (
+                    product.amount/
+                    vendor.eligible_amount*
+                    vendor.discount
+                ).toFixed(2)
+            );
+
+            allocatedProduct +=
+                product.discount;
+
+        }
+
+    });
+
+   });
+
     return resp.status(200).json({
       message: "Voucher is valid for you",
       discount,
       voucherDetails: voucher,
+      vendors
     });
   } catch (error: any) {
     return resp.status(500).json({
