@@ -75,6 +75,14 @@ const salesDetailsSchema = new Schema(
             type: Number,
             default: 0
         },
+        suborder_wallet_used: {
+            type: Number,
+            default: 0
+        },
+        suborder_payable_amount: {
+            type: Number,
+            default: 0
+        },
         reject_date: {
             type: Date,
             default: null
@@ -232,11 +240,11 @@ const salesDetailsSchema = new Schema(
             type: Number,
             default: 0
         },
-        refunded_voucher_amount: {
+        voucher_refunded_amount: {
             type: Number, 
             default: 0
         },
-        refunded_coupon_amount: {
+        coupon_refunded_amount: {
             type: Number, 
             default: 0
         },

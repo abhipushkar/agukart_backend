@@ -14,20 +14,12 @@ const refundItemSchema = new Schema({
     },
     type: {
         type: String,
-        enum: ["Item", "Shipping", "Voucher"],
+        enum: ["Item", "Shipping", "Voucher", "Coupon"],
         required: true
     },
     entered_refund_amount: {
         type: Number,
         required: true
-    },
-    voucher_adjustment_amount: {
-        type: Number,
-        default: 0
-    },
-    coupon_amount: {
-        type: Number,
-        default: 0
     },
     net_refund_amount: {
         type: Number,

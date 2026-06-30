@@ -2447,7 +2447,7 @@ const couponMap: any = Array.isArray(cartCoupon)
         let walletAmount = 0;
         if (user) {
           walletAmount = user.wallet_balance;
-          if (walletAmount > netAmount) {
+          if (walletAmount >= netAmount) {
             usedWalletAmount = netAmount;
             netAmount = 0;
           } else if (walletAmount < netAmount) {
@@ -2455,6 +2455,10 @@ const couponMap: any = Array.isArray(cartCoupon)
             netAmount -= walletAmount;
           }
         }
+      }
+      if (usedWalletAmount > 0 && netAmount === 0) {
+        req.body.payment_type = "wallet";
+        req.body.payment_status = "completed";
       }
     } else {
       error = true;
@@ -2478,7 +2482,7 @@ const couponMap: any = Array.isArray(cartCoupon)
       payment_status: req.body.payment_status,
       paypal_order_id: req.body.paypal_order_id || null,
       paypal_capture_id: req.body.paypal_capture_id || null,
-      paid_at: req.body.payment_type === "paypal" ? new Date() : null,
+      paid_at: req.body.payment_status === "completed" ? new Date() : null,
       subtotal: subTotal,
       shipping: totalShipping,
       discount: discount,
@@ -2498,6 +2502,70 @@ const couponMap: any = Array.isArray(cartCoupon)
 
     function removeHtmlTags(str: string): string {
       return str.replace(/<\/?[^>]+(>|$)/g, "");
+    }
+
+    const vendorVoucherMap: Record<string, number> = {};
+
+    for (const vendor of voucherBreakdown) {
+      vendorVoucherMap[vendor.vendor_id.toString()] = Number(vendor.discount || 0);
+    }
+
+    const vendorNetAmountMap: Record<string, number> = {};
+
+    for (const item of cartResult) {
+      const vendorId = item.vendor_id.toString();
+
+      if (!vendorNetAmountMap[vendorId]) {
+        vendorNetAmountMap[vendorId] = 0;
+      }
+
+      const itemAmount = (Number(item.final_price || item.sale_price) * Number(item.qty)) - Number(item.promotion_discount || 0);
+      vendorNetAmountMap[vendorId] += itemAmount;
+    }
+
+    for (const vendorId in vendorDeliveryMap) {
+      vendorNetAmountMap[vendorId] = Math.max( 0,
+      (vendorNetAmountMap[vendorId] || 0) + Number(vendorDeliveryMap[vendorId] || 0) - Number(vendorCouponDiscountMap[vendorId] || 0) - Number(vendorVoucherMap[vendorId] || 0)
+      );
+    }
+
+    const vendorWalletMap: Record<string, number> = {};
+
+    let remainingWallet = usedWalletAmount;
+
+    for (const vendorId of Object.keys(vendorNetAmountMap)) {
+      const vendorAmount = vendorNetAmountMap[vendorId];
+
+      const walletUsedForVendor = Math.min(
+        remainingWallet,
+        vendorAmount
+      );
+
+      vendorWalletMap[vendorId] = walletUsedForVendor;
+      remainingWallet -= walletUsedForVendor;
+
+      if (remainingWallet <= 0) {
+        break;
+      }
+    }
+
+    const vendorSettlementMap: Record<string,
+    {
+      total: number;
+      wallet_used: number;
+      payable: number;
+    }
+    > = {};
+
+    for (const vendorId in vendorNetAmountMap) {
+      const total = vendorNetAmountMap[vendorId];
+      const walletUsed = vendorWalletMap[vendorId] || 0;
+
+      vendorSettlementMap[vendorId] = {
+        total,
+        wallet_used: walletUsed,
+        payable: total - walletUsed,
+      };
     }
 
     // await Promise.all(cartResult.map(async (item) => {
@@ -2589,6 +2657,7 @@ const couponMap: any = Array.isArray(cartCoupon)
         buyerNotes.map((note) => [note.vendor_id.toString(), note.buyer_note]),
       );
       const vendorSubOrderMap = new Map<string, string>();
+      const vendorWalletSaved = new Set<string>();
       const saleId = sales._id;
       if (cartResult.length !== 0) {
         for (const item of cartResult) {
@@ -2793,6 +2862,12 @@ const couponMap: any = Array.isArray(cartCoupon)
           const latestProductData = allocationResult.productData || productData;
 
             const vendorId = item.vendor_id.toString();
+
+            const isFirstVendorItem = !vendorWalletSaved.has(vendorId);
+
+            if (isFirstVendorItem) {
+              vendorWalletSaved.add(vendorId);
+            }
             let subOrderId = vendorSubOrderMap.get(String(vendorId));
             if (!subOrderId) {
               subOrderId = generateSubOrderId(orderId);
@@ -2851,6 +2926,8 @@ const couponMap: any = Array.isArray(cartCoupon)
                 : couponData,
               couponDiscountAmount: vendorCouponDiscountMap[ item.vendor_id.toString()] || 0,
               voucherDiscountAmount: Number(productVoucher?.discount || 0),
+              suborder_wallet_used: isFirstVendorItem ? vendorSettlementMap[vendorId]?.wallet_used || 0 : 0,
+              suborder_payable_amount: isFirstVendorItem ? vendorSettlementMap[vendorId]?.payable || 0 : 0,
               shippingData: shippingData,
               order_status: req.body.payment_status === "completed" ? "unshipped" : "new",
               promotionData: promotionData,
@@ -6151,13 +6228,15 @@ export const getVendorCartDetails = async (
   }
 
     netAmount = netAmount - discountAmount;
+    netAmount += totalShipping;
+    netAmount += delivery;
 
     if (req.query.wallet == "1") {
       const user = await User.findOne({ _id: req.user._id });
       let walletAmount = 0;
       if (user) {
         walletAmount = user.wallet_balance;
-        if (walletAmount > netAmount) {
+        if (walletAmount >= netAmount) {
           usedWalletAmount = netAmount;
           netAmount = 0;
         } else if (walletAmount < netAmount) {
@@ -6171,8 +6250,6 @@ export const getVendorCartDetails = async (
     //     return resp.status(200).json({ message: 'No items in your cart.' })
     // }
 
-    netAmount += totalShipping;
-    netAmount += delivery;
 
     const data = {
       subTotal: subTotal,

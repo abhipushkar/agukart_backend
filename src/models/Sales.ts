@@ -57,7 +57,7 @@ const salesSchema = new Schema(
     },
     payment_type: {
       type: String,
-      enum: ["cod", "paypal"],
+      enum: ["cod", "paypal", "wallet"],
       required: true,
     },
     subtotal: {
