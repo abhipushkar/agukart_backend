@@ -5393,6 +5393,27 @@ export const changePopularGiftProduct = async (req: CustomRequest, resp: Respons
     }
 }
 
+const generateDeletedSellerSku = async (sellerSku: string) => {
+  let newSku = `delete_${sellerSku}`;
+
+  const exists = await ParentProduct.findOne({ seller_sku: newSku });
+
+  if (!exists) return newSku;
+
+  let counter = 1;
+
+  while (true) {
+    newSku = `delete${counter}_${sellerSku}`;
+
+    const skuExists = await ParentProduct.findOne({
+      seller_sku: newSku
+    });
+
+    if (!skuExists) return newSku;
+
+    counter++;
+  }
+};
 
 export const deleteProduct = async (req: Request, resp: Response) => {
   try {
@@ -5401,13 +5422,15 @@ export const deleteProduct = async (req: Request, resp: Response) => {
     const parentProduct = await ParentProduct.find({_id: { $in: ids }});
 
     if (parentProduct.length) {
-      await ParentProduct.updateMany(
-        { _id: { $in: ids } },
-        {
-            $set: { isDeleted: true, sku: []}
+        for (const parent of parentProduct) {
+            const deletedSku = await generateDeletedSellerSku(parent.seller_sku);
+            await ParentProduct.updateOne(
+                { _id: parent._id },
+                {
+                    $set: { isDeleted: true, sku: [], seller_sku: deletedSku }
+                }
+            );
         }
-      );
-
       await Product.updateMany(
         { parent_id: { $in: ids } },
         { $set: { parent_id: null } }
@@ -6194,7 +6217,7 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
 
         let delivery_status: string[] = [];
         if (delivery === "all")
-            delivery_status = ["No tracking", "Pre transit", "In transit", "Delivered", "Cancelled"];
+            delivery_status = ["No tracking", "Pre transit", 'Pre-Shipped', "In transit", 'Delivery attempt', 'Out for delivery', "Delivered", "Cancelled"];
         else if (delivery === "intransit") delivery_status = ["In transit"];
         else if (delivery === "delivered") delivery_status = ["Delivered"];
         else if (delivery === "notracking") delivery_status = ["No tracking"];
@@ -6221,12 +6244,20 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                     pipeline: [
                         {
                             $match: {
-                                  ...(isVendor ? {
-                                    vendor_id: new mongoose.Types.ObjectId(vendorId)
-                                  } : {}),  
-                                  ...( isPinnedFilter === true ? {} : (order_status ? { order_status } : {})),
-                                  ...(isPinnedFilter !== null ? { isPinned: isPinnedFilter } : {}),
-                                }
+                                ...(isVendor
+                                    ? {
+                                        vendor_id: new mongoose.Types.ObjectId(vendorId)
+                                    }
+                                    : {}),
+                                ...(search
+                                    ? {}
+                                    : (isPinnedFilter === true
+                                        ? {}
+                                        : (order_status ? { order_status } : {}))),
+                                ...(isPinnedFilter !== null
+                                    ? { isPinned: isPinnedFilter }
+                                    : {}),
+                            }
                         },
 
                         // ---------- Product / Variant lookups (as-is) ----------
@@ -6482,6 +6513,7 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
                         ? {
                             $or: [
                                 { order_id: { $regex: search, $options: "i" } },
+                                { "saleDetaildata.sub_order_id": { $regex: search, $options: "i" } },
                                 { "userData.name": { $regex: search, $options: "i" } },
                                 { "userData.email": { $regex: search, $options: "i" } },
                                 { "vendordata.shop_name": { $regex: search, $options: "i" } },
@@ -6765,6 +6797,20 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
             // },
             {
                 $lookup: {
+                    from: "vouchers",
+                    localField: "voucher_id",
+                    foreignField: "_id",
+                    as: "voucherInfo"
+                }
+            },
+            {
+                $unwind: {
+                    path: "$voucherInfo",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $lookup: {
                     from: "salesdetails",
                     let: {
                         saleId: "$_id",
@@ -6930,9 +6976,67 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                                 shippingAmount: { $first: "$shippingAmount" },
                                 shipped_date: { $first: "$shipped_date" },
                                 delivered_date: { $first: "$delivered_date" },
+                                refund_status: { $first: "$refund_status" },
+                                refunded_cash_amount: { $sum: "$refunded_cash_amount" },
+                                shipping_refunded_amount: { $first: "$shipping_refunded_amount" },
+                                coupon_refunded_amount: { $first: "$coupon_refunded_amount" },
+                                voucher_refunded_amount: { $first: "$voucher_refunded_amount" },
+                                suborder_wallet_used: { $max: "$suborder_wallet_used" },
+                                suborder_payable_amount: { $max: "$suborder_payable_amount" },
                                 items: { $push: "$$ROOT" }
                             }
                         },
+                        {
+                            $lookup: {
+                                from: "refunds",
+                                let: {
+                                    subOrderId: "$sub_order_id"
+                                },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $eq: ["$sub_order_id", "$$subOrderId"]
+                                            }
+                                        }
+                                    },
+                                    {
+                                        $lookup: {
+                                            from: "refunditems",
+                                            localField: "_id",
+                                            foreignField: "refund_id",
+                                            as: "refundItems"
+                                        }
+                                    },
+                                    {
+                                        $lookup: {
+                                            from: "users",
+                                            localField: "performed_by",
+                                            foreignField: "_id",
+                                            as: "performedBy"
+                                        }
+                                    },
+                                    {
+                                        $unwind: {
+                                            path: "$performedBy",
+                                            preserveNullAndEmptyArrays: true
+                                        }
+                                    },
+                                    {
+                                        $project: {
+                                            _id: 1,
+                                            status: 1,
+                                            notes: 1,
+                                            performed_role: 1,
+                                            createdAt: 1,
+                                            performed_by: "$performedBy.name",
+                                            refundItems: 1
+                                        }
+                                    }
+                                ],
+                                as: "refundHistory"
+                            }
+                        }
                     ],
                     as: "saleDetaildata"
                 }
@@ -6958,6 +7062,7 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                     'receiver_name': "$name",
                     'subtotal': 1,
                     'payment_status': 1,
+                    'payment_type': 1,
                     'state': 1,
                     'city': 1,
                     'mobile': 1,
@@ -6972,6 +7077,8 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
                     'pincode': 1,
                     'userName': '$userData.name',
                     'userEmail': '$userData.email',
+                    'voucher_id': 1,
+                    'voucher_code': "$voucherInfo.claim_code",
                     'saleDetaildata': 1,
                     'createdAt': 1
                 }
