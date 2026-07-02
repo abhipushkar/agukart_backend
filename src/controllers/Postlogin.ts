@@ -2015,6 +2015,7 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
     const vendorCouponMap = new Map<
       string,
     {
+      coupon_id: any;
       vendor_id: string;
       coupon_code: string;
       discount_amount: number;
@@ -2052,6 +2053,7 @@ const couponMap: any = Array.isArray(cartCoupon)
     syncedCouponVendorMap[vendorId] = coupon.isSynced === true;
 
     vendorCouponMap.set(vendorId, {
+      coupon_id: coupon._id,
       vendor_id: vendorId,
       coupon_code: coupon.coupon_code,
       discount_amount: coupon.discount_amount,

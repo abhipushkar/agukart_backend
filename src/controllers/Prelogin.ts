@@ -2458,7 +2458,7 @@ export function checkSoldOut(productQty: any, combinationData: any[], formValues
 
   const hasStock = targetVariant.combinations?.some((comb: any) => {
     const qty = Number(comb?.qty || 0);
-    return qty > 0 && comb.isVisible === true || comb.isVisible === "true";
+    return qty > 0 && ( comb.isVisible === true || comb.isVisible === "true" );
   });
 
   return !hasStock;
@@ -2541,7 +2541,7 @@ const data = await ProductModel.findOne(query)
     const combinationData = await CombinationProductModel.find({ product_id: data.parent_id }).populate({
       path: "sku_product_id",
       match: { isDeleted: false, status: true },
-      select: "image qty combinationData product_code slug"
+      select: "image qty combinationData form_values product_code slug"
     })
 
     const base_url = process.env.ASSET_URL || '';
