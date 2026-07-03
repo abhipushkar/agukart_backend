@@ -7103,8 +7103,19 @@ export const orderHistory = async (req: CustomRequest, resp: Response) => {
 export const getOrderInvoice = async (req: Request, resp: Response) => {
 
     try {
-        const { sales_id, sub_order_id } = req.body;
-        const pipeline: any = [
+        const { selectedInvoices } = req.body;
+
+        if (!Array.isArray(selectedInvoices) || !selectedInvoices.length) {
+            return resp.status(400).json({
+                message: "selectedInvoices is required"
+            });
+        }
+
+        const result: any[] = [];
+
+        for (const invoice of selectedInvoices) {
+            const { sales_id, sub_order_id } = invoice;
+            const pipeline: any = [
             {
                 '$match': {
                     '_id': new mongoose.Types.ObjectId(sales_id)
@@ -7169,6 +7180,20 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
                                 foreignField: "_id",
                                 as: "variantAttributeData",
                             }
+                        },
+                        {
+                            $lookup: {
+                                from: "vendordetails",
+                                localField: "vendor_id",
+                                foreignField: "user_id",
+                                as: "vendorData"
+                            }
+                        },
+                        {
+                            $unwind: {
+                                path: "$vendorData",
+                                preserveNullAndEmptyArrays: true
+                            }
                         }
                     ],
                     as: "saleDetaildata"
@@ -7225,6 +7250,9 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
                 '$project': {
                     '_id': 0,
                     'order_id': 1,
+                    'shop_name': {
+                        $first: '$saleDetaildata.vendorData.shop_name'
+                    },
                     'subtotal': 1,
                     'payment_status': 1,
                     'name': 1,
@@ -7244,13 +7272,15 @@ export const getOrderInvoice = async (req: Request, resp: Response) => {
                     'createdAt': 1
                 }
             },
-        ];
+            ];
+            const data = await Sales.aggregate(pipeline);
 
-        const data = await Sales.aggregate(pipeline);
+            result.push(...data);
+        }
         // const orderHistory = data[0];
         const base_url = process.env.ASSET_URL + '/uploads/product/';
 
-        return resp.status(200).json({ message: "Invoice fetched successfully.", data, base_url })
+        return resp.status(200).json({ message: "Invoice fetched successfully.", data: result, base_url })
     } catch (error) {
         console.log(error)
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
