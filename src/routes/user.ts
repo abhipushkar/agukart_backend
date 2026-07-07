@@ -115,7 +115,7 @@ routes.post('/create-order', createOrder);
 routes.post("/capture-order", captureOrder);
 routes.post('/vendorWiseCheckout', vendorWiseCheckout)
 routes.get('/orderList', orderList)
-routes.get('/getOrderDetail/:orderId', getOrderDetail)
+routes.get('/getOrderDetail/:subOrderId', getOrderDetail)
 routes.get('/searchorder',searchOrder)
 routes.post(
   "/sendRating",

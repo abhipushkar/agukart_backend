@@ -4191,6 +4191,85 @@ export const orderList = async (req: CustomRequest, resp: Response) => {
                 preserveNullAndEmptyArrays: true,
               },
             },
+            {
+              $addFields: {
+                courierNames: {
+                  $setUnion: [
+                    {
+                      $map: {
+                        input: "$shipments",
+                        as: "shipment",
+                        in: {
+                              $toLower: "$$shipment.courierName"
+                            }
+                      }
+                    },
+                    []
+                  ]
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: "deliveryservices",
+                let: {
+                  courierNames: "$courierNames"
+                },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $in: [
+                          { $toLower: "$title" },
+                          "$$courierNames"
+                        ]
+                      }
+                    }
+                  }
+                ],
+                as: "deliveryServices"
+              }
+            },
+            {
+              $addFields: {
+                shipments: {
+                  $map: {
+                    input: "$shipments",
+                    as: "shipment",
+                    in: {
+                      $mergeObjects: [
+                        "$$shipment",
+                        {
+                          deliveryService: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$deliveryServices",
+                                  as: "service",
+                                  cond: {
+                                    $eq: [
+                                      { $toLower: "$$service.title" },
+                                      { $toLower: "$$shipment.courierName" }
+                                    ]
+                                  }
+                                }
+                              },
+                              0
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              $project: {
+                courierNames: 0,
+                deliveryServices: 0
+              }
+            }
           ],
         },
       },
@@ -4282,61 +4361,334 @@ export const orderList = async (req: CustomRequest, resp: Response) => {
   }
 };
 
-export const getOrderDetail = async (req: CustomRequest, resp: Response) => {
+export const getOrderDetail = async ( req: CustomRequest, resp: Response ) => {
   try {
-    const orderId = req.params.orderId;
-    const sales = await Sales.findOne({
-      order_id: orderId,
-      user_id: req.user._id,
-    });
+    const { subOrderId } = req.params;
 
-    if (!sales) {
-      return resp.status(400).json({ message: "Invalid Order Id." });
-    }
-
-    const pipeline: any = [
+    const result = await SalesDetailsModel.aggregate([
       {
         $match: {
-          sale_id: new mongoose.Types.ObjectId(sales._id),
-        },
+          sub_order_id: subOrderId,
+          user_id: new mongoose.Types.ObjectId(req.user._id)
+        }
       },
+
+      {
+        $lookup: {
+          from: "sales",
+          localField: "sale_id",
+          foreignField: "_id",
+          as: "order"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$order",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "vendor_id",
+          foreignField: "_id",
+          as: "vendorUser"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$vendorUser",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "vendordetails",
+          localField: "vendor_id",
+          foreignField: "user_id",
+          as: "vendorDetail"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$vendorDetail",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "ratings",
+          localField: "_id",
+          foreignField: "saledetail_id",
+          as: "rating"
+        }
+      },
+
       {
         $lookup: {
           from: "variants",
           localField: "variant_id",
           foreignField: "_id",
-          as: "variantData",
-        },
+          as: "variantData"
+        }
       },
+
       {
         $lookup: {
           from: "variantattributes",
           localField: "variant_attribute_id",
           foreignField: "_id",
-          as: "variantAttributeData",
-        },
+          as: "variantAttributeData"
+        }
       },
-    ];
+      {
+        $addFields: {
+          courierNames: {
+            $setUnion: [
+              {
+                $map: {
+                  input: "$shipments",
+                  as: "shipment",
+                  in: {
+                    $toLower: "$$shipment.courierName"
+                  }
+                }
+              },
+              []
+            ]
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: "deliveryservices",
+          let: {
+            courierNames: "$courierNames"
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $in: [
+                    { $toLower: "$title" },
+                    "$$courierNames"
+                  ]
+                }
+              }
+            }
+          ],
+          as: "deliveryServices"
+        }
+      },
+      {
+        $addFields: {
+          shipments: {
+            $map: {
+              input: "$shipments",
+              as: "shipment",
+              in: {
+                $mergeObjects: [
+                  "$$shipment",
+                  {
+                    deliveryService: {
+                      $arrayElemAt: [
+                        {
+                          $filter: {
+                            input: "$deliveryServices",
+                            as: "service",
+                            cond: {
+                              $eq: [
+                                { $toLower: "$$service.title" },
+                                { $toLower: "$$shipment.courierName" }
+                              ]
+                            }
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          courierNames: 0,
+          deliveryServices: 0
+        }
+      },
+      {
+        $group: {
+          _id: "$sub_order_id",
 
-    const salesDetails = await SalesDetailsModel.aggregate(pipeline);
+          order: {
+            $first: {
+              _id: "$order._id",
+              order_id: "$order.order_id",
+              name: "$order.name",
+              email: "$order.email",
+              mobile: "$order.mobile",
+              phone_code: "$order.phone_code",
+              country: "$order.country",
+              state: "$order.state",
+              city: "$order.city",
+              address_line1: "$order.address_line1",
+              address_line2: "$order.address_line2",
+              pincode: "$order.pincode",
+              payment_type: "$order.payment_type",
+              payment_status: "$order.payment_status",
+              subtotal: "$order.subtotal",
+              discount: "$order.discount",
+              coupon_discount: "$order.coupon_discount",
+              wallet_used: "$order.wallet_used",
+              promotional_discount: "$order.promotional_discount",
+              shipping: "$order.shipping",
+              net_amount: "$order.net_amount",
+              delivery: "$order.delivery", 
+              buyer_note: "$buyer_note",
+              seller_note: "$seller_note",
+              paid_at: "$order.paid_at",
+              createdAt: "$order.createdAt"
+            }
+          },
 
-    const base_url = process.env.ASSET_URL + "/uploads/product/";
-    const data = {
-      ...sales.toJSON(),
-      sales_details: salesDetails,
-    };
+          vendor: {
+            $first: {
+              _id: "$vendorUser._id",
+              name: "$vendorUser.name",
+              email: "$vendorUser.email",
+              mobile: "$vendorUser.mobile",
+              image: "$vendorUser.image",
+              shop_name: "$vendorDetail.shop_name",
+              slug: "$vendorDetail.slug",
+              shop_icon: "$vendorDetail.shop_icon",
+              shop_banner: "$vendorDetail.shop_banner"
+            }
+          },
 
-    return resp
-      .status(200)
-      .json({ message: "Order details fetched successfully.", data, base_url });
+          totalItems: {
+            $sum: 1
+          },
+
+          totalQty: {
+            $sum: "$qty"
+          },
+
+          totalAmount: {
+            $sum: "$amount"
+          },
+
+          items: {
+            $push: {
+              _id: "$_id",
+              item_id: "$item_id",
+              product_id: "$product_id",
+              productData: "$productData",
+              customizationData: "$customizationData",
+
+              qty: "$qty",
+              amount: "$amount",
+              sub_total: "$sub_total",
+
+              original_price: "$original_price",
+
+              order_status: "$order_status",
+              delivery_status: "$delivery_status",
+              fulfillment_status: "$fulfillment_status",
+              refund_status: "$refund_status",
+              voucherDiscountAmount: "$voucherDiscountAmount",
+
+              isCombination: "$isCombination",
+
+              shipments: "$shipments",
+              deliveryData: "$deliveryData",
+
+              confirmed_date: "$confirmed_date",
+              shipped_date: "$shipped_date",
+              delivered_date: "$delivered_date",
+              cancelled_date: "$cancelled_date",
+              shippingAmount: "$shippingAmount",
+              promotional_discount: "$promotional_discount",
+              suborder_wallet_used: "$suborder_wallet_used",
+              suborder_payable_amount: "$suborder_payable_amount",
+              promotionData: "$promotionData",
+              couponDiscountAmount: "$couponDiscountAmount",
+
+              inventory_status: "$inventory_status",
+              inventory_note: "$inventory_note",
+
+              ratingStatus: "$ratingStatus",
+              refunded_cash_amount: "$refunded_cash_amount",
+              voucher_refunded_amount: "$voucher_refunded_amount",
+              coupon_refunded_amount: "$coupon_refunded_amount",
+              shipping_refunded_amount: "$shipping_refunded_amount",
+
+
+              variants: "$variants",
+
+              variantAttributes: "$variantAttributeData",
+              variantData: "$variantData",
+
+              rating: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: ["$rating", 0]
+                  },
+                  null
+                ]
+              },
+
+              createdAt: "$createdAt"
+            }
+          }
+        }
+      },
+
+      {
+        $project: {
+          _id: 0,
+          sub_order_id: "$_id",
+          order: 1,
+          vendor: 1,
+          totalItems: 1,
+          totalQty: 1,
+          totalAmount: 1,
+          items: 1
+        }
+      }
+    ]);
+
+    if (!result.length) {
+      return resp.status(404).json({
+        success: false,
+        message: "Sub order not found"
+      });
+    }
+
+    return resp.status(200).json({
+      success: true,
+      data: result[0]
+    });
+
   } catch (error: any) {
+    console.error("getOrderDetail Error:", error);
+
     return resp.status(500).json({
-      message: "Something went wrong. Please try again.",
-      error: error.message,
-      data: [],
+      success: false,
+      message: error.message
     });
   }
 };
+
 function escapeRegexChars(searchStr: string) {
   return searchStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }

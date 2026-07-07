@@ -56,7 +56,7 @@ const categorySchema = new Schema(
     status: {
       type: Boolean,
       required: true,
-      default: false
+      default: true
     },
     topRated: {
       type: Boolean,
