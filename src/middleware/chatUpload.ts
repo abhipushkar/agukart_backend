@@ -24,6 +24,7 @@ export const uploadChatFile = multer({
     const allowedMimeTypes = [
       "image/jpeg",
       "image/png",
+      "image/jpg",
       "image/webp",
       "image/gif",
       "video/mp4",
