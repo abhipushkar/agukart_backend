@@ -4,6 +4,8 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 const ejs = require('ejs');
 import path from 'path';
+import sharp from "sharp";
+import fs from "fs";
 import User from '../models/User';
 import Country from '../models/Country';
 import State from '../models/State';
@@ -4976,4 +4978,99 @@ export const getShopDetail = async (req: Request, resp: Response) => {
     return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
   }
 }
+
+export const uploadChatMedia = async (req: Request, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "File required"
+      });
+    }
+
+    const imageCount = files.filter(file => file.mimetype.startsWith("image/")).length;
+    const videoCount = files.filter(file => file.mimetype.startsWith("video/")).length;
+    const pdfCount = files.filter(
+      file =>
+        file.mimetype === "application/pdf" ||
+        file.mimetype === "application/x-pdf"
+    ).length;
+
+    if (imageCount > 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Maximum 10 images allowed"
+      });
+    }
+
+    if (videoCount > 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Only 1 video allowed"
+      });
+    }
+
+    if (pdfCount > 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Only 1 PDF allowed"
+      });
+    }
+
+    const activeTypes = [
+      imageCount > 0,
+      videoCount > 0,
+      pdfCount > 0
+    ].filter(Boolean).length;
+
+    if (activeTypes > 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot upload mixed file types"
+      });
+    }
+
+    const uploadedFiles = [];
+
+    for (const file of files) {
+      let type = "file";
+
+      if (file.mimetype.startsWith("image/")) {
+        type = "image";
+
+        const webpFileName = path.parse(file.filename).name + ".webp";
+        const webpPath = path.join("uploads/chat", webpFileName);
+        const buffer = await fs.promises.readFile(file.path);
+
+        await sharp(buffer).webp({ quality: 80 }).toFile(webpPath);
+
+        await fs.promises.unlink(file.path);
+        uploadedFiles.push({ type, url: `${process.env.ASSET_URL}/uploads/chat/${webpFileName}`, fileName: webpFileName});
+
+      } else {
+        if (file.mimetype.startsWith("video/")) {
+          type = "video";
+        } else if ( file.mimetype === "application/pdf" || file.mimetype === "application/x-pdf" ) {
+          type = "pdf";
+        }
+
+        uploadedFiles.push({ type, url: `${process.env.ASSET_URL}/uploads/chat/${file.filename}`, fileName: file.originalname });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      files: uploadedFiles
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Upload failed"
+    });
+  }
+};
 

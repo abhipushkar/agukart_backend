@@ -65,8 +65,10 @@ import {
     getShopDetail,
     getSimilarProduct,
     getSimilarVendorProduct,
-    getProductReviews
+    getProductReviews,
+    uploadChatMedia
 } from "../controllers/Prelogin";
+import { uploadChatFile } from "../middleware/chatUpload";
 
 interface CustomRequest extends Request {
   type?: "category" | "product" | "store" ;
@@ -198,6 +200,8 @@ routes.post('/increase-vist-count', increaseProductVisitCount);
 routes.post('/increase-gift-card-visit-count', increaseGiftCardVisitCount);
 
 routes.get('/get-shop-detail', getShopDetail);
+
+routes.post("/chat/upload", uploadChatFile, uploadChatMedia);
 
 routes.use('/user',auth, user);
 routes.use('/admin', adminAuth, admin);

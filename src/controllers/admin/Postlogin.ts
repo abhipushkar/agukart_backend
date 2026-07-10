@@ -2223,7 +2223,6 @@ export const variantProductStatus = async (req: CustomRequest, resp: Response) =
 }
 
 export const deleteVariant = async (req: CustomRequest, resp: Response) => {
-
     try {
 
         const id = req.params.id;
