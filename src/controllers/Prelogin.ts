@@ -3774,26 +3774,22 @@ export const getAdminCategoryBySlug = async (req: Request, resp: Response) => {
 export const getVendorDetails = async (req: Request, resp: Response) => {
   try {
     const vendorId = req.body.vendorId;
-    console.log("Vendor ID:", vendorId);
 
     if (!vendorId || vendorId.length === 0) {
       return resp.status(400).json({ message: "Vendor ID is required." });
     }
 
     const vendorData = await User.find({ _id: { $in: vendorId }, designation_id: '3' });
-    console.log("Vendor Data:", vendorData);
 
     if (vendorData.length === 0) {
       return resp.status(404).json({ message: "No vendors found." });
     }
 
     const base_url = process.env.ASSET_URL ? process.env.ASSET_URL + '/uploads/vendor/' : '';
-    console.log("Asset URL:", base_url);
 
     const data = await Promise.all(
       vendorData.map(async (item) => {
         const vendorDetails = await VendorModel.findOne({ user_id: item._id });
-        console.log(`Vendor details for ${item._id}:`, vendorDetails);
 
         return {
           _id: item._id,
@@ -5035,11 +5031,20 @@ export const uploadChatMedia = async (req: Request, res: Response) => {
     const uploadedFiles = [];
 
     for (const file of files) {
+
+      console.log(file.mimetype);
+      console.log(file.originalname);
       let type = "file";
 
-      if (file.mimetype.startsWith("image/")) {
+      if (file.mimetype === "image/webp") {
         type = "image";
-
+        uploadedFiles.push({
+          type,
+          url: `${process.env.ASSET_URL}/uploads/chat/${file.filename}`,
+          fileName: file.filename
+        });
+      } else if (file.mimetype.startsWith("image/")) {
+        type = "image";
         const webpFileName = path.parse(file.filename).name + ".webp";
         const webpPath = path.join("uploads/chat", webpFileName);
         const buffer = await fs.promises.readFile(file.path);
@@ -5047,8 +5052,12 @@ export const uploadChatMedia = async (req: Request, res: Response) => {
         await sharp(buffer).webp({ quality: 80 }).toFile(webpPath);
 
         await fs.promises.unlink(file.path);
-        uploadedFiles.push({ type, url: `${process.env.ASSET_URL}/uploads/chat/${webpFileName}`, fileName: webpFileName});
 
+        uploadedFiles.push({
+          type,
+          url: `${process.env.ASSET_URL}/uploads/chat/${webpFileName}`,
+          fileName: webpFileName
+        });
       } else {
         if (file.mimetype.startsWith("video/")) {
           type = "video";
