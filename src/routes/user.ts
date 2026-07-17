@@ -61,7 +61,8 @@ import {
     getSaveForLater,
     deleteSaveForLater,
     moveToCart,
-    editRating
+    editRating,
+    deleteMessageID
 } from "../controllers/Postlogin";
 
 import multer from 'multer';
@@ -146,6 +147,7 @@ routes.get('/get-follow-vendor', getFollowVendor)
 
 routes.post('/sendMessageID', sendMessageID)
 routes.get('/getMessageId', getMessageId)
+routes.post('/deleteMessageId', deleteMessageID)
 
 routes.post('/purchase-gift-card',purchaseGiftCard)
 routes.post('/resendMailForGiftCardCode',resendMailForGiftCardCode)

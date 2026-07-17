@@ -4959,6 +4959,7 @@ export const getProfile = async (req: CustomRequest, resp: Response) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      customerId: user.id_number,
       email_verified: userEmailData ? userEmailData.status : "Pending",
       phone_code: user.phone_code,
       mobile: user.mobile,
@@ -6988,26 +6989,29 @@ export const getFollowVendor = async (req: CustomRequest, resp: Response) => {
 export const sendMessageID = async (req: CustomRequest, resp: Response) => {
   try {
     const user = req.user._id;
-    const message_id = req.body.message_id;
-    const alreadyExistMessage = await MessageModel.findOne({ user_id: user });
-    const data = {
-      user_id: user,
-      message_id: message_id,
-    };
+    const { message_id } = req.body;
 
-    if (alreadyExistMessage) {
-      await MessageModel.findByIdAndUpdate(alreadyExistMessage._id, data);
-    }
+    const senderMessage = await MessageModel.findOneAndUpdate(
+      { user_id: user },
+      {
+        $addToSet: {
+          message_id: message_id
+        }
+      },
+      {
+        new: true,
+        upsert: true
+      }
+    );
 
-    const senderMessage = await MessageModel.create(data);
-
-    return resp
-      .status(200)
-      .json({ message: "Added successfully.", senderMessage });
+    return resp.status(200).json({
+      message: "Added successfully.",
+      senderMessage
+    });
   } catch (error) {
-    return resp
-      .status(500)
-      .json({ message: "Something went wrong. Please try again." });
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again."
+    });
   }
 };
 
@@ -7029,6 +7033,43 @@ export const getMessageId = async (req: CustomRequest, resp: Response) => {
     return resp
       .status(500)
       .json({ message: "Something went wrong. Please try again." });
+  }
+};
+
+export const deleteMessageID = async (req: CustomRequest, resp: Response) => {
+  try {
+    const user = req.user._id;
+    const { message_ids } = req.body;
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return resp.status(400).json({
+        message: "message_ids array is required."
+      });
+    }
+
+    const senderMessage = await MessageModel.findOneAndUpdate(
+      { user_id: user },
+      {
+        $pull: {
+          message_id: {
+            $in: message_ids
+          }
+        }
+      },
+      {
+        new: true
+      }
+    );
+
+    return resp.status(200).json({
+      message: "Message ids deleted successfully.",
+      senderMessage
+    });
+
+  } catch (error) {
+    return resp.status(500).json({
+      message: "Something went wrong. Please try again."
+    });
   }
 };
 
