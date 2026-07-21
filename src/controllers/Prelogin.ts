@@ -1919,11 +1919,11 @@ export const getProductPromotionData = (
 
     } else if (nextPromotion.promotion_type === "amount") {
 
-      promotionLabel = `Buy items worth $${nextPromotion.offer_amount} from ${shopName} and get ${getDiscountText(nextPromotion)} OFF`;
+      promotionLabel = `Buy items worth $${nextPromotion.offer_amount} from ${shopName || 'this shop'} and get ${getDiscountText(nextPromotion)} OFF`;
 
     } else if (nextPromotion.promotion_type === "qty_total_shop") {
 
-      promotionLabel = `Buy ${nextPromotion.qty} items from ${shopName} and get ${getDiscountText(nextPromotion)} OFF`;
+      promotionLabel = `Buy ${nextPromotion.qty} items from ${shopName || 'this shop'} and get ${getDiscountText(nextPromotion)} OFF`;
 
     }
   }
@@ -4589,7 +4589,7 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
     // --- Fetch products (no change needed in selection) ---
     const rawProducts = await ProductModel.find(query)
       .select(
-        "product_title sale_price isCombination combinationData ratingAvg createdAt image videos zoom product_bedge userReviewCount product_code slug form_values product_variants"
+        "product_title sale_price isCombination combinationData ratingAvg createdAt image edited_image videos zoom product_bedge userReviewCount product_code slug form_values product_variants"
       )
       .sort(sort_by === "newest" ? { createdAt: -1 } : {})
       .skip(skip)
@@ -4600,104 +4600,71 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
 
     const allPromotions = await PromotionalOfferModel.find({
       product_id: { $in: productIds },
-      status: true,
-      expiry_status: "active",
       vendor_id,
-    })
-      .select("product_id qty offer_type discount_amount promotional_title")
-      .lean();
+      status: true,
+    }).select("product_id promotional_title offer_type offer_amount promotion_type discount_amount qty start_date expiry_date status" ).lean();
 
     const promoMap = new Map<string, any[]>();
-    for (const promo of allPromotions) {
-      const k = String(promo.product_id);
-      const list = promoMap.get(k) || [];
-      list.push(promo);
-      promoMap.set(k, list);
-    }
 
-    const calculatePriceAfterDiscount = (
-      offer_type: string,
-      discount_amount: number,
-      price: number
-    ) => {
-      if (!price || !discount_amount) return price;
-      if (offer_type === "percentage") {
-        return Math.max(0, price - (price * discount_amount) / 100);
+    allPromotions.forEach((promo: any) => {
+      const promoProductIds = Array.isArray(promo.product_id)? promo.product_id : [promo.product_id];
+
+      promoProductIds.filter(Boolean).forEach((productId: any) => {
+        const key = productId.toString();
+
+        if (!promoMap.has(key)) {
+          promoMap.set(key, []);
+        }
+
+        promoMap.get(key)!.push(promo);
+      });
+    });
+
+    const enrichedProducts = rawProducts.map((item: any) => {
+      let originalPrice = Number(item.sale_price) || 0;
+
+      if (item.isCombination) {
+        const combinations = item.combinationData?.flatMap((group: any) => group.combinations || [] ) || [];
+
+        const validPrices = combinations.map((combination: any) => Number(combination.price)).filter((price: number) =>
+          Number.isFinite(price) && price > 0
+        );
+
+        if (validPrices.length > 0) {
+          originalPrice = Math.min(...validPrices);
+        }
       }
-      return Math.max(0, price - discount_amount);
-    };
 
-    const enrichedProducts = await Promise.all(
-      rawProducts.map(async (item: any) => {
-        const promotionData =
-          promoMap.get(String(item._id)) ??
-          (await PromotionalOfferModel.find({
-            product_id: item._id,
-            status: true,
-            expiry_status: "active",
-            vendor_id,
-          }).lean());
+      const promotions = promoMap.get(item._id.toString()) || [];
 
-        let finalPrice = +item.sale_price;
-        let originalPrice = +item.sale_price;
+      const promotionResult = getProductPromotionData( promotions, originalPrice, "" );
 
-        let bestPromo: any = null;
-        if (Array.isArray(promotionData) && promotionData.length > 0) {
-          bestPromo = promotionData.reduce((best: any, promo: any) => {
-            if (!Number.isFinite(+promo?.qty)) return best;
-            if (!best || !Number.isFinite(+best?.qty) || +promo.qty < +best.qty) return promo;
-            return best;
-          }, null);
-        }
-
-        if (item?.isCombination) {
-          const merged = item.combinationData?.map((i: any) => i.combinations).flat() || [];
-          const minCombo = merged
-            .map((obj: any) => +obj.price)
-            .filter((n: number) => Number.isFinite(n) && n > 0);
-          originalPrice = minCombo.length ? Math.min(...minCombo) : +item.sale_price;
-          finalPrice = originalPrice;
-
-          if (bestPromo) {
-            finalPrice = calculatePriceAfterDiscount(
-              bestPromo.offer_type,
-              +bestPromo.discount_amount,
-              originalPrice
-            );
-          }
-        } else {
-          if (bestPromo) {
-            finalPrice = calculatePriceAfterDiscount(
-              bestPromo.offer_type,
-              +bestPromo.discount_amount,
-              +item.sale_price
-            );
-          }
-        }
-
-        return {
-          _id: item._id,
-          product_title: item.product_title,
-          product_code: item.product_code,
-          slug: item.slug,
-          ratingAvg: item.ratingAvg || 0,
-          originalPrice,
-          finalPrice,
-          sale_price: item.sale_price,
-          isCombination: item.isCombination,
-          combinationData: item.combinationData || [],
-          productVariants: item.product_variants || [],
-          formValues: item.form_values || [],
-          videos: item.videos || [],
-          image: item.image || [],
-          product_bedge: item.product_bedge || "",
-          userReviewCount: item.userReviewCount || 0,
-          createdAt: item.createdAt,
-          promotionData,
-          zoom: item.zoom,
-        };
-      })
-    );
+      return {
+        _id: item._id,
+        product_title: item.product_title,
+        product_code: item.product_code,
+        slug: item.slug,
+        ratingAvg: item.ratingAvg || 0,
+        originalPrice: promotionResult.originalPrice,
+        finalPrice: promotionResult.finalPrice,
+        currentPromotion: promotionResult.currentPromotion,
+        nextPromotion: promotionResult.nextPromotion,
+        promotionLabel: promotionResult.promotionLabel,
+        promotionData: promotionResult.promotionData,
+        sale_price: item.sale_price,
+        isCombination: item.isCombination,
+        combinationData: item.combinationData || [],
+        productVariants: item.product_variants || [],
+        formValues: item.form_values || [],
+        videos: item.videos || [],
+        image: item.image || [],
+        edited_image: item.edited_image || "",
+        product_bedge: item.product_bedge || "",
+        userReviewCount: item.userReviewCount || 0,
+        createdAt: item.createdAt,
+        zoom: item.zoom,
+      };
+    });
 
     // ---- Relevance scoring (only when search is present) ----
     const searchStr = String(search || "").trim();

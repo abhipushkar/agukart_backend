@@ -62,6 +62,7 @@ import BuyerNoteModel from "../models/BuyerNote";
 import Shipping from "../models/Shipping";
 import SaveForLater from "../models/SaveForLater";
 import { allocateInventory } from "../helpers/inventory";
+import { getProductPromotionData } from "./Prelogin";
 
 interface CustomRequest extends Request {
   user?: any;
@@ -5440,6 +5441,7 @@ export const getWishlist = async (req: CustomRequest, resp: Response) => {
                 sku_code: 1,
                 qty: 1,
                 image: 1,
+                edited_image: 1,
                 combinationData: 1,
                 isCombination: 1,
                 price: 1,
@@ -5533,6 +5535,54 @@ export const getWishlist = async (req: CustomRequest, resp: Response) => {
       },
     ];
     let wishlist = await wishlistModel.aggregate(pipeline);
+
+    const productIds = wishlist.map((item: any) => item.product_id?._id).filter(Boolean);
+    const allPromotions = await PromotionalOfferModel.find({ product_id: { $in: productIds }, status: true}).select(
+      "product_id promotional_title offer_type offer_amount promotion_type discount_amount qty start_date expiry_date status"
+    ).lean();
+
+    const promoMap = new Map<string, any[]>();
+    allPromotions.forEach((promo: any) => {
+      const ids = Array.isArray(promo.product_id) ? promo.product_id : [promo.product_id];
+      ids.forEach((id: any) => {
+        const key = id.toString();
+
+        if (!promoMap.has(key)) {
+          promoMap.set(key, []);
+        }
+        promoMap.get(key)!.push(promo);
+      });
+    });
+
+    wishlist = wishlist.map((item: any) => {
+
+      if (!item.product_id) return item;
+
+      let originalPrice = Number(item.product_id.sale_price) || 0;
+
+      if (item.product_id.isCombination) {
+
+        const combinations = item.product_id.combinationData?.flatMap((g: any) => g.combinations || [] ) || [];
+
+        const prices = combinations.map((c: any) => Number(c.price)).filter((p: number) => Number.isFinite(p) && p > 0);
+
+        if (prices.length) {
+          originalPrice = Math.min(...prices);
+        }
+      }
+
+      const promotions = promoMap.get(item.product_id._id.toString()) || [];
+
+      const promotionResult = getProductPromotionData( promotions, originalPrice, "" );
+
+      item.product_id.originalPrice = promotionResult.originalPrice;
+      item.product_id.finalPrice = promotionResult.finalPrice;
+      item.product_id.currentPromotion = promotionResult.currentPromotion;
+      item.product_id.nextPromotion = promotionResult.nextPromotion;
+      item.product_id.promotionLabel = promotionResult.promotionLabel;
+      item.product_id.promotionData = promotionResult.promotionData;
+      return item;
+});
 
     let base_url = process.env.ASSET_URL + "/uploads/product/";
     return resp
