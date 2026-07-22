@@ -11,6 +11,7 @@ const bootstrap = async (app:any) => {
     // Start Web Server
     await import("./listeners/product.listener");
     await import("./listeners/variantAttribute.listener");
+    await import("./cron/refreshProductDate.cron");
     
     app.listen(port,ip, () => {
       console.log(`Web Server Running on http://${ip}:${port}`);

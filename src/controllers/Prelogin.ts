@@ -649,7 +649,7 @@ export const getCategoryList = async (req: Request, resp: Response) => {
       query.parent_id = null;
     }
 
-    const categories = await Category.find(query);
+    const categories = await Category.find(query).sort({ updatedAt: -1 });
 
     const result = await Promise.all(categories.map(async (item) => {
 
@@ -674,7 +674,7 @@ export const getCategoryList = async (req: Request, resp: Response) => {
       };
     }));
 
-    result.sort((a, b) => a.title.localeCompare(b.title));
+    // result.sort((a, b) => a.title.localeCompare(b.title));
 
     resp.status(200).json({
       message: 'Category List fetched successfully',
@@ -956,6 +956,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       product_bedge: 1,
       userReviewCount: 1,
       createdAt: 1,
+      refresh_date: 1,
       vendor_id: 1,
       zoom: 1,
       product_variants: 1,
@@ -983,6 +984,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     products.sort((a, b) => {
       if (sortBy === "asc") return a.sale_price - b.sale_price;
       if (sortBy === "desc") return b.sale_price - a.sale_price;
+      if (sortBy === "latest") return new Date(b.refresh_date).getTime() - new Date(a.refresh_date).getTime();
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -2036,6 +2038,7 @@ export const getProductList = async (req: Request, resp: Response) => {
         product_title: 1,
         sale_price: 1,
         image: 1,
+        videos: 1,
         edited_image: 1,
         altText: 1,
         product_variants: 1,
@@ -2047,6 +2050,7 @@ export const getProductList = async (req: Request, resp: Response) => {
         createdAt: 1,
         category: 1,
         qty: 1,
+        isCombination: 1,
         combinationData: 1,
         form_values: 1,
         product_bedge: 1,
@@ -2062,6 +2066,8 @@ export const getProductList = async (req: Request, resp: Response) => {
     agg.push({ $sort: { sale_price: -1 } });
   } else if (sortBy === "rating") {
     agg.push({ $sort: { ratingAvg: -1 } });
+  } else if (sortBy === "latest") {
+    agg.push({ $sort: { refresh_date: -1 } });
   } else {
     agg.push({ $sort: { createdAt: -1 } });
   }
@@ -2078,19 +2084,79 @@ export const getProductList = async (req: Request, resp: Response) => {
   const totalCount = filteredData.length;
   const totalPages = Math.ceil(totalCount / limit);
 
+  const productIds = paginatedData.map((p: any) => p._id);
+
+  const vendorIds = Array.from( new Set(paginatedData.map((p: any) => p.vendor_id.toString()))).map((id) => new mongoose.Types.ObjectId(id));
+
+  let enrichedData = paginatedData;
+
+  if (productIds.length) {
+    const promotions = await PromotionalOfferModel.find({
+      product_id: { $in: productIds },
+      vendor_id: { $in: vendorIds },
+      status: true,
+    }).select("product_id promotional_title offer_type offer_amount promotion_type discount_amount qty start_date expiry_date status").lean();
+
+    const promoMap = new Map<string, any[]>();
+
+    promotions.forEach((p: any) => {
+      (p.product_id || []).forEach((pid: any) => {
+        const key = pid.toString();
+
+        if (!promoMap.has(key)) {
+          promoMap.set(key, []);
+        }
+
+        promoMap.get(key)!.push(p);
+      });
+    });
+
+    enrichedData = paginatedData.map((item: any) => {
+      let originalPrice = Number(item.sale_price) || 0;
+
+      if (item.combinationData?.length) {
+        const combos = item.combinationData.flatMap(
+          (c: any) => c.combinations || []
+        );
+
+        const prices = combos.map((c: any) => Number(c.price)).filter((p: number) => Number.isFinite(p) && p > 0);
+
+        if (prices.length) {
+          originalPrice = Math.min(...prices);
+        }
+      }
+
+      const promotionResult = getProductPromotionData(
+        promoMap.get(item._id.toString()) || [],
+        originalPrice,
+        item.shop_name || ""
+      );
+
+      return {
+        ...item,
+        originalPrice: promotionResult.originalPrice,
+        finalPrice: promotionResult.finalPrice,
+        currentPromotion: promotionResult.currentPromotion,
+        nextPromotion: promotionResult.nextPromotion,
+        promotionLabel: promotionResult.promotionLabel,
+        promotionData: promotionResult.promotionData,
+      };
+    });
+  }
+
   const base_url = process.env.ASSET_URL + "/uploads/product/";
   const video_base_url = process.env.ASSET_URL + "/uploads/video/";
 
   return resp.status(200).json({
     message: "All products fetched successfully.",
-    data: paginatedData,
+    data: enrichedData,
     base_url,
     video_base_url,
     pagination: {
       currentPage: page,
       totalPages,
-      totalItems: totalCount
-    }
+      totalItems: totalCount,
+    },
   });
 }
 
@@ -2120,6 +2186,7 @@ export const getProductList = async (req: Request, resp: Response) => {
       product_title: 1,
       sale_price: 1,
       image: 1,
+      videos: 1,
       edited_image: 1,
       altText: 1,
       product_variants: 1,
@@ -2296,6 +2363,7 @@ export const getProductList = async (req: Request, resp: Response) => {
     product_title: 1,
     sale_price: 1,
     image: 1,
+    videos: 1,
     edited_image: 1,
     altText: 1,
     product_variants: 1,
@@ -2311,6 +2379,7 @@ export const getProductList = async (req: Request, resp: Response) => {
     form_values: 1,
     product_bedge: 1,
     shop_name: { $ifNull: ["$vendor.shop_name", ""] },
+    shop_slug: { $ifNull: ["$vendor.slug", ""] },
   }
 });
 
@@ -2319,6 +2388,8 @@ export const getProductList = async (req: Request, resp: Response) => {
       agg.push({ $sort: { sale_price: 1 } });
     } else if (sortBy === "desc") {
       agg.push({ $sort: { sale_price: -1 } });
+    } else if (sortBy === "latest") {
+      agg.push({ $sort: { refresh_date: -1 } });
     } else {
       agg.push({ $sort: { createdAt: -1 } });
     }
@@ -3114,7 +3185,7 @@ export const getSimilarProduct = async (req: Request, resp: Response) => {
       status: true,
       draft_status: false
     })
-      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_code slug')
+      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image edited_image product_bedge userReviewCount createdAt vendor_id zoom product_code slug')
       .limit(6)
       .lean();
 
@@ -3135,35 +3206,23 @@ export const getSimilarProduct = async (req: Request, resp: Response) => {
           expiry_status: { $ne: 'expired' },
         }).lean();
 
-        let finalPrice = +item.sale_price;
         let originalPrice = +item.sale_price;
-
-        let promotion: any = null;
-        if (promotionData.length > 0) {
-          promotion = promotionData.reduce((best: any, promo: any) => {
-            if (!promo?.qty && promo?.qty !== 0) return best;
-            if (!best || (!best?.qty && best?.qty !== 0) || promo.qty < best.qty) {
-              return promo;
-            }
-            return best;
-          }, null);
-        }
 
         if (item.isCombination) {
           const mergedCombinations = item.combinationData?.flatMap((i: any) => i.combinations) || [];
-          const minComboPrice = mergedCombinations
-            .filter((obj: any) => +obj.price > 0)
-            .reduce((min: number, obj: any) => Math.min(min, +obj.price), Infinity);
 
-          originalPrice = minComboPrice === Infinity ? +item.sale_price : minComboPrice;
-          finalPrice = promotion && promotion.qty <= 1
-            ? calculatePriceAfterDiscount(promotion.offer_type, +promotion.discount_amount, originalPrice)
-            : originalPrice;
-        } else {
-          finalPrice = promotion && promotion.qty <= 1
-            ? calculatePriceAfterDiscount(promotion.offer_type, +promotion.discount_amount, +item.sale_price)
-            : +item.sale_price;
+          const minComboPrice = mergedCombinations.filter((obj: any) => +obj.price > 0).reduce((min: number, obj: any) => Math.min(min, +obj.price), Infinity);
+
+          if (minComboPrice !== Infinity) {
+            originalPrice = minComboPrice;
+          }
         }
+
+        const promotionResult = getProductPromotionData(
+          promotionData,
+          originalPrice,
+          vendorMap[item.vendor_id?.toString()] || ""
+        );
 
         return {
           _id: item._id,
@@ -3172,17 +3231,21 @@ export const getSimilarProduct = async (req: Request, resp: Response) => {
           slug: item.slug,
           zoom: item.zoom,
           ratingAvg: item.ratingAvg || 0,
-          originalPrice,
-          finalPrice,
+          originalPrice: promotionResult.originalPrice,
+          finalPrice: promotionResult.finalPrice,
           sale_price: item.sale_price,
           isCombination: item.isCombination,
           combinationData: item.combinationData || [],
           videos: item.videos || [],
           image: item.image || [],
+          edited_image: item.edited_image || '',
           product_bedge: item.product_bedge || '',
           userReviewCount: item.userReviewCount || 0,
           createdAt: item.createdAt,
-          promotionData,
+          currentPromotion: promotionResult.currentPromotion,
+          nextPromotion: promotionResult.nextPromotion,
+          promotionLabel: promotionResult.promotionLabel,
+          promotionData: promotionResult.promotionData,
           vendorDetails: {
             shop_name: vendorMap[item.vendor_id?.toString()] || '',
           },
@@ -3231,7 +3294,7 @@ export const getSimilarVendorProduct = async (req: Request, resp: Response) => {
       status: true,
       draft_status: false,
     })
-      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image product_bedge userReviewCount createdAt vendor_id zoom product_code slug')
+      .select('_id product_title ratingAvg sale_price isCombination combinationData videos image edited_image product_bedge userReviewCount createdAt vendor_id zoom product_code slug')
       .limit(6)
       .lean();
 
@@ -3251,35 +3314,23 @@ export const getSimilarVendorProduct = async (req: Request, resp: Response) => {
           expiry_status: { $ne: 'expired' },
         }).lean();
 
-        let finalPrice = +item.sale_price;
         let originalPrice = +item.sale_price;
-
-        let promotion: any = null;
-        if (promotionData.length > 0) {
-          promotion = promotionData.reduce((best: any, promo: any) => {
-            if (!promo?.qty && promo?.qty !== 0) return best;
-            if (!best || (!best?.qty && best?.qty !== 0) || promo.qty < best.qty) {
-              return promo;
-            }
-            return best;
-          }, null);
-        }
 
         if (item.isCombination) {
           const mergedCombinations = item.combinationData?.flatMap((i: any) => i.combinations) || [];
-          const minComboPrice = mergedCombinations
-            .filter((obj: any) => +obj.price > 0)
-            .reduce((min: number, obj: any) => Math.min(min, +obj.price), Infinity);
 
-          originalPrice = minComboPrice === Infinity ? +item.sale_price : minComboPrice;
-          finalPrice = promotion && promotion.qty <= 1
-            ? calculatePriceAfterDiscount(promotion.offer_type, +promotion.discount_amount, originalPrice)
-            : originalPrice;
-        } else {
-          finalPrice = promotion && promotion.qty <= 1
-            ? calculatePriceAfterDiscount(promotion.offer_type, +promotion.discount_amount, +item.sale_price)
-            : +item.sale_price;
+          const minComboPrice = mergedCombinations.filter((obj: any) => +obj.price > 0).reduce((min: number, obj: any) => Math.min(min, +obj.price), Infinity);
+
+          if (minComboPrice !== Infinity) {
+            originalPrice = minComboPrice;
+          }
         }
+
+        const promotionResult = getProductPromotionData(
+          promotionData,
+          originalPrice,
+          vendorMap[item.vendor_id?.toString()] || ""
+        );
 
         return {
           _id: item._id,
@@ -3287,18 +3338,22 @@ export const getSimilarVendorProduct = async (req: Request, resp: Response) => {
           product_code: item.product_code,
           slug: item.slug,
           ratingAvg: item.ratingAvg || 0,
-          originalPrice,
-          finalPrice,
+          originalPrice: promotionResult.originalPrice,
+          finalPrice: promotionResult.finalPrice,
           zoom: item.zoom,
           sale_price: item.sale_price,
           isCombination: item.isCombination,
           combinationData: item.combinationData || [],
           videos: item.videos || [],
           image: item.image || [],
+          edited_image: item.edited_image || '',
           product_bedge: item.product_bedge || '',
           userReviewCount: item.userReviewCount || 0,
           createdAt: item.createdAt,
-          promotionData,
+          currentPromotion: promotionResult.currentPromotion,
+          nextPromotion: promotionResult.nextPromotion,
+          promotionLabel: promotionResult.promotionLabel,
+          promotionData: promotionResult.promotionData,
           vendorDetails: {
             shop_name: vendorMap[item.vendor_id?.toString()] || '',
           },

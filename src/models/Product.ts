@@ -395,7 +395,12 @@ const productSchema = new Schema(
     },
     deletedVariantIds: [{
       type: String
-    }]
+    }],
+    refresh_date: {
+      type: Date,
+      default: Date.now,
+      index: true
+    }
   },
   {
     timestamps: true,

@@ -83,7 +83,7 @@ export const getAllParentCategory = async (id: any, userId: any) => {
     if (checkUser?.designation_id == '3') {
         query.store_id = userId
     }
-    const category = await Category.find(query);
+    const category = await Category.find(query).sort({ updatedAt: -1 });
 
     for (const data of category) {
 

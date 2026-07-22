@@ -272,7 +272,8 @@ import {
     replyToRating,
     ratingAction,
     addRatingNote,
-    recheckInventory
+    recheckInventory,
+    refreshProducts
 } from "../controllers/admin/Postlogin";
 
 
@@ -411,6 +412,7 @@ routes.post('/upload-product-video', uploadProductVideo);
 routes.get('/get-active-occassion', getAllActiveOccassion);
 routes.post('/add-product-images', uploadImages);
 routes.post('/add-description-images', uploadDescImages);
+routes.post("/product-refresh", refreshProducts);
 routes.get('/get-product', getProductList)
 routes.get('/get-active-brands', getAllActiveBrands)
 routes.post('/change-status-product', productChangeStatus);

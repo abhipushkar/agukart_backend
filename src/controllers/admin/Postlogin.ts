@@ -3834,6 +3834,8 @@ for (const file of productMainImages) {
         data.product_code
       );
 
+      data.refresh_date = new Date();
+
       const product = await Product.create(data);
 
       await PromotionalOfferModel.updateMany(
@@ -4096,6 +4098,53 @@ export const uploadProductVideo = async (req: Request, resp: Response) => {
     });
 };
 
+export const refreshProducts = async (req: Request, resp: Response) => {
+    try {
+        const { productIds } = req.body;
+
+        if (!Array.isArray(productIds) || productIds.length === 0) {
+            return resp.status(400).json({
+                success: false,
+                message: "Please provide productIds."
+            });
+        }
+
+        const validIds = productIds.filter((id: string) => mongoose.Types.ObjectId.isValid(id));
+
+        if (!validIds.length) {
+            return resp.status(400).json({
+                success: false,
+                message: "Invalid product ids."
+            });
+        }
+
+        const result = await Product.updateMany(
+            {
+                _id: { $in: validIds },
+                isDeleted: false
+            },
+            {
+                $set: {
+                    refresh_date: new Date()
+                }
+            }
+        );
+
+        return resp.status(200).json({
+            success: true,
+            message: `${result.modifiedCount} product(s) refreshed successfully.`
+        });
+
+    } catch (err) {
+        console.log(err);
+
+        return resp.status(500).json({
+            success: false,
+            message: "Something went wrong."
+        });
+    }
+};
+
 export const getAllActiveOccassion = async (req: CustomRequest, res: Response) => {
     try {
         const query: any = {
@@ -4292,6 +4341,9 @@ export const getProductList = async (req: CustomRequest, resp: Response) => {
     const designation_id = req.user?.designation_id;
     const user_id = req.user?._id;
     const featured = req.query.featured === "true";
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.max(Number(req.query.limit) || 20, 1);
+    const skip = (page - 1) * limit;
 
     const pipeline: any[] = [];
 
@@ -4407,6 +4459,7 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
           seller_sku: { $first: "$seller_sku" },
           updatedAt: { $first: "$updatedAt" },
           createdAt: { $first: "$createdAt"},
+          refresh_date: { $first: "$refresh_date" },
           description: { $first: "$description" },
           vendor_id: { $first: "$vendor_id" },
           zoom: { $first: "$zoom" },
@@ -5079,6 +5132,7 @@ unionPipeline.push({
     product_bedge: 1,
     updatedAt: 1,
     createdAt: 1,
+    refresh_date: 1,
     isDeleted: 1,
     deletedByAdmin: 1,
     draft_status: 1,
@@ -5163,7 +5217,7 @@ if (req.query.search && String(req.query.search).trim() !== "") {
 
 
 // -------------------- SORT FIX --------------------
-let sortObj: Record<string, number> = { createdAt: -1 };
+let sortObj: Record<string, number> = { refresh_date: -1 };
 
 if (req.query.sort) {
   try {
@@ -5173,7 +5227,7 @@ if (req.query.sort) {
   }
 }
 
-const key = Object.keys(sortObj)[0] || "createdAt";
+const key = Object.keys(sortObj)[0] || "refresh_date";
 const direction = Object.values(sortObj)[0] || -1;
 
 if (["sku_code", "sku"].includes(key)) {
@@ -5211,11 +5265,34 @@ pipeline.push({
   $sort: { sortField: direction },
 });
 
-    const combinedData = await ParentProduct.aggregate(pipeline);
+pipeline.push({
+    $facet: {
+        data: [
+            { $skip: skip },
+            { $limit: limit }
+        ],
+        totalCount: [
+            { $count: "count" }
+        ]
+    }
+});
+
+    const result = await ParentProduct.aggregate(pipeline);
+
+    const combinedData = result[0]?.data || [];
+    const total = result[0]?.totalCount?.[0]?.count || 0;
 
     return resp.status(200).json({
       message: "Product retrieved successfully.",
       data: combinedData,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1
+    }
     });
   } catch (error) {
     console.error(error);
@@ -10350,6 +10427,7 @@ export const getProductBySku = async (req: Request, resp: Response) => {
       vendor_id: product.vendor_id,
       parent_id: product.parent_id,
       price: product.price,
+      form_values: product.form_values,
       sale_price: product.sale_price,
       sale_start_date: product.sale_start_date,
       sale_end_date: product.sale_end_date,

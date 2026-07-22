@@ -2659,6 +2659,7 @@ const couponMap: any = Array.isArray(cartCoupon)
       const buyerNoteMap = new Map<string, string>(
         buyerNotes.map((note) => [note.vendor_id.toString(), note.buyer_note]),
       );
+      const orderedProductIds = new Set<string>();
       const vendorSubOrderMap = new Map<string, string>();
       const vendorWalletSaved = new Set<string>();
       const saleId = sales._id;
@@ -2980,10 +2981,24 @@ const couponMap: any = Array.isArray(cartCoupon)
             //     productData.qty = finalQty;
             // }
             await Salesdetail.create(data);
+            orderedProductIds.add(item.product_id.toString());
            
           }
   
       }
+
+      await Product.updateMany(
+        {
+          _id: {
+            $in: [...orderedProductIds].map(id => new mongoose.Types.ObjectId(id))
+          }
+        },
+        {
+          $set: {
+            refresh_date: new Date()
+          }
+        });
+        
       await Cart.deleteMany({
         user_id: req.user._id,
         ...(isVendorCheckout ? { vendor_id: req.body.vendor_id } : {}),
