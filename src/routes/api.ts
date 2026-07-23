@@ -66,7 +66,8 @@ import {
     getSimilarProduct,
     getSimilarVendorProduct,
     getProductReviews,
-    uploadChatMedia
+    uploadChatMedia,
+    getVendorFollowStatus
 } from "../controllers/Prelogin";
 import { uploadChatFile } from "../middleware/chatUpload";
 
@@ -159,6 +160,7 @@ routes.post('/get-description',validationMiddleware(validateDescription), getDes
 routes.get('/get-category-by-slug/*', getCategoryBySlug);
 routes.get('/get-admin-category-by-slug/*', getAdminCategoryBySlug);
 routes.get('/getVendorDetailsBySlug/:slug', getVendorDetailsBySlug);
+routes.get('/vendor-follow-status/:vendorId', getVendorFollowStatus);
 routes.get('/vendor-reviews/:vendor_id', getParticularVendorReviews);
 routes.get('/getVendorProductsBySlug/:slug', getVendorProductsBySlug);
 routes.get('/getVendorCategoryBySlug/:slug', getVendorCategoryBySlug);

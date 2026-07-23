@@ -5,7 +5,6 @@ const PromotionalOfferSchema = new Schema(
     promotional_title: {
       type: String,
       required: true,
-      unique: true,
     },
     vendor_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -74,6 +73,11 @@ const PromotionalOfferSchema = new Schema(
     timestamps: true,
     versionKey: false,
   }
+);
+
+PromotionalOfferSchema.index(
+  { vendor_id: 1, promotional_title: 1 },
+  { unique: true }
 );
 
 const PromotionalOfferModel = model('PromotionalOffer', PromotionalOfferSchema);

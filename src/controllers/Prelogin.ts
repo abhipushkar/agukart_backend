@@ -3909,19 +3909,21 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
     if (!vendorDetails) {
       return resp.status(500).json({ message: 'Vendor not found.' });
     }
-    const vendor = await User.findOne({ _id: vendorDetails.user_id, designation_id: 3, status: true });
+    const vendor = await User.findOne({ _id: vendorDetails.user_id, designation_id: 3 });
 
     if (!vendor) {
       return resp.status(500).json({ message: 'Vendor not found.' });
     }
 
-    let followStatus = false;
-    if (userId) {
-      const follow = await FollowModel.findOne({ user_id: userId, vendor_id: vendor._id });
-      if (follow) {
-        followStatus = true
-      }
-    }
+    const isDisabled = !vendor.status;
+
+    // let followStatus = false;
+    // if (userId) {
+    //   const follow = await FollowModel.findOne({ user_id: userId, vendor_id: vendor._id });
+    //   if (follow) {
+    //     followStatus = true
+    //   }
+    // }
 
     const base_url = process.env.ASSET_URL + '/uploads/vendor/';
     const base_icon = process.env.ASSET_URL + '/uploads/shop-icon/';
@@ -3955,7 +3957,7 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
       vendor_image: base_url + vendor.image,
       shop_title: vendorDetails.shop_title,
       slug: vendorDetails.slug,
-      followStatus: followStatus,
+      // followStatus: followStatus,
       shop_icon: base_icon + vendorDetails.shop_icon,
       shop_announcement: vendorDetails.shop_announcement,
       buyers_message: vendorDetails.buyers_message,
@@ -3969,12 +3971,15 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
       shop_policy: vendorDetails.shop_policy,
       shop_address: vendorDetails.shop_address,
       vendor_created_at: vendorDetails.createdAt,
+      meta_title: vendorDetails.meta_title,
+      meta_description: vendorDetails.meta_description,
+      meta_keyword: vendorDetails.meta_keywords,
       member_image_url: member_image_url,
       story_description: vendorDetails.story,
       reviews: particularVendorReviews
     }
 
-    return resp.status(200).json({ message: "Vendor details fetched successfully.", data: allData });
+    return resp.status(200).json({ message: "Vendor details fetched successfully.", data: allData, isDisabled });
 
   } catch (err) {
     console.log(err);
@@ -3982,6 +3987,32 @@ export const getVendorDetailsBySlug = async (req: Request, resp: Response) => {
   }
 };
 
+export const getVendorFollowStatus = async (req: Request, resp: Response) => {
+  try {
+    const userId = req.query.userId;
+    const { vendorId } = req.params;
+
+    if (!vendorId || !userId) {
+      return resp.status(400).json({ message: "vendorId and userId are required." });
+    }
+
+    const follow = await FollowModel.findOne({
+      vendor_id: vendorId,
+      user_id: userId,
+      status: true
+    });
+
+    return resp.status(200).json({
+      followStatus: !!follow
+    });
+
+  } catch (err) {
+    console.log(err);
+    return resp.status(500).json({
+      message: "Something went wrong."
+    });
+  }
+};
 
 export const getParticularVendorReviews = async (req: Request, resp: Response) => {
   try {

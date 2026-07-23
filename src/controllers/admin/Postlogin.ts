@@ -9909,7 +9909,10 @@ export const addVendor = async (req: Request, resp: Response) => {
                     shop_photos: req.body.shop_photos,
                     description: req.body.description,
                     shop_policy: req.body.shop_policy,
-                    shop_address: req.body.shop_address
+                    shop_address: req.body.shop_address,
+                    meta_title: req.body.meta_title,
+                    meta_keywords: req.body.meta_keywords,
+                    meta_description: req.body.meta_description
                 }
 
                 await VendorModel.create(additional_info);
@@ -9959,6 +9962,9 @@ export const addVendor = async (req: Request, resp: Response) => {
                 shop_policy: req.body.shop_policy,
                 shop_address: req.body.shop_address,
                 shop_video: req.body.shop_video,
+                meta_title: req.body.meta_title,
+                meta_keywords: req.body.meta_keywords,
+                meta_description: req.body.meta_description
             }
             const query = { user_id: req.body._id };
 
