@@ -273,7 +273,8 @@ import {
     ratingAction,
     addRatingNote,
     recheckInventory,
-    refreshProducts
+    refreshProducts,
+    getSalesCount
 } from "../controllers/admin/Postlogin";
 
 
@@ -441,6 +442,7 @@ routes.get('/edit-variant-product/:id', editVariantProductByID);
 
 // Sales API's
 routes.get('/sales-list/:type', salesList)
+routes.get('/sales-count', getSalesCount)
 routes.post('/update-order-status', updateOrderStatus)
 routes.post('/complete-order', completeOrder)
 routes.patch('/edit-shipment/:sub_order_id/:shipment_id', editShipment)

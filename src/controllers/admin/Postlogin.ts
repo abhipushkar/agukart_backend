@@ -6703,6 +6703,76 @@ export const salesList = async (req: CustomRequest, resp: Response) => {
     }
 };
 
+export const getSalesCount = async (req: Request, resp: Response) => {
+    try {
+        const user = (req as any).user;
+        const match: any = {};
+
+        // Vendor Login
+        if (user?.designation_id === 3) {
+            match.vendor_id = new mongoose.Types.ObjectId(user._id);
+        }
+
+        const [result] = await SalesDetailsModel.aggregate([
+            { $match: match },
+            {
+                $group: {
+                    _id: "$sub_order_id",
+                    order_status: { $first: "$order_status" },
+                    isPinned: { $first: "$isPinned" }
+                }
+            },
+            {
+                $facet: {
+                    new: [
+                        { $match: { order_status: "new" } },
+                        { $count: "count" }
+                    ],
+                    unshipped: [
+                        { $match: { order_status: "unshipped" } },
+                        { $count: "count" }
+                    ],
+                    in_progress: [
+                        { $match: { order_status: "in-progress" } },
+                        { $count: "count" }
+                    ],
+                    completed: [
+                        { $match: { order_status: "completed" } },
+                        { $count: "count" }
+                    ],
+                    cancelled: [
+                        { $match: { order_status: "cancelled" } },
+                        { $count: "count" }
+                    ],
+                    pinned: [
+                        { $match: { isPinned: true } },
+                        { $count: "count" }
+                    ]
+                }
+            }
+        ]);
+
+        return resp.status(200).json({
+            success: true,
+            data: {
+                pending: result?.new?.[0]?.count || 0,
+                unshipped: result?.unshipped?.[0]?.count || 0,
+                in_progress: result?.in_progress?.[0]?.count || 0,
+                completed: result?.completed?.[0]?.count || 0,
+                hold: result?.cancelled?.[0]?.count || 0,
+                pinned: result?.pinned?.[0]?.count || 0
+            }
+        });
+
+    } catch (error) {
+        console.error(error);
+        return resp.status(500).json({
+            success: false,
+            message: "Something went wrong."
+        });
+    }
+};
+
 export const salesDetail = async (req: Request, resp: Response) => {
 
     try {
@@ -11086,10 +11156,7 @@ export const replyToRating = async (req: CustomRequest, resp: Response) => {
   }
 };
 
-export const ratingAction = async (
-  req: CustomRequest,
-  resp: Response
-) => {
+export const ratingAction = async ( req: CustomRequest, resp: Response ) => {
   try {
     const { rating_id, action } = req.body;
 

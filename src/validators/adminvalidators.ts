@@ -13,6 +13,11 @@ export const loginValid = Joi.object({
     password: Joi.string().required(),
 });
 
+export const verifyLoginOtpValid = Joi.object({
+    email: Joi.string().email().required(),
+    otp: Joi.string().length(6).required()
+});
+
 export const categoryValid = Joi.object({
     _id: Joi.string().required(),
     parent_id: objectId.optional().allow(null),

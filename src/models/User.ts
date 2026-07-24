@@ -112,6 +112,14 @@ const userSchema = new Schema(
       type: String,
       default: ''
     },
+    login_otp: {
+    type: String,
+    default: ''
+    },
+    login_otp_expires: {
+      type: Date,
+      default: null
+    },
     resetPasswordToken: String,
     resetPasswordExpires: Date
   },

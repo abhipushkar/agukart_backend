@@ -104,7 +104,9 @@ const finalHandler = (req: CustomRequest, res: Response) => {
 };
 
 import {
-    adminLogin
+    adminLogin,
+    Login,
+    verifyLoginOtp
 } from "../controllers/admin/Prelogin";
 
 import { 
@@ -113,7 +115,7 @@ import {
 
 import validationMiddleware from "../utils/multivalidate";
 import { otpsend, validateSignup, validateState, validateCity, validateInformation, validateDescription } from "../validators/validators";
-import { loginValid } from "../validators/adminvalidators";
+import { loginValid, verifyLoginOtpValid } from "../validators/adminvalidators";
 import adminAuth from "../middleware/adminauth";
 import { resolveSlug } from "../middleware/resolveSlug";
 
@@ -167,6 +169,8 @@ routes.get('/getVendorCategoryBySlug/:slug', getVendorCategoryBySlug);
 
 // Common admin routes
 routes.post('/admin-login', validationMiddleware(loginValid), adminLogin)
+routes.post('/dashboard-login', validationMiddleware(loginValid), Login)
+routes.post('/verify-login-otp', validationMiddleware(verifyLoginOtpValid), verifyLoginOtp);
 routes.post('/admin-send-passaword-reset-link', adminSendPasswordResetEmail)
 routes.post('/admin-reset-password', resetPassword)
 routes.post('/getUserDetails', getUserDetails)
