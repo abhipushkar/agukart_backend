@@ -3276,14 +3276,9 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
         return value || "";
     };
     const cleanTitle = stripHtml(req.body.product_title || "");
-    const isUpdate =
-  req.body._id &&
-  req.body._id !== "new" &&
-  mongoose.Types.ObjectId.isValid(req.body._id);
+    const isUpdate = req.body._id && req.body._id !== "new" && mongoose.Types.ObjectId.isValid(req.body._id);
 
-const existingProducts = isUpdate
-  ? await Product.findById(req.body._id)
-  : null;
+    const existingProducts = isUpdate ? await Product.findById(req.body._id) : null;
 
     const data: any = {
       category: req.body.category,
@@ -3361,7 +3356,7 @@ const existingProducts = isUpdate
 
     if (req.body.description) {
        const decodedDesc = req.body.description;
-    data.meta_description = buildMetaDescription(decodedDesc);
+       data.meta_description = buildMetaDescription(decodedDesc);
     }
     
     if (Array.isArray(req.body.search_terms)) {
@@ -3377,371 +3372,324 @@ const existingProducts = isUpdate
         // data.discount = percentage;
 
         // 🔹 Process customizationData deeply (supports thumbnails, previews, main_images, edit_main_image, edit_preview_image)
-if (data.customizationData?.customizations && Array.isArray(data.customizationData.customizations)) {
-  data.customizationData.customizations = await Promise.all(
-    data.customizationData.customizations.map(async (cust: any, cIdx: number) => {
+    if (data.customizationData?.customizations && Array.isArray(data.customizationData.customizations)) {
+        data.customizationData.customizations = await Promise.all(
+            data.customizationData.customizations.map(async (cust: any, cIdx: number) => {
       
-      // 🔹 Process optionList images
-      if (Array.isArray(cust.optionList)) {
-        cust.optionList = await Promise.all(
-          cust.optionList.map(async (opt: any, oIdx: number) => {
-            const optThumb = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][thumbnail]`);
-            const optPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][preview_image]`);
-            const mainKey = `customizationData[customizations][${cIdx}][optionList][${oIdx}][main_images]`;
-const optMainImages = files.filter(
-  (f) =>
-    f.fieldname === mainKey ||
-    f.fieldname === `${mainKey}[]` ||
-    f.fieldname.startsWith(`${mainKey}[`)
-);
-            const optEditMain = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_main_image]`);
-            const optEditPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_preview_image]`);
+                // 🔹 Process optionList images
+                if (Array.isArray(cust.optionList)) {
+                    cust.optionList = await Promise.all(
+                        cust.optionList.map(async (opt: any, oIdx: number) => {
+                            const optThumb = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][thumbnail]`);
+                            const optPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][preview_image]`);
+                            const mainKey = `customizationData[customizations][${cIdx}][optionList][${oIdx}][main_images]`;
+                            const optMainImages = files.filter((f) =>
+                                f.fieldname === mainKey || f.fieldname === `${mainKey}[]` || f.fieldname.startsWith(`${mainKey}[`)
+                            );
+                            const optEditMain = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_main_image]`);
+                            const optEditPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_preview_image]`);
 
-            // Parse crop data if sent
-            if (opt.edit_main_image_data && typeof opt.edit_main_image_data === "string") {
-              try { opt.edit_main_image_data = JSON.parse(opt.edit_main_image_data); } catch {}
-            }
-            if (opt.edit_preview_image_data && typeof opt.edit_preview_image_data === "string") {
-              try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
-            }
+                            // Parse crop data if sent
+                            if (opt.edit_main_image_data && typeof opt.edit_main_image_data === "string") {
+                                try { opt.edit_main_image_data = JSON.parse(opt.edit_main_image_data); } catch {}
+                            }
+                            if (opt.edit_preview_image_data && typeof opt.edit_preview_image_data === "string") {
+                                try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
+                            }
 
-let oldOpt = null;
+                            let oldOpt = null;
 
-if (isUpdate) {
-  const isVariant =
-    cust.isVariant === true || cust.isVariant === "true";
+                            if (isUpdate) {
+                                const isVariant = cust.isVariant === true || cust.isVariant === "true";
 
-  if (isVariant) {
-    oldOpt =
-      existingProducts?.customizationData?.customizations?.[cIdx]
-        ?.optionList?.[oIdx] || null;
-  } else {
-    oldOpt =
-      existingProducts?.customizationData?.customizations?.[cIdx]
-        ?.optionList?.find(
-          (o: any) =>
-            o.optionName &&
-            opt.optionName &&
-            o.optionName === opt.optionName
-        ) || null;
-  }
-}
+                                if (isVariant) {
+                                    oldOpt = existingProducts?.customizationData?.customizations?.[cIdx] ?.optionList?.[oIdx] || null;
+                                } else {
+                                    oldOpt = existingProducts?.customizationData?.customizations?.[cIdx] ?.optionList?.find(
+                                    (o: any) =>
+                                        o.optionName && opt.optionName && o.optionName === opt.optionName ) || null;
+                                }
+                            }
 
-const oldMainImages = Array.isArray(oldOpt?.main_images) ? oldOpt.main_images : [];
+                            const oldMainImages = Array.isArray(oldOpt?.main_images) ? oldOpt.main_images : [];
 
-// clone
-const mergedMainImages: (string | null)[] = [...oldMainImages];
+                            // clone
+                            const mergedMainImages: (string | null)[] = [...oldMainImages];
 
-let deletedCustomizationImages: any = {};
+                            let deletedCustomizationImages: any = {};
 
-try {
-  deletedCustomizationImages =
-    typeof req.body.deleted_customization_images === "string"
-      ? JSON.parse(req.body.deleted_customization_images)
-      : req.body.deleted_customization_images || {};
-} catch {
-  deletedCustomizationImages = {};
-}
+                            try {
+                                deletedCustomizationImages = typeof req.body.deleted_customization_images === "string" ? JSON.parse(req.body.deleted_customization_images) : req.body.deleted_customization_images || {};
+                            } catch {
+                                deletedCustomizationImages = {};
+                            }
 
-const deleteKey = `${cust.customization_name}__${opt.option_name}`;
-const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
+                            const deleteKey = `${cust.customization_name}__${opt.option_name}`;
+                            const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
 
-deleteIndexes.forEach((idx: number) => {
-  if (Number.isInteger(idx)) {
-    mergedMainImages[idx] = null;
-  }
-});
+                            deleteIndexes.forEach((idx: number) => {
+                                if (Number.isInteger(idx)) {
+                                    mergedMainImages[idx] = null;
+                                }
+                            });
 
-const bodyCustomization = req.body?.customizationData?.customizations?.[cIdx];
-const bodyOption = bodyCustomization?.optionList?.[oIdx];
+                            const bodyCustomization = req.body?.customizationData?.customizations?.[cIdx];
+                            const bodyOption = bodyCustomization?.optionList?.[oIdx];
 
-const bodyMainImages = bodyOption?.main_images || {};
+                            const bodyMainImages = bodyOption?.main_images || {};
 
-Object.keys(bodyMainImages).forEach((key) => {
-  const idx = Number(key);
-  if (Number.isNaN(idx)) return;
+                            Object.keys(bodyMainImages).forEach((key) => {
+                                const idx = Number(key);
+                                if (Number.isNaN(idx)) return;
 
-  if (bodyMainImages[key] === "__DELETE__") {
-    mergedMainImages[idx] = null;
-  }
-});
+                               if (bodyMainImages[key] === "__DELETE__") {
+                                    mergedMainImages[idx] = null;
+                                }
+                            });
 
-// 3️⃣ Apply uploaded files (replace exact index)
-for (const file of optMainImages) {
-  const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
-  if (!match) continue;
+                            // 3️⃣ Apply uploaded files (replace exact index)
+                            for (const file of optMainImages) {
+                                const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
+                                if (!match) continue;
 
-  const index = Number(match[1]);
+                                const index = Number(match[1]);
 
-  const url = await saveProductFile(
-    file,
-    `custom-main-${Date.now()}-${cIdx}-${oIdx}-${index}`
-  );
+                                const url = await saveProductFile( file, `custom-main-${Date.now()}-${cIdx}-${oIdx}-${index}` );
 
-  mergedMainImages[index] = url;
-}
+                                mergedMainImages[index] = url;
+                            }
 
-            return {
-              ...opt,
-              thumbnail: optThumb
-                ? await saveProductFile(optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}`)
-                : normalizeDeletedImage(opt.thumbnail),
-              preview_image: optPreview
-                ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
-                : normalizeDeletedImage(opt.preview_image),
-              main_images: mergedMainImages.length > 0 ? normalizeNullArray(mergedMainImages) : opt.main_images || [],
-              edit_main_image: optEditMain
-                ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
-                : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
-              edit_preview_image: optEditPreview
-                ? await saveProductFile(optEditPreview, `custom-edit-preview-${Date.now()}-${cIdx}-${oIdx}`)
-                : (typeof opt.edit_preview_image === "string" ? opt.edit_preview_image : ""),
-            };
-          })
+                            return {
+                                ...opt,
+                                thumbnail: optThumb ? await saveProductFile(optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}`) : normalizeDeletedImage(opt.thumbnail),
+                                preview_image: optPreview ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`) : normalizeDeletedImage(opt.preview_image),
+                                main_images: mergedMainImages.length > 0 ? normalizeNullArray(mergedMainImages) : opt.main_images || [],
+                                edit_main_image: optEditMain ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`) : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
+                                edit_preview_image: optEditPreview ? await saveProductFile(optEditPreview, `custom-edit-preview-${Date.now()}-${cIdx}-${oIdx}`) : (typeof opt.edit_preview_image === "string" ? opt.edit_preview_image : ""),
+                            };
+                        })
+                    );
+                }
+
+                // 🔹 Handle GUIDE (for each customization)
+                if (cust.guide) {
+                    const guideFile = findFile(`customizationData[customizations][${cIdx}][guide][guide_file]`);
+                    let guide_file = cust.guide.guide_file || "";
+                    let guide_type = cust.guide.guide_type || "";
+
+                    if (guideFile) {
+                        guide_file = await saveProductFile(guideFile, `guide-${Date.now()}-${cIdx}`);
+                        if (guideFile.mimetype.includes("pdf")) {
+                            guide_type = "pdf";
+                        } else if (guideFile.mimetype.includes("image")) {
+                            guide_type = "image";
+                        } else {
+                            guide_type = "document";
+                        }
+                    }
+
+                    cust.guide = {
+                        guide_name: cust.guide.guide_name || "",
+                        guide_description: cust.guide.guide_description || "",
+                        guide_file,
+                        guide_type,
+                    };
+                }
+
+                return cust;
+            })
         );
-      }
-
-      // 🔹 Handle GUIDE (for each customization)
-      if (cust.guide) {
-        const guideFile = findFile(`customizationData[customizations][${cIdx}][guide][guide_file]`);
-        let guide_file = cust.guide.guide_file || "";
-        let guide_type = cust.guide.guide_type || "";
-
-        if (guideFile) {
-          guide_file = await saveProductFile(guideFile, `guide-${Date.now()}-${cIdx}`);
-          if (guideFile.mimetype.includes("pdf")) {
-            guide_type = "pdf";
-          } else if (guideFile.mimetype.includes("image")) {
-            guide_type = "image";
-          } else {
-            guide_type = "document";
-          }
-        }
-
-        cust.guide = {
-          guide_name: cust.guide.guide_name || "",
-          guide_description: cust.guide.guide_description || "",
-          guide_file,
-          guide_type,
-        };
-      }
-
-      return cust;
-    })
-  );
-}
-
-//   PROCESS product_variants
-
-let productVariants = [];
-
-if (req.body.product_variants) {
-  try {
-    productVariants = JSON.parse(req.body.product_variants);
-  } catch {
-    productVariants = req.body.product_variants;
-  }
-}
-
-if (Array.isArray(productVariants)) {
-  productVariants = await Promise.all(
-    productVariants.map(async (pv: any, pvIdx: number) => {
-      
-      // 🔹 Handle GUIDE for product_variants (MISSING PART)
-    if (Array.isArray(pv.guide)) {
-    pv.guide = await Promise.all(
-    pv.guide.map(async (g: any, gIdx: number) => {
-
-      const guideFile = findFile(
-        `product_variants[${pvIdx}][guide][${gIdx}][guide_file]`
-      );
-
-      let guide_file = g.guide_file || "";
-      let guide_type = g.guide_type || "";
-
-      if (guideFile) {
-        guide_file = await saveProductFile(
-          guideFile,
-          `pv-guide-${Date.now()}-${pvIdx}-${gIdx}`
-        );
-
-        if (guideFile.mimetype.includes("pdf")) {
-          guide_type = "pdf";
-        } else if (guideFile.mimetype.includes("image")) {
-          guide_type = "image";
-        }
-      }
-
-      return {
-        guide_name: g.guide_name || "",
-        guide_description: g.guide_description || "",
-        guide_file,
-        guide_type,
-      };
-    }));
     }
 
-      if (!pv.variant_attributes) return pv;
+    //   PROCESS product_variants
 
-      pv.variant_attributes = await Promise.all(
-        pv.variant_attributes.map(async (attr: any, aIdx: number) => {
+    let productVariants = [];
 
-          const thumb = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][thumbnail]`);
-          const preview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][preview_image]`);
-          const mainKey = `product_variants[${pvIdx}][variant_attributes][${aIdx}][main_images]`;
-          const mainImgs = files.filter((f) => f.fieldname === mainKey || f.fieldname === `${mainKey}[]` || f.fieldname.startsWith(`${mainKey}[`));
-          const editMain = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_main_image]`);
-          const editPreview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_preview_image]`);
+    if (req.body.product_variants) {
+        try {
+            productVariants = JSON.parse(req.body.product_variants);
+        } catch {
+            productVariants = req.body.product_variants;
+        }
+    }
 
-          // Parse crop data
-          if (attr.edit_main_image_data && typeof attr.edit_main_image_data === "string") {
-            try { attr.edit_main_image_data = JSON.parse(attr.edit_main_image_data); } catch {}
-          }
-          if (attr.edit_preview_image_data && typeof attr.edit_preview_image_data === "string") {
-            try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
-          }
+    if (Array.isArray(productVariants)) {
+        productVariants = await Promise.all(
+            productVariants.map(async (pv: any, pvIdx: number) => {
+      
+                // 🔹 Handle GUIDE for product_variants (MISSING PART)
+                if (Array.isArray(pv.guide)) {
+                    pv.guide = await Promise.all(
+                        pv.guide.map(async (g: any, gIdx: number) => {
 
-          // 🔹 Normalize old main_images (URLs)
-const oldAttr = isUpdate
-  ? findOldVariantAttribute(
-      existingProducts,
-      pv.variant_name,
-      attr.attribute
-    )
-  : null;
+                            const guideFile = findFile(
+                                `product_variants[${pvIdx}][guide][${gIdx}][guide_file]`
+                            );
 
-const mergedMainImages: (string | null)[] = [
-  ...(oldAttr?.main_images || [])
-];
+                            let guide_file = g.guide_file || "";
+                            let guide_type = g.guide_type || "";
 
-let deletedVariantImages: any = {};
+                            if (guideFile) {
+                                guide_file = await saveProductFile( guideFile, `pv-guide-${Date.now()}-${pvIdx}-${gIdx}` );
 
-try {
-  deletedVariantImages =
-    typeof req.body.deleted_variant_images === "string"
-      ? JSON.parse(req.body.deleted_variant_images)
-      : req.body.deleted_variant_images || {};
-} catch {
-  deletedVariantImages = {};
-}
+                                if (guideFile.mimetype.includes("pdf")) {
+                                    guide_type = "pdf";
+                                } else if (guideFile.mimetype.includes("image")) {
+                                    guide_type = "image";
+                                }
+                            }
 
-const deleteKey = `${pv.variant_name}__${attr.attribute}`;
-const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
+                            return {
+                                guide_name: g.guide_name || "",
+                                guide_description: g.guide_description || "",
+                                guide_file,
+                                guide_type,
+                            };
+                        })
+                    );
+                }
 
-deleteIndexes.forEach((idx: number) => {
-  if (Number.isInteger(idx)) {
-    mergedMainImages[idx] = null;
-  }
-});
+                if (!pv.variant_attributes) return pv;
+
+                pv.variant_attributes = await Promise.all(
+                pv.variant_attributes.map(async (attr: any, aIdx: number) => {
+
+                    const thumb = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][thumbnail]`);
+                    const preview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][preview_image]`);
+                    const mainKey = `product_variants[${pvIdx}][variant_attributes][${aIdx}][main_images]`;
+                    const mainImgs = files.filter((f) => f.fieldname === mainKey || f.fieldname === `${mainKey}[]` || f.fieldname.startsWith(`${mainKey}[`));
+                    const editMain = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_main_image]`);
+                    const editPreview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_preview_image]`);
+
+                    // Parse crop data
+                    if (attr.edit_main_image_data && typeof attr.edit_main_image_data === "string") {
+                        try { attr.edit_main_image_data = JSON.parse(attr.edit_main_image_data); } catch {}
+                    }
+                    if (attr.edit_preview_image_data && typeof attr.edit_preview_image_data === "string") {
+                        try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
+                    }
+
+                    // 🔹 Normalize old main_images (URLs)
+                    const oldAttr = isUpdate ? findOldVariantAttribute( existingProducts, pv.variant_name, attr.attribute ) : null;
+
+                    const mergedMainImages: (string | null)[] = [...(oldAttr?.main_images || [])];
+
+                    let deletedVariantImages: any = {};
+
+                    try {
+                        deletedVariantImages = typeof req.body.deleted_variant_images === "string" ? JSON.parse(req.body.deleted_variant_images) : req.body.deleted_variant_images || {};
+                    } catch {
+                        deletedVariantImages = {};
+                    }
+
+                    const deleteKey = `${pv.variant_name}__${attr.attribute}`;
+                    const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
+
+                    deleteIndexes.forEach((idx: number) => {
+                        if (Number.isInteger(idx)) {
+                            mergedMainImages[idx] = null;
+                        }
+                    });
 
 
-const bodyVariant = req.body?.product_variants?.find(
-  (v: any) => v.variant_name === pv.variant_name
-);
+                    const bodyVariant = req.body?.product_variants?.find(
+                        (v: any) => v.variant_name === pv.variant_name
+                    );
 
-const bodyAttr = bodyVariant?.variant_attributes?.find(
-  (a: any) => a.attribute === attr.attribute
-);
+                    const bodyAttr = bodyVariant?.variant_attributes?.find(
+                        (a: any) => a.attribute === attr.attribute
+                    );
 
-const bodyMainImages = bodyAttr?.main_images || {};
+                    const bodyMainImages = bodyAttr?.main_images || {};
 
 
-Object.keys(bodyMainImages).forEach((key) => {
-  const idx = Number(key);
-  if (Number.isNaN(idx)) return;
+                    Object.keys(bodyMainImages).forEach((key) => {
+                        const idx = Number(key);
+                        if (Number.isNaN(idx)) return;
 
-  if (bodyMainImages[key] === "__DELETE__") {
-    mergedMainImages[idx] = null;
-  }
-});
+                        if (bodyMainImages[key] === "__DELETE__") {
+                            mergedMainImages[idx] = null;
+                        }
+                    });
 
-// 3️⃣ Apply uploaded files (replace)
-for (const file of mainImgs) {
-  const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
-  if (!match) continue;
+                    // 3️⃣ Apply uploaded files (replace)
+                    for (const file of mainImgs) {
+                        const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
+                        if (!match) continue;
 
-  const index = Number(match[1]);
+                        const index = Number(match[1]);
 
-  const uploadedUrl = await saveProductFile(
-    file,
-    `pv-main-${Date.now()}-${aIdx}-${index}`
-  );
+                        const uploadedUrl = await saveProductFile( file, `pv-main-${Date.now()}-${aIdx}-${index}` );
 
-  mergedMainImages[index] = uploadedUrl;
-}
+                        mergedMainImages[index] = uploadedUrl;
+                    }
 
-          return {
-            ...attr,
+                    return {
+                        ...attr,
 
-            thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : normalizeDeletedImage(attr.thumbnail),
-            preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : normalizeDeletedImage(attr.preview_image),
-            main_images: normalizeNullArray(mergedMainImages),
+                        thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : normalizeDeletedImage(attr.thumbnail),
+                        preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : normalizeDeletedImage(attr.preview_image),
+                        main_images: normalizeNullArray(mergedMainImages),
 
-            edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
-            edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
-          };
-        })
-      );
+                        edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
+                        edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
+                    };
+                }));
 
-      return pv;
-    })
-  );
-}
+                return pv;
+            })
+        );
+    }
 
-data.product_variants = productVariants;
+    data.product_variants = productVariants;
 
 
 
     // 🔹 Process nested combinationData images
-if (Array.isArray(data.combinationData)) {
-  data.combinationData = data.combinationData.map((variant: any) => {
-    return {
-      ...variant,
-      combinations: Array.isArray(variant.combinations)
-        ? variant.combinations.map((comb: any) => ({
-            ...comb
-          }))
-        : []
-    };
-  });
-}
+    if (Array.isArray(data.combinationData)) {
+        data.combinationData = data.combinationData.map((variant: any) => {
+            return {
+                ...variant,
+                combinations: Array.isArray(variant.combinations) ? variant.combinations.map((comb: any) => ({
+                    ...comb
+                })) : []
+            };
+        });
+    }
 
     // 🔹 variations_data
     if (req.body.variations_data !== undefined) {
-      let parsed = parseJSON(req.body.variations_data, []);
+        let parsed = parseJSON(req.body.variations_data, []);
 
-      data.variations_data = parsed.map((v: any)=> {
-        if(v.variantId) {
-            return {
-                ...v,
-                type: "global"
-            };
-        } else {
-            return {
-                ...v,
-                type: "custom",
-                customId: v.customId || new mongoose.Types.ObjectId().toString()
-            };
-        }
-      });
+        data.variations_data = parsed.map((v: any)=> {
+            if(v.variantId) {
+                return {
+                    ...v,
+                    type: "global"
+                };
+            } else {
+                return {
+                    ...v,
+                    type: "custom",
+                    customId: v.customId || new mongoose.Types.ObjectId().toString()
+                };
+            }
+        });
     }
     
     // 🔹 tabs
     if (req.body.tabs !== undefined) {
-      data.tabs = parseJSON(req.body.tabs, []);
+        data.tabs = parseJSON(req.body.tabs, []);
     }
 
     // 🔹 remove undefined fields
     Object.keys(data).forEach((k) => {
-      if (data[k] === undefined) delete data[k];
+        if (data[k] === undefined) delete data[k];
     });
 
     // 🔹 Single images
     if (findFile("thumbnail")) {
-      data.thumbnail = await saveProductFile(
-        findFile("thumbnail"),
-        "thumbnail-" + Date.now()
-      );
+      data.thumbnail = await saveProductFile( findFile("thumbnail"), "thumbnail-" + Date.now() );
     } else if (req.body.thumbnail !== undefined) {
       data.thumbnail = req.body.thumbnail;
     }
@@ -3765,41 +3713,33 @@ if (Array.isArray(data.combinationData)) {
     }
 
     // 🔹 Multiple images
-const productMainImages = files.filter(
-  (f) => f.fieldname === "main_images" || f.fieldname.startsWith("main_images[")
-);
+    const productMainImages = files.filter((f) => f.fieldname === "main_images" || f.fieldname.startsWith("main_images["));
 
-const oldProductMainImages =
-  isUpdate
-    ? (existingProducts as any)?.main_images || []
-    : [];
+    const oldProductMainImages = isUpdate ? (existingProducts as any)?.main_images || [] : [];
 
 
-const mergedProductMainImages: (string | null)[] = [...oldProductMainImages];
+    const mergedProductMainImages: (string | null)[] = [...oldProductMainImages];
 
-// deletions from body
-const bodyProductImages = req.body?.main_images || {};
-Object.keys(bodyProductImages).forEach((key) => {
-  const idx = Number(key);
-  if (Number.isNaN(idx)) return;
+    // deletions from body
+    const bodyProductImages = req.body?.main_images || {};
+    Object.keys(bodyProductImages).forEach((key) => {
+        const idx = Number(key);
+        if (Number.isNaN(idx)) return;
 
-if (bodyProductImages[key] === "__DELETE__") {
-  mergedProductMainImages[idx] = null;
-}
-});
+        if (bodyProductImages[key] === "__DELETE__") {
+            mergedProductMainImages[idx] = null;
+        }
+    });
 
-// replacements from files
-for (const file of productMainImages) {
-  const match = file.fieldname.match(/\[(\d+)\]/);
-  const index = match ? Number(match[1]) : mergedProductMainImages.length;
+    // replacements from files
+    for (const file of productMainImages) {
+        const match = file.fieldname.match(/\[(\d+)\]/);
+        const index = match ? Number(match[1]) : mergedProductMainImages.length;
 
-  const url = await saveProductFile(
-    file,
-    `main-${Date.now()}-${index}`
-  );
+        const url = await saveProductFile( file, `main-${Date.now()}-${index}` );
 
-  mergedProductMainImages[index] = url;
-}
+        mergedProductMainImages[index] = url;
+    }
 
     data.main_images = normalizeNullArray(mergedProductMainImages);
 
@@ -3891,85 +3831,78 @@ for (const file of productMainImages) {
       }
 
       // 🔹 Merge customizationData
-if (req.body.customizationData !== undefined) {
-  const newCustomData = data.customizationData || {};
-  const oldCustomData = existingProduct?.customizationData || {};
+      if (req.body.customizationData !== undefined) {
+        const newCustomData = data.customizationData || {};
+        const oldCustomData = existingProduct?.customizationData || {};
 
-  // Preserve previous optionList image URLs if not replaced
-  if (Array.isArray(newCustomData.customizations) && Array.isArray(oldCustomData.customizations)) {
-    newCustomData.customizations = newCustomData.customizations.map((newCust: any, cIdx: number) => {
-      const oldCust = oldCustomData.customizations[cIdx] || {};
-      if (Array.isArray(newCust.optionList) && Array.isArray(oldCust.optionList)) {
-        newCust.optionList = newCust.optionList.map((newOpt: any, oIdx: number) => {
-          const oldOpt = oldCust.optionList[oIdx] || {};
-          return {
-            ...oldOpt,
-            ...newOpt,
-            thumbnail: newOpt.thumbnail !== undefined ? newOpt.thumbnail : oldOpt.thumbnail,
-            preview_image: newOpt.preview_image !== undefined ? newOpt.preview_image : oldOpt.preview_image,
-            main_images: newOpt.main_images !== undefined ? newOpt.main_images : oldOpt.main_images,
-            edit_main_image: newOpt.edit_main_image !== undefined ? newOpt.edit_main_image : oldOpt.edit_main_image,
-            edit_preview_image: newOpt.edit_preview_image !== undefined ? newOpt.edit_preview_image : oldOpt.edit_preview_image,
-          };
-        });
+        // Preserve previous optionList image URLs if not replaced
+        if (Array.isArray(newCustomData.customizations) && Array.isArray(oldCustomData.customizations)) {
+            newCustomData.customizations = newCustomData.customizations.map((newCust: any, cIdx: number) => {
+                const oldCust = oldCustomData.customizations[cIdx] || {};
+                if (Array.isArray(newCust.optionList) && Array.isArray(oldCust.optionList)) {
+                    newCust.optionList = newCust.optionList.map((newOpt: any, oIdx: number) => {
+                        const oldOpt = oldCust.optionList[oIdx] || {};
+                        return {
+                            ...oldOpt,
+                            ...newOpt,
+                            thumbnail: newOpt.thumbnail !== undefined ? newOpt.thumbnail : oldOpt.thumbnail,
+                            preview_image: newOpt.preview_image !== undefined ? newOpt.preview_image : oldOpt.preview_image,
+                            main_images: newOpt.main_images !== undefined ? newOpt.main_images : oldOpt.main_images,
+                            edit_main_image: newOpt.edit_main_image !== undefined ? newOpt.edit_main_image : oldOpt.edit_main_image,
+                            edit_preview_image: newOpt.edit_preview_image !== undefined ? newOpt.edit_preview_image : oldOpt.edit_preview_image,
+                        };
+                    });
+                }
+                // Preserve old guide if not replaced
+                if (newCust.guide && oldCust.guide) {
+                    newCust.guide = {
+                        ...oldCust.guide,
+                        ...newCust.guide,
+                        guide_file: newCust.guide.guide_file ?? oldCust.guide.guide_file,
+                        guide_type: newCust.guide.guide_type ?? oldCust.guide.guide_type,
+                    };
+                }
+
+                return newCust;
+            });
+        }
+
+        data.customizationData = newCustomData;
       }
-      // Preserve old guide if not replaced
-if (newCust.guide && oldCust.guide) {
-  newCust.guide = {
-    ...oldCust.guide,
-    ...newCust.guide,
-    guide_file: newCust.guide.guide_file ?? oldCust.guide.guide_file,
-    guide_type: newCust.guide.guide_type ?? oldCust.guide.guide_type,
-  };
-}
-
-      return newCust;
-    });
-  }
-
-  data.customizationData = newCustomData;
-}
 
 
       // 🔹 Merge combinationData
       if (req.body.combinationData !== undefined) {
       const newCombinationData = data.combinationData || [];
 
-      if (
-      existingProduct &&
-      Array.isArray(existingProduct.combinationData) &&
-      existingProduct.combinationData.length > 0
-      ) {
-      data.combinationData = newCombinationData.map((newComb: any, idx: number) => {
-      const oldComb = existingProduct.combinationData[idx] || {};
-      return {
-        ...oldComb,
-        ...newComb,
-        combinations: Array.isArray(newComb.combinations)
-          ? newComb.combinations.map((newSub: any, subIdx: number) => {
-              const oldSub =
-                (oldComb.combinations && oldComb.combinations[subIdx]) || {};
-              return {
-                ...oldSub,
-                ...newSub,
-                thumbnail: newSub.thumbnail ?? oldSub.thumbnail,
-                preview_image: newSub.preview_image ?? oldSub.preview_image,
-                main_images: newSub.main_images ?? oldSub.main_images,
-                edit_main_image: newSub.edit_main_image ?? oldSub.edit_main_image,
-                edit_preview_image:
-                  newSub.edit_preview_image ?? oldSub.edit_preview_image,
-              };
-            })
-          : oldComb.combinations || [],
-        };
-       });
+      if ( existingProduct && Array.isArray(existingProduct.combinationData) && existingProduct.combinationData.length > 0 ) {
+        data.combinationData = newCombinationData.map((newComb: any, idx: number) => {
+            const oldComb = existingProduct.combinationData[idx] || {};
+            return {
+                ...oldComb,
+                ...newComb,
+                combinations: Array.isArray(newComb.combinations) ? newComb.combinations.map((newSub: any, subIdx: number) => {
+                    const oldSub = (oldComb.combinations && oldComb.combinations[subIdx]) || {};
+                    return {
+                        ...oldSub,
+                        ...newSub,
+                        thumbnail: newSub.thumbnail ?? oldSub.thumbnail,
+                        preview_image: newSub.preview_image ?? oldSub.preview_image,
+                        main_images: newSub.main_images ?? oldSub.main_images,
+                        edit_main_image: newSub.edit_main_image ?? oldSub.edit_main_image,
+                        edit_preview_image:
+                        newSub.edit_preview_image ?? oldSub.edit_preview_image,
+                    };
+                }): oldComb.combinations || [],
+            };
+        });
       } else {
-       data.combinationData = newCombinationData;
-    }
-    }
+        data.combinationData = newCombinationData;
+      }
+      }
 
       // 🔹 Merge variations_data
-     if (req.body.variations_data !== undefined) {
+      if (req.body.variations_data !== undefined) {
         let parsed = parseJSON(req.body.variations_data, []);
 
         data.variations_data = parsed.map((v: any)=> {
@@ -3986,7 +3919,7 @@ if (newCust.guide && oldCust.guide) {
                 };
             }
         });
-    }
+      }
 
 
       // 🔹 Tabs
@@ -4022,10 +3955,10 @@ if (newCust.guide && oldCust.guide) {
             }
         },
         { upsert: true }
-    );
+        );
 
        data.slug = newSlug;
-    }
+      }
 
       await Product.updateOne({ _id: req.body._id }, { $set: {...data, combinationData: data.combinationData, product_variants: data.product_variants },});
       if ( existingProduct.parent_id && oldSku && newSku && oldSku !== newSku) {
@@ -14987,6 +14920,11 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
     const cleanTitle = stripHtml(req.body.product_title || "");
     const isUpdate = req.body._id && req.body._id !== "new" && mongoose.Types.ObjectId.isValid(req.body._id);
     const existingProduct = isUpdate ? await Product.findById(req.body._id) : null
+    const normalizeNullArray = (arr: any[]) => arr.map(v => (v === "null" ? null : v));
+    const normalizeDeletedImage = (value: any) => {
+        if (value === "__DELETE__") return null;
+        return value || "";
+    };
 
     const parseJSON = (val: any, fallback: any) => {
       try {
@@ -15017,7 +14955,7 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
       launch_date: req.body.launch_date,
       release_date: req.body.release_date,
       vendor_id: req.body.vendor_id,
-      brand_id: req.body.brand_id,
+      brand_id: sanitizeObjectId(req.body.brand_id),
       sku_code: req.body.sku_code,
       tax_code: req.body.tax_code,
       shipping_templates: req.body.shipping_templates,
@@ -15057,6 +14995,7 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
       design: req.body.design,
       material: req.body.material,
       product_size: req.body.product_size,
+      altText: Array.isArray(req.body.altText) ? req.body.altText.filter(Boolean) : [],
       isCombination:
         req.body.isCombination === "true" || req.body.isCombination === true,
       combinationData: parseJSON(req.body.combinationData, []),
@@ -15077,317 +15016,309 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
     if (Array.isArray(req.body.search_terms)) {
        data.meta_keywords = req.body.search_terms.map((k: string) => k.trim()).filter(Boolean);
     }
-
-    let parsedVariations = parseJSON(req.body.variations_data, []);
-    data.variations_data = parsedVariations.map((v: any) => {
-    if (v.variantId) {
-    return { ...v, type: "global" };
-    } else {
-    return {
-      ...v,
-      type: "custom",
-      customId: v.customId || new mongoose.Types.ObjectId().toString()
-    };
-   }
-  });
     
-  // 🔹 Process customizationData deeply (supports thumbnails, previews, main_images, edit_main_image, edit_preview_image)
-if (data.customizationData?.customizations && Array.isArray(data.customizationData.customizations)) {
-  data.customizationData.customizations = await Promise.all(
-    data.customizationData.customizations.map(async (cust: any, cIdx: number) => {
-      if (Array.isArray(cust.optionList)) {
-        cust.optionList = await Promise.all(
-          cust.optionList.map(async (opt: any, oIdx: number) => {
-            // 🔍 Find possible uploaded files
-            const optThumb = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][thumbnail]`);
-            const optPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][preview_image]`);
-            const mainKey = `customizationData[customizations][${cIdx}][optionList][${oIdx}][main_images]`;
-            const optMainImages = files.filter(f =>
-            f.fieldname === mainKey ||
-            f.fieldname === `${mainKey}[]` ||
-            f.fieldname.startsWith(`${mainKey}[`)
-            );
-            const optEditMain = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_main_image]`);
-            const optEditPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_preview_image]`);
+    // 🔹 Process customizationData deeply (supports thumbnails, previews, main_images, edit_main_image, edit_preview_image)
+    if (data.customizationData?.customizations && Array.isArray(data.customizationData.customizations)) {
+        data.customizationData.customizations = await Promise.all(
+            data.customizationData.customizations.map(async (cust: any, cIdx: number) => {
+                if (Array.isArray(cust.optionList)) {
+                    cust.optionList = await Promise.all(
+                        cust.optionList.map(async (opt: any, oIdx: number) => {
+                            // 🔍 Find possible uploaded files
+                            const optThumb = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][thumbnail]`);
+                            const optPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][preview_image]`);
+                            const mainKey = `customizationData[customizations][${cIdx}][optionList][${oIdx}][main_images]`;
+                            const optMainImages = files.filter(f =>
+                                f.fieldname === mainKey || f.fieldname === `${mainKey}[]` || f.fieldname.startsWith(`${mainKey}[`)
+                            );
+                            const optEditMain = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_main_image]`);
+                            const optEditPreview = findFile(`customizationData[customizations][${cIdx}][optionList][${oIdx}][edit_preview_image]`);
 
-            // 🔹 Parse crop data JSONs if sent
-            if (opt.edit_main_image_data && typeof opt.edit_main_image_data === "string") {
-              try { opt.edit_main_image_data = JSON.parse(opt.edit_main_image_data); } catch {}
-            }
-            if (opt.edit_preview_image_data && typeof opt.edit_preview_image_data === "string") {
-              try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
-            }
+                            // 🔹 Parse crop data JSONs if sent
+                            if (opt.edit_main_image_data && typeof opt.edit_main_image_data === "string") {
+                                try { opt.edit_main_image_data = JSON.parse(opt.edit_main_image_data); } catch {}
+                            }
+                            if (opt.edit_preview_image_data && typeof opt.edit_preview_image_data === "string") {
+                                try { opt.edit_preview_image_data = JSON.parse(opt.edit_preview_image_data); } catch {}
+                            }
 
-            const oldOpt = isUpdate ? findOldCustomizationOption( existingProduct, cust.customization_name, opt.option_name ) : null;
-            const oldMainImages = oldOpt?.main_images || [];
+                            let oldOpt = null;
 
-            const mergedMainImages: (string | null)[] = [...oldMainImages];
+                            if (isUpdate) {
+                                const isVariant = cust.isVariant === true || cust.isVariant === "true";
 
-let deletedCustomizationImages: any = {};
-try {
-  deletedCustomizationImages =
-    typeof req.body.deleted_customization_images === "string"
-      ? JSON.parse(req.body.deleted_customization_images)
-      : req.body.deleted_customization_images || {};
-} catch {}
+                                if (isVariant) {
+                                    oldOpt = existingProduct?.customizationData?.customizations?.[cIdx]?.optionList?.[oIdx] || null;
+                                } else {
+                                    oldOpt = existingProduct?.customizationData?.customizations?.[cIdx]?.optionList?.find((o: any) =>
+                                    o.optionName && opt.optionName && o.optionName === opt.optionName ) || null;
+                                }
+                            }
+                            const oldMainImages = oldOpt?.main_images || [];
 
-const deleteKey = `${cust.customization_name}__${opt.option_name}`;
-const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
+                            const mergedMainImages: (string | null)[] = [...oldMainImages];
 
-deleteIndexes.forEach(idx => {
-  if (Number.isInteger(idx)) mergedMainImages[idx] = null;
-});
+                            let deletedCustomizationImages: any = {};
+                            try {
+                                deletedCustomizationImages = typeof req.body.deleted_customization_images === "string" ? JSON.parse(req.body.deleted_customization_images) : req.body.deleted_customization_images || {};
+                            } catch {}
 
-for (const file of optMainImages) {
-  const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
-  if (!match) continue;
+                            const deleteKey = `${cust.customization_name}__${opt.option_name}`;
+                            const deleteIndexes: number[] = deletedCustomizationImages?.[deleteKey] || [];
 
-  const index = Number(match[1]);
-  const url = await saveProductFile(
-    file,
-    `custom-main-${Date.now()}-${cIdx}-${oIdx}-${index}`
-  );
+                            deleteIndexes.forEach(idx => {
+                                if (Number.isInteger(idx)) mergedMainImages[idx] = null;
+                            });
 
-  mergedMainImages[index] = url;
-}
+                            const bodyCustomization = req.body?.customizationData?.customizations?.[cIdx];
+                            const bodyOption = bodyCustomization?.optionList?.[oIdx];
+                            const bodyMainImages = bodyOption?.main_images || {};
 
-            // 🔹 Save uploaded files
-            const processedOpt = {
-              ...opt,
-              thumbnail: optThumb
-                ? await saveProductFile(optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}`)
-                : opt.thumbnail || "",
-              preview_image: optPreview
-                ? await saveProductFile(optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}`)
-                : opt.preview_image || "",
-              main_images: mergedMainImages.filter(Boolean),
-              edit_main_image: optEditMain
-                ? await saveProductFile(optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}`)
-                : (typeof opt.edit_main_image === "string" ? opt.edit_main_image : ""),
-              edit_preview_image: optEditPreview
-                ? await saveProductFile(optEditPreview, `custom-edit-preview-${Date.now()}-${cIdx}-${oIdx}`)
-                : (typeof opt.edit_preview_image === "string" ? opt.edit_preview_image : "")
-            };
+                            Object.keys(bodyMainImages).forEach((key) => {
+                                const idx = Number(key);
 
-            return processedOpt;
-          })
+                                if (Number.isNaN(idx)) return;
+
+                                if (bodyMainImages[key] === "__DELETE__") {
+                                    mergedMainImages[idx] = null;
+                                }
+                            });
+
+                            for (const file of optMainImages) {
+                                const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
+
+                                if (!match) continue;
+
+                                const index = Number(match[1]);
+
+                                const url = await saveProductFile( file, `custom-main-${Date.now()}-${cIdx}-${oIdx}-${index}`);
+
+                                mergedMainImages[index] = url;
+                            }
+
+                            // 🔹 Save uploaded files
+                            const processedOpt = {
+                                ...opt,
+
+                                thumbnail: optThumb ? await saveProductFile( optThumb, `custom-thumb-${Date.now()}-${cIdx}-${oIdx}` ) : normalizeDeletedImage(opt.thumbnail),
+
+                                preview_image: optPreview ? await saveProductFile( optPreview, `custom-preview-${Date.now()}-${cIdx}-${oIdx}` ) : normalizeDeletedImage(opt.preview_image),
+
+                                main_images: mergedMainImages.length > 0 ? normalizeNullArray(mergedMainImages) : opt.main_images || [],
+
+                                edit_main_image: optEditMain ? await saveProductFile( optEditMain, `custom-edit-main-${Date.now()}-${cIdx}-${oIdx}` ) : typeof opt.edit_main_image === "string" ? opt.edit_main_image : "",
+
+                                edit_preview_image: optEditPreview ? await saveProductFile( optEditPreview,`custom-edit-preview-${Date.now()}-${cIdx}-${oIdx}`) : typeof opt.edit_preview_image === "string" ? opt.edit_preview_image : "",
+                            };
+
+                            return processedOpt;
+                        })
+                    );
+                }
+                if (cust.guide) {
+                    const guideFile = findFile(`customizationData[customizations][${cIdx}][guide][guide_file]`);
+                    let guide_file = cust.guide.guide_file || "";
+                    let guide_type = cust.guide.guide_type || "";
+
+                    if (guideFile) {
+                        guide_file = await saveProductFile(guideFile, `guide-${Date.now()}-${cIdx}`);
+                        if (guideFile.mimetype.includes("pdf")) {
+                            guide_type = "pdf";
+                        } else if (guideFile.mimetype.includes("image")) {
+                            guide_type = "image";
+                        } else {
+                            guide_type = "document";
+                        }
+                    }
+
+                    cust.guide = {
+                        guide_name: cust.guide.guide_name || "",
+                        guide_description: cust.guide.guide_description || "",
+                        guide_file,
+                        guide_type,
+                    };
+                }
+                return cust;
+            })
         );
-      }
-            if (cust.guide) {
-        const guideFile = findFile(`customizationData[customizations][${cIdx}][guide][guide_file]`);
-        let guide_file = cust.guide.guide_file || "";
-        let guide_type = cust.guide.guide_type || "";
-
-        if (guideFile) {
-          guide_file = await saveProductFile(guideFile, `guide-${Date.now()}-${cIdx}`);
-          if (guideFile.mimetype.includes("pdf")) {
-            guide_type = "pdf";
-          } else if (guideFile.mimetype.includes("image")) {
-            guide_type = "image";
-          } else {
-            guide_type = "document";
-          }
-        }
-
-        cust.guide = {
-          guide_name: cust.guide.guide_name || "",
-          guide_description: cust.guide.guide_description || "",
-          guide_file,
-          guide_type,
-        };
-      }
-      return cust;
-    })
-  );
-}
-
-let productVariants = [];
-
-if (req.body.product_variants) {
-  try {
-    productVariants = JSON.parse(req.body.product_variants);
-  } catch {
-    productVariants = req.body.product_variants;
-  }
-}
-
-if (Array.isArray(productVariants)) {
-  productVariants = await Promise.all(
-    productVariants.map(async (pv: any, pvIdx: number) => {
-    if (Array.isArray(pv.guide)) {
-    pv.guide = await Promise.all(
-    pv.guide.map(async (g: any, gIdx: number) => {
-
-      const guideFile = findFile(
-        `product_variants[${pvIdx}][guide][${gIdx}][guide_file]`
-      );
-
-      let guide_file = g.guide_file || "";
-      let guide_type = g.guide_type || "";
-
-      if (guideFile) {
-        guide_file = await saveProductFile(
-          guideFile,
-          `pv-guide-${Date.now()}-${pvIdx}-${gIdx}`
-        );
-
-        if (guideFile.mimetype.includes("pdf")) {
-          guide_type = "pdf";
-        } else if (guideFile.mimetype.includes("image")) {
-          guide_type = "image";
-        }
-      }
-
-      return {
-        guide_name: g.guide_name || "",
-        guide_description: g.guide_description || "",
-        guide_file,
-        guide_type,
-      };
-    }));
     }
 
-      if (!pv.variant_attributes) return pv;
+    let productVariants = [];
 
-      pv.variant_attributes = await Promise.all(
-        pv.variant_attributes.map(async (attr: any, aIdx: number) => {
-          const mainKey = `product_variants[${pvIdx}][variant_attributes][${aIdx}][main_images]`;
-          const mainImgs = files.filter(
-            f =>
-              f.fieldname === mainKey ||
-              f.fieldname === `${mainKey}[]` ||
-              f.fieldname.startsWith(`${mainKey}[`)
-          );
+    if (req.body.product_variants) {
+        try {
+            productVariants = JSON.parse(req.body.product_variants);
+        } catch {
+            productVariants = req.body.product_variants;
+        }
+    }
 
-          const oldAttr = isUpdate ? findOldVariantAttribute( existingProduct, pv.variant_name, attr.attribute) : null;
+    if (Array.isArray(productVariants)) {
+        productVariants = await Promise.all(
+            productVariants.map(async (pv: any, pvIdx: number) => {
+                if (Array.isArray(pv.guide)) {
+                    pv.guide = await Promise.all(
+                        pv.guide.map(async (g: any, gIdx: number) => {
 
-          const oldMainImages = oldAttr?.main_images || [];
-          const mergedMainImages: (string | null)[] = [...oldMainImages];
+                            const guideFile = findFile(`product_variants[${pvIdx}][guide][${gIdx}][guide_file]` );
 
-          let deletedVariantImages: any = {};
-          try {
-            deletedVariantImages =
-              typeof req.body.deleted_variant_images === "string"
-                ? JSON.parse(req.body.deleted_variant_images)
-                : req.body.deleted_variant_images || {};
-          } catch {}
+                            let guide_file = g.guide_file || "";
+                            let guide_type = g.guide_type || "";
 
-          const deleteKey = `${pv.variant_name}__${attr.attribute}`;
-          const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
+                            if (guideFile) {
+                                guide_file = await saveProductFile( guideFile, `pv-guide-${Date.now()}-${pvIdx}-${gIdx}` );
 
-          deleteIndexes.forEach(idx => {
-            if (Number.isInteger(idx)) mergedMainImages[idx] = null;
-          });
+                                if (guideFile.mimetype.includes("pdf")) {
+                                    guide_type = "pdf";
+                                } else if (guideFile.mimetype.includes("image")) {
+                                    guide_type = "image";
+                                }
+                            }
 
-          for (const file of mainImgs) {
-            const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
-            if (!match) continue;
+                            return {
+                                guide_name: g.guide_name || "",
+                                guide_description: g.guide_description || "",
+                                guide_file,
+                                guide_type,
+                            };
+                        })
+                    );
+                }
 
-            const index = Number(match[1]);
-            const url = await saveProductFile(
-              file,
-              `pv-main-${Date.now()}-${aIdx}-${index}`
-            );
+                if (!pv.variant_attributes) return pv;
 
-            mergedMainImages[index] = url;
-          }
+                pv.variant_attributes = await Promise.all(
+                    pv.variant_attributes.map(async (attr: any, aIdx: number) => {
 
-          return {
-            ...attr,
-            main_images: mergedMainImages.filter(Boolean),
-          };
-        })
-      );
+                        const thumb = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][thumbnail]`);
+                        const preview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][preview_image]`);
+                        const mainKey = `product_variants[${pvIdx}][variant_attributes][${aIdx}][main_images]`;
+                        const mainImgs = files.filter((f) => f.fieldname === mainKey || f.fieldname === `${mainKey}[]` || f.fieldname.startsWith(`${mainKey}[`));
+                        const editMain = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_main_image]`);
+                        const editPreview = findFile(`product_variants[${pvIdx}][variant_attributes][${aIdx}][edit_preview_image]`);
 
-      return pv;
-    })
-  );
-}
+                        // Parse crop data
+                        if (attr.edit_main_image_data && typeof attr.edit_main_image_data === "string") {
+                            try { attr.edit_main_image_data = JSON.parse(attr.edit_main_image_data); } catch {}
+                        }
+                        if (attr.edit_preview_image_data && typeof attr.edit_preview_image_data === "string") {
+                            try { attr.edit_preview_image_data = JSON.parse(attr.edit_preview_image_data); } catch {}
+                        }
 
-data.product_variants = productVariants;
+                        // 🔹 Normalize old main_images (URLs)
+                        const oldAttr = isUpdate ? findOldVariantAttribute( existingProduct, pv.variant_name, attr.attribute ) : null;
+
+                        const mergedMainImages: (string | null)[] = [...(oldAttr?.main_images || [])];
+
+                        let deletedVariantImages: any = {};
+
+                        try {
+                            deletedVariantImages = typeof req.body.deleted_variant_images === "string" ? JSON.parse(req.body.deleted_variant_images) : req.body.deleted_variant_images || {};
+                        } catch {
+                            deletedVariantImages = {};
+                        }
+
+                        const deleteKey = `${pv.variant_name}__${attr.attribute}`;
+                        const deleteIndexes: number[] = deletedVariantImages?.[deleteKey] || [];
+
+                        deleteIndexes.forEach((idx: number) => {
+                            if (Number.isInteger(idx)) {
+                                mergedMainImages[idx] = null;
+                            }
+                        });
+
+
+                        const bodyVariant = req.body?.product_variants?.find(
+                            (v: any) => v.variant_name === pv.variant_name
+                        );
+
+                        const bodyAttr = bodyVariant?.variant_attributes?.find(
+                            (a: any) => a.attribute === attr.attribute
+                        );
+
+                        const bodyMainImages = bodyAttr?.main_images || {};
+
+
+                        Object.keys(bodyMainImages).forEach((key) => {
+                            const idx = Number(key);
+                            if (Number.isNaN(idx)) return;
+
+                            if (bodyMainImages[key] === "__DELETE__") {
+                                mergedMainImages[idx] = null;
+                            }
+                        });
+
+                        // 3️⃣ Apply uploaded files (replace)
+                        for (const file of mainImgs) {
+                            const match = file.fieldname.match(/\[main_images\]\[(\d+)\]/);
+                            if (!match) continue;
+
+                            const index = Number(match[1]);
+
+                            const uploadedUrl = await saveProductFile( file, `pv-main-${Date.now()}-${aIdx}-${index}` );
+
+                            mergedMainImages[index] = uploadedUrl;
+                        }
+
+                        return {
+                            ...attr,
+
+                            thumbnail: thumb ? await saveProductFile(thumb, `pv-thumb-${Date.now()}`) : normalizeDeletedImage(attr.thumbnail),
+                            preview_image: preview ? await saveProductFile(preview, `pv-preview-${Date.now()}`) : normalizeDeletedImage(attr.preview_image),
+                            main_images: normalizeNullArray(mergedMainImages),
+
+                            edit_main_image: editMain ? await saveProductFile(editMain, `pv-edit-main-${Date.now()}`) : attr.edit_main_image || "",
+                            edit_preview_image: editPreview ? await saveProductFile(editPreview, `pv-edit-preview-${Date.now()}`) : attr.edit_preview_image || ""
+                        };
+                    })
+                );
+
+                return pv;
+            })
+        );
+    }
+
+    data.product_variants = productVariants;
 
     // 🔹 Process nested combinationData images
     if (Array.isArray(data.combinationData)) {
-      data.combinationData = await Promise.all(
-        data.combinationData.map(async (variant: any, vIdx: number) => {
-        let combinations = variant.combinations;
-        if (!Array.isArray(combinations)) {
-           combinations = combinations ? [combinations] : [];
-        }
-        // 🔹 Handle guide data for each variant (if sent)
-let guide = [];
-
-if (Array.isArray(variant.guide)) {
-  guide = await Promise.all(
-    variant.guide.map(async (g: any, gIdx: number) => {
-      const guideFile = findFile(`combinationData[${vIdx}][guide][${gIdx}][guide_file]`);
-      let guide_file = g.guide_file || "";
-      let guide_type = g.guide_type || "";
-
-      if (guideFile) {
-        guide_file = await saveProductFile(
-          guideFile,
-          `guide-${Date.now()}-${vIdx}-${gIdx}`
-        );
-
-        if (guideFile.mimetype.includes("pdf")) guide_type = "pdf";
-        else if (guideFile.mimetype.includes("image")) guide_type = "image";
-        else guide_type = "document";
-      }
-
-      return {
-        guide_name: g.guide_name || "",
-        guide_description: g.guide_description || "",
-        guide_file,
-        guide_type,
-      };
-    })
-  );
-}
-
-variant.guide = guide;
-
-            combinations = await Promise.all(
-              combinations.map(async (comb: any, cIdx: number) => {
-                const combThumb = findFile(
-                  `combinationData[${vIdx}][combinations][${cIdx}][thumbnail]`
-                );
-                const combPreview = findFile(
-                  `combinationData[${vIdx}][combinations][${cIdx}][preview_image]`
-                );
-                const combMains = findFiles(
-                  `combinationData[${vIdx}][combinations][${cIdx}][main_images][]`
-                );
-
-                return {
-                  ...comb,
-                  thumbnail: combThumb
-                    ? await saveProductFile(
-                        combThumb,
-                        `comb-thumb-${Date.now()}`
-                      )
-                    : comb.thumbnail ?? undefined,
-                  preview_image: combPreview
-                    ? await saveProductFile(
-                        combPreview,
-                        `comb-preview-${Date.now()}`
-                      )
-                    : comb.preview_image ?? undefined,
-                  main_images:
-                    combMains.length > 0
-                      ? await Promise.all(
-                          combMains.map((f, i) =>
-                            saveProductFile(f, `comb-main-${Date.now()}-${i}`)
-                          )
-                        )
-                      : comb.main_images ?? undefined,
-                };
-              })
-            );
-          return variant;
-        })
-      );
+        data.combinationData = data.combinationData.map((variant: any) => {
+            return {
+                ...variant,
+                combinations: Array.isArray(variant.combinations) ? variant.combinations.map((comb: any) => ({
+                    ...comb })) : []
+            };
+        });
     }
+ 
+    if (req.body.variations_data !== undefined) {
+        let parsed = parseJSON(req.body.variations_data, []);
+
+        data.variations_data = parsed.map((v: any) => {
+            if (v.variantId) {
+                return {
+                    ...v,
+                    type: "global"
+                };
+            } else {
+                return {
+                    ...v,
+                    type: "custom",
+                    customId: v.customId || new mongoose.Types.ObjectId().toString()
+                };
+            }
+        });
+    }
+
+    if (req.body.tabs !== undefined) {
+        data.tabs = parseJSON(req.body.tabs, []);
+    }
+
+    Object.keys(data).forEach((k) => {
+        if (data[k] === undefined) {
+            delete data[k];
+        }
+    });
 
     // 🔹 Handle single images
     if (findFile("thumbnail")) {
@@ -15396,7 +15327,7 @@ variant.guide = guide;
         "thumbnail-" + Date.now()
       );
     } else if (req.body.thumbnail !== undefined) {
-      data.thumbnail = req.body.thumbnail;
+      data.thumbnail = normalizeDeletedImage(req.body.thumbnail);
     }
 
     if (findFile("preview_image")) {
@@ -15405,7 +15336,7 @@ variant.guide = guide;
         "preview-" + Date.now()
       );
     } else if (req.body.preview_image !== undefined) {
-      data.preview_image = req.body.preview_image;
+      data.preview_image = normalizeDeletedImage(req.body.preview_image);
     }
 
     if (findFile("edit_preview_image")) {
@@ -15414,31 +15345,40 @@ variant.guide = guide;
         "edit-preview-" + Date.now()
       );
     } else if (req.body.edit_preview_image !== undefined) {
-      data.edit_preview_image = req.body.edit_preview_image;
+      data.edit_preview_image = normalizeDeletedImage(req.body.edit_preview_image);
     }
 
-const productMainImages = files.filter(
-  f => f.fieldname === "main_images" || f.fieldname.startsWith("main_images[")
-);
+    const productMainImages = files.filter(
+        f => f.fieldname === "main_images" || f.fieldname.startsWith("main_images[")
+    );
 
-const oldImages =
-  isUpdate ? (existingProduct as any)?.main_images || [] : [];
+    const oldImages = isUpdate ? (existingProduct as any)?.main_images || [] : [];
 
-const mergedImages: (string | null)[] = [...oldImages];
+    const mergedImages: (string | null)[] = [...oldImages];
 
-for (const file of productMainImages) {
-  const match = file.fieldname.match(/\[(\d+)\]/);
-  const index = match ? Number(match[1]) : mergedImages.length;
+    const bodyProductImages = req.body?.main_images || {};
 
-  const url = await saveProductFile(
-    file,
-    `main-${Date.now()}-${index}`
-  );
+    Object.keys(bodyProductImages).forEach((key) => {
+        const idx = Number(key);
 
-  mergedImages[index] = url;
-}
+        if (Number.isNaN(idx)) return;
 
-data.main_images = mergedImages.filter(Boolean);
+        if (bodyProductImages[key] === "__DELETE__") {
+            mergedImages[idx] = null;
+        }
+    });
+
+    for (const file of productMainImages) {
+        const match = file.fieldname.match(/\[(\d+)\]/);
+
+        const index = match ? Number(match[1]) : mergedImages.length;
+
+        const url = await saveProductFile( file, `main-${Date.now()}-${index}` );
+
+        mergedImages[index] = url;
+    }
+
+    data.main_images = normalizeNullArray(mergedImages);
 
 
     if (findFile("edit_main_image")) {
@@ -15447,7 +15387,7 @@ data.main_images = mergedImages.filter(Boolean);
         "edit-main-" + Date.now()
       );
     } else if (req.body.edit_main_image !== undefined) {
-      data.edit_main_image = req.body.edit_main_image;
+      data.edit_main_image = normalizeDeletedImage(req.body.edit_main_image);
     }
 
     // 🔹 Always draft
@@ -15455,37 +15395,268 @@ data.main_images = mergedImages.filter(Boolean);
 
     // 🔹 Create or Update
     if (req.body._id == "new") {
-      const product = await Product.create({ ...data, status: false });
+        const existingCombination = await Product.findOne({
+            sku_code: req.body.sku_code,
+        });
 
-      const cat = await CategoryModel.findById(req.body.category);
-      if (cat && product && req.body.category) {
-        const slug = slugify(
-          `${cat.slug}-${String(product._id).padStart(4, "0")}`,
-          {
-            lower: true,
-            remove: /[*+~.()'"!:@]/g,
-          }
+        if (existingCombination) {
+            return res.status(400).json({
+                message: "SKU Code already exists.",
+                success: false
+            });
+        }
+
+        if (!data.product_code) {
+            data.product_code = await generateProductCode();
+        }
+        data.refresh_date = new Date();
+        const product = await Product.create({ ...data, status: false });
+
+        const cat = await CategoryModel.findById(req.body.category);
+        if (cat && product && req.body.category) {
+            const slug = slugify( `${cat.slug}-${String(product._id).padStart(4, "0")}`,
+            {
+                lower: true,
+                remove: /[*+~.()'"!:@]/g,
+            }
+            );
+            await Product.findByIdAndUpdate(product._id, { slug });
+        }
+
+        await PromotionalOfferModel.updateMany(
+            { purchased_items: "Entire Catalog" },
+            { $push: { product_id: product._id } }
         );
-        await Product.findByIdAndUpdate(product._id, { slug });
+
+        return res.status(200).json({
+            message: "Draft product created successfully.",
+            product,
+            success: true,
+        });
+    } else {
+        const existingCombination = await Product.findOne({
+            sku_code: req.body.sku_code,
+            _id: { $ne: req.body._id }
+        });
+
+        if (existingCombination) {
+            return res.status(400).json({
+                message: "SKU Code already exists.",
+                success: false
+            });
+        }
+
+        if (req.body.altText !== undefined) {
+            data.altText = Array.isArray(req.body.altText) ? req.body.altText.filter(Boolean) : [];
+        } else {
+            data.altText = existingProduct?.altText || [];
+        }
+
+        if (!req.body.meta_title && req.body.product_title) {
+            data.meta_title = stripHtml(req.body.product_title);
+        } else if (!req.body.meta_title) {
+            data.meta_title = existingProduct?.meta_title;
+        }
+
+        if (req.body.description) {
+            data.meta_description = buildMetaDescription(req.body.description);
+        }
+
+        if (Array.isArray(req.body.search_terms)) {
+            data.meta_keywords = req.body.search_terms.map((k: string) => k.trim()).filter(Boolean);
+        }
+
+        if (req.body.customizationData !== undefined) {
+            const newCustomData = data.customizationData || {};
+            const oldCustomData = existingProduct?.customizationData || {};
+
+            if ( Array.isArray(newCustomData.customizations) && Array.isArray(oldCustomData.customizations)) {
+                newCustomData.customizations = newCustomData.customizations.map(
+                    (newCust: any, cIdx: number) => {
+                        const oldCust = oldCustomData.customizations[cIdx] || {};
+
+                        if (Array.isArray(newCust.optionList) && Array.isArray(oldCust.optionList)) {
+                            newCust.optionList = newCust.optionList.map((newOpt: any, oIdx: number) => {
+                                const oldOpt = oldCust.optionList[oIdx] || {};
+
+                                return {
+                                    ...oldOpt,
+                                    ...newOpt,
+
+                                    thumbnail: newOpt.thumbnail !== undefined ? newOpt.thumbnail : oldOpt.thumbnail,
+
+                                    preview_image: newOpt.preview_image !== undefined ? newOpt.preview_image : oldOpt.preview_image,
+
+                                    main_images: newOpt.main_images !== undefined ? newOpt.main_images : oldOpt.main_images,
+
+                                    edit_main_image: newOpt.edit_main_image !== undefined ? newOpt.edit_main_image : oldOpt.edit_main_image,
+
+                                    edit_preview_image: newOpt.edit_preview_image !== undefined ? newOpt.edit_preview_image: oldOpt.edit_preview_image,
+                                };
+                            });
+                        }
+
+                        if (newCust.guide && oldCust.guide) {
+                            newCust.guide = {
+                                ...oldCust.guide,
+                                ...newCust.guide,
+
+                                guide_file: newCust.guide.guide_file ?? oldCust.guide.guide_file,
+
+                                guide_type: newCust.guide.guide_type ?? oldCust.guide.guide_type,
+                            };
+                        }
+
+                        return newCust;
+                    }
+                );
+            }
+ 
+            data.customizationData = newCustomData;
+        }
+      
+        if (req.body.product_variants !== undefined) {
+            const newVariants = data.product_variants || [];
+            const oldVariants = existingProduct?.product_variants || [];
+
+            data.product_variants = newVariants.map((newVariant: any, vIdx: number) => {
+                const oldVariant = oldVariants[vIdx] || {};
+
+                return {
+                    ...oldVariant,
+                    ...newVariant,
+
+                    guide: newVariant.guide !== undefined ? newVariant.guide : oldVariant.guide,
+
+                    variant_attributes: Array.isArray(newVariant.variant_attributes) ? newVariant.variant_attributes.map ((newAttr: any, aIdx: number) => {
+                        const oldAttr = oldVariant.variant_attributes?.[aIdx] || {};
+
+                        return {
+                            ...oldAttr,
+                            ...newAttr,
+
+                            thumbnail: newAttr.thumbnail !== undefined ? newAttr.thumbnail : oldAttr.thumbnail,
+
+                            preview_image: newAttr.preview_image !== undefined ? newAttr.preview_image : oldAttr.preview_image,
+
+                            main_images: newAttr.main_images !== undefined ? newAttr.main_images : oldAttr.main_images,
+
+                            edit_main_image: newAttr.edit_main_image !== undefined ? newAttr.edit_main_image : oldAttr.edit_main_image,
+
+                            edit_preview_image: newAttr.edit_preview_image !== undefined ? newAttr.edit_preview_image : oldAttr.edit_preview_image
+                        };
+                    }) : oldVariant.variant_attributes || []
+                };
+            });
+        }
+
+        if (req.body.combinationData !== undefined) {
+
+            const newCombinationData = data.combinationData || [];
+
+            if ( existingProduct && Array.isArray(existingProduct.combinationData) && existingProduct.combinationData.length > 0
+            ) {
+
+                data.combinationData = newCombinationData.map((newComb: any, idx: number) => {
+
+                    const oldComb = existingProduct.combinationData[idx] || {};
+
+                    return {
+
+                        ...oldComb,
+
+                        ...newComb,
+
+                        combinations: Array.isArray(newComb.combinations) ? newComb.combinations.map((newSub: any, subIdx: number) => {
+
+                                const oldSub = oldComb.combinations?.[subIdx] || {};
+
+                                    return {
+
+                                      ...oldSub,
+
+                                      ...newSub,
+
+                                      thumbnail:
+                                          newSub.thumbnail ??
+                                          oldSub.thumbnail,
+
+                                      preview_image:
+                                          newSub.preview_image ??
+                                          oldSub.preview_image,
+
+                                      main_images:
+                                          newSub.main_images ??
+                                          oldSub.main_images,
+
+                                      edit_main_image:
+                                          newSub.edit_main_image ??
+                                          oldSub.edit_main_image,
+
+                                      edit_preview_image:
+                                          newSub.edit_preview_image ??
+                                          oldSub.edit_preview_image
+                                    };
+                        }) : oldComb.combinations || []
+                    };
+                }
+            );
+
+        } else {
+
+            data.combinationData = newCombinationData;
+
+        }
       }
 
-      await PromotionalOfferModel.updateMany(
-        { purchased_items: "Entire Catalog" },
-        { $push: { product_id: product._id } }
-      );
+      if (req.body.variations_data !== undefined) {
 
-      return res.status(200).json({
-        message: "Draft product created successfully.",
-        product,
-        success: true,
-      });
-    } else {
-      const product = await Product.findByIdAndUpdate(
-        req.body._id,
-        { ...data, draft_status: true, customizationData: data.customizationData, product_variants: data.product_variants,
-       main_images: data.main_images },
-        { new: true }
-      );
+        let parsed = parseJSON(req.body.variations_data, []);
+
+        data.variations_data = parsed.map((v: any) => {
+
+        if (v.variantId) {
+
+            return {
+                ...v,
+                type: "global"
+            };
+
+        } else {
+
+            return {
+                ...v,
+                type: "custom",
+                customId:
+                    v.customId ||
+                    new mongoose.Types.ObjectId().toString()
+            };
+
+        }
+
+        });
+
+      }
+
+      if (req.body.tabs !== undefined) {
+
+        let newTabs = parseJSON(req.body.tabs, []);
+
+        newTabs = processTabs(newTabs);
+
+        data.tabs = newTabs;
+
+       }
+
+      Object.keys(data).forEach((k) => {
+        if (data[k] === undefined)
+            delete data[k];
+        });
+        const product = await Product.findByIdAndUpdate( req.body._id,
+            { ...data, draft_status: true, customizationData: data.customizationData, product_variants: data.product_variants,
+            main_images: data.main_images },
+            { new: true }
+        );
 
       return res.status(200).json({
         message: "Draft product updated successfully.",
