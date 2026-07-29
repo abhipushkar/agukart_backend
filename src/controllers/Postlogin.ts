@@ -89,7 +89,10 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
       shipping_id,
       affiliate_id,
       note,
+      source,
     } = req.body;
+
+    const isWishlistSource = source === "wishlist";
 
     const customVariants = Array.isArray(variants) ? variants : [];
     const customization = Array.isArray(customizationData)
@@ -114,6 +117,8 @@ export const addToCart = async (req: CustomRequest, resp: Response) => {
         message: "Product not found.",
       });
     }
+
+  if (!isWishlistSource) {
 
     const quantityByVariant = product?.form_values?.isCheckedQuantity === true || product?.form_values?.isCheckedQuantity === "true";
 
@@ -205,6 +210,8 @@ if (quantityByVariant) {
           message: quantityByVariant ? `You already have ${currentInventoryQty} quantity of this variant in your cart. Only ${availableQty} quantity is available` : `You already have ${currentInventoryQty} quantity of this product in your cart. Only ${availableQty} quantity is available`,
         });
       }
+
+  }  
 
     let affiliateId: any = null;
     if (affiliate_id) {
@@ -654,11 +661,13 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
               variantAttributeData: "$variantAttributeDetails",
               variant_attribute_id: "$variant_attribute_id",
               variant_id: "$variant_id",
+              vendorStatus: "$vendorData.status",
               combinationData: "$productData.combinationData",
               // promotionalOfferData: "$productData.promotionaloffers",
               qty: "$qty",
               product_id: "$product_id",
               product_image: "$productData.image",
+              edited_image: "$productData.edited_image",
               stock: "$productData.qty",
               product_name: "$productData.product_title",
               product_bedge: "$productData.product_bedge",
@@ -704,6 +713,7 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                 variantAttributeData: "$$item.variantAttributeData",
                 variant_attribute_id: "$$item.variant_attribute_id",
                 variant_id: "$$item.variant_id",
+                vendorStatus: "$$item.vendorStatus",
                 combinationData: "$$item.combinationData",
                 qty: "$$item.qty",
                 product_id: "$$item.product_id",
@@ -717,6 +727,18 @@ export const listofCart = async (req: CustomRequest, resp: Response) => {
                     image_base_url,
                     { $arrayElemAt: ["$$item.product_image", 0] },
                   ],
+                },
+                editedImage: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ne: ["$$item.edited_image", null] },
+                        { $ne: ["$$item.edited_image", ""] }
+                      ]
+                    },
+                    { $concat: [image_base_url, "$$item.edited_image"] },
+                    null
+                  ]
                 },
                 slug: "$$item.slug",
                 product_code: "$$item.product_code",
@@ -5624,21 +5646,11 @@ export const addDeleteWishlist = async (req: CustomRequest, resp: Response) => {
     let wishlist = await wishlistModel.findOne({
       user_id: user,
       product_id: product_id,
-      isCombination: isCombination,
-      variant_id: variant_id,
-      variant_attribute_id: variant_attribute_id,
-      price: price,
-      original_price: original_price,
     });
     if (wishlist) {
       await wishlistModel.findOneAndDelete({
         user_id: user,
         product_id: product_id,
-        isCombination: isCombination,
-        variant_id: variant_id,
-        variant_attribute_id: variant_attribute_id,
-        price: price,
-        original_price: original_price,
       });
     } else {
       await wishlistModel.create({
@@ -6042,7 +6054,7 @@ export const getCartDetails = async (req: CustomRequest, resp: Response) => {
         const displayTitle = shortTitle.length > 40 ? `${shortTitle.substring(0, 40)}...` : shortTitle;
 
         if (availableQty <= 0) {
-          errorMessage = `${displayTitle} is out of stock`;
+          errorMessage = `Current selection of ${displayTitle} is out of stock`;
           return;
         }
 
@@ -6742,6 +6754,28 @@ export const getOrderDetailsById = async (
   }
 };
 
+export const updateProductRating = async (productId: mongoose.Types.ObjectId) => {
+  const stats = await RatingModel.aggregate([
+    {
+      $match: {
+        product_id: productId
+      }
+    },
+    {
+      $group: {
+        _id: "$product_id",
+        ratingAvg: { $avg: "$rating" },
+        userReviewCount: { $sum: 1 }
+      }
+    }
+  ]);
+
+  await ProductModel.findByIdAndUpdate(productId, {
+    ratingAvg: Number((stats[0]?.ratingAvg || 0).toFixed(1)),
+    userReviewCount: stats[0]?.userReviewCount || 0
+  });
+};
+
 export const sendRating = async (req: CustomRequest, resp: Response) => {
   try {
     const files = req.files as Express.Multer.File[] || [];
@@ -6812,6 +6846,7 @@ export const sendRating = async (req: CustomRequest, resp: Response) => {
 
     await saleDetailData.save();
     await RatingModel.create(data);
+    await updateProductRating(saleDetailData.product_id);
 
     return resp.status(200).json({ message: "Rating sent successfully." });
   } catch (error: any) {
@@ -6955,6 +6990,7 @@ export const editRating = async (req: CustomRequest, resp: Response) => {
         }
       }
     );
+    await updateProductRating(ratingData.product_id);
 
     return resp.status(200).json({
       message: "Review updated successfully."
@@ -7139,9 +7175,8 @@ export const deleteMessageID = async (req: CustomRequest, resp: Response) => {
 };
 
 export const purchaseGiftCard = async (req: CustomRequest, resp: Response) => {
-  const { gift_card_id, amount, email, name, message, qty, delivery_date } =
-    req.body;
-  const user_id = req.user._id;
+    const { gift_card_id, amount, email, name, message, qty, delivery_date } = req.body;
+    const user_id = req.user._id;
 
   try {
     const currentDate = new Date();

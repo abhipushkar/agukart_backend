@@ -46,6 +46,11 @@ const wishlistSchema = new Schema(
   }
 );
 
+wishlistSchema.index(
+    { user_id: 1, product_id: 1 },
+    { unique: true }
+);
+
 const wishlistModel = model('wishlist', wishlistSchema);
 
 export default wishlistModel;

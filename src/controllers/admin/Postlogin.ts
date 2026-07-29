@@ -11004,7 +11004,7 @@ export const changeRatingStatus = async (req: CustomRequest, resp: Response) => 
         }
 
         for (let productId of productIds) {
-            const productRatings = await RatingModel.find({ product_id: productId, status: 'approved' });
+            const productRatings = await RatingModel.find({ product_id: productId });
 
             const avgRating = productRatings.length > 0
                 ? productRatings.reduce((sum, rating) => sum + Number(rating.item_rating), 0) / productRatings.length

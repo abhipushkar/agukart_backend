@@ -922,51 +922,82 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       }
 
       const products = await ProductModel.aggregate([
-  { $match: filter },
-  {
-    $lookup: {
-      from: "vendordetails",
-      localField: "vendor_id",
-      foreignField: "user_id",
-      as: "vendor"
-    }
-  },
-
-  {
-    $unwind: {
-      path: "$vendor",
-      preserveNullAndEmptyArrays: true
-    }
-  },
-  {
-    $project: {
-      _id: 1,
-      product_title: 1,
-      ratingAvg: 1,
-      sale_price: 1,
-      qty: 1,
-      isCombination: 1,
-      combinationData: 1,
-      product_code: 1,
-      slug: 1,
-      videos: 1,
-      edited_image: 1,
-      image: 1,
-      altText: 1,
-      product_bedge: 1,
-      userReviewCount: 1,
-      createdAt: 1,
-      refresh_date: 1,
-      vendor_id: 1,
-      zoom: 1,
-      product_variants: 1,
-      dynamicFields: 1,
-      form_values: 1,
-      search_terms: 1,
-      shop_name: { $ifNull: ["$vendor.shop_name", ""] },
-    }
-  }
-]);
+        { $match: filter },
+        {
+          $lookup: {
+            from: "vendordetails",
+            localField: "vendor_id",
+            foreignField: "user_id",
+            as: "vendor"
+          }
+        },
+        {
+          $unwind: {
+            path: "$vendor",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $lookup: {
+            from: "users",
+            let: { vendorId: "$vendor_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $eq: ["$_id", "$$vendorId"]
+                  }
+                }
+              },
+              {
+                $project: {
+                  status: 1
+                }
+              }
+            ],
+            as: "vendorUser"
+          }
+        },
+        {
+          $unwind: {
+            path: "$vendorUser",
+            preserveNullAndEmptyArrays: false
+          }
+        },
+        {
+          $match: {
+            "vendorUser.status": true
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            product_title: 1,
+            ratingAvg: 1,
+            sale_price: 1,
+            qty: 1,
+            isCombination: 1,
+            combinationData: 1,
+            product_code: 1,
+            slug: 1,
+            videos: 1,
+            edited_image: 1,
+            image: 1,
+            altText: 1,
+            product_bedge: 1,
+            userReviewCount: 1,
+            createdAt: 1,
+            refresh_date: 1,
+            vendor_id: 1,
+            zoom: 1,
+            product_variants: 1,
+            dynamicFields: 1,
+            form_values: 1,
+            search_terms: 1,
+            shop_name: { $ifNull: ["$vendor.shop_name", ""] },
+          }
+        }
+      ]);
 
 
       products.forEach(p => productMap.set(String(p._id), p));
@@ -1069,16 +1100,21 @@ export const getPopularGiftProducts = async (req: Request, resp: Response) => {
      }).populate('category')
       .populate('brand_id')
       .populate('variant_id')
-      .populate('variant_attribute_id');
+      .populate('variant_attribute_id')
+      .populate({
+        path: "vendor_id",
+        match: { status: true },
+        select: "_id"
+      });
     let base_url = process.env.ASSET_URL + '/uploads/product/';
 
-    const products = await Promise.all(data.filter((item: any) =>{
+    const products = await Promise.all(data.filter((item: any) => item.vendor_id).filter((item: any) => {
       const productQty = item?.qty;
       const combinationData = item?.combinationData || [];
       const formValues = item?.form_values || {};
       return !checkSoldOut(productQty, combinationData, formValues);
     }).map(async (item: any) => {
-      const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true, vendor_id: item.vendor_id, expiry_status: { $ne: 'expired' } })
+      const promotionData = await PromotionalOfferModel.find({ product_id: { $in: item._id }, status: true, vendor_id: item.vendor_id._id, expiry_status: { $ne: 'expired' } })
       return {
         ...item.toObject(),
         promotionData: promotionData ? promotionData : {}
@@ -2031,6 +2067,25 @@ export const getProductList = async (req: Request, resp: Response) => {
         preserveNullAndEmptyArrays: true
       }
     },
+    {
+      $lookup: {
+        from: "users",
+        localField: "vendor_id",
+        foreignField: "_id",
+        as: "vendorUser"
+      }
+    },
+    {
+      $unwind: {
+        path: "$vendorUser",
+        preserveNullAndEmptyArrays: false
+      }
+    },
+    {
+      $match: {
+        "vendorUser.status": true
+      }
+    },
 
     {
       $project: {
@@ -2054,6 +2109,8 @@ export const getProductList = async (req: Request, resp: Response) => {
         combinationData: 1,
         form_values: 1,
         product_bedge: 1,
+        ratingAvg: 1,
+        userReviewCount: 1,
         shop_name: { $ifNull: ["$vendor.shop_name", ""] }
       }
     }
@@ -2200,7 +2257,9 @@ export const getProductList = async (req: Request, resp: Response) => {
       qty: 1,
       combinationData: 1,
       form_values: 1,
-      product_bedge: 1
+      product_bedge: 1,
+      ratingAvg: 1,
+      userReviewCount: 1,
     };
 
     // ---------------------------
@@ -2329,21 +2388,40 @@ export const getProductList = async (req: Request, resp: Response) => {
         }
       });
     } // end for each automatic category
-    agg.push(
-  {
-    $lookup: {
-      from: "vendordetails",
-      localField: "vendor_id",
-      foreignField: "user_id",
-      as: "vendor"
-    }
-  },
-  {
-    $unwind: {
-      path: "$vendor",
-      preserveNullAndEmptyArrays: true
-    }
+agg.push(
+{
+  $lookup: {
+    from: "vendordetails",
+    localField: "vendor_id",
+    foreignField: "user_id",
+    as: "vendor"
   }
+},
+{
+  $unwind: {
+    path: "$vendor",
+    preserveNullAndEmptyArrays: true
+  }
+},
+{
+  $lookup: {
+    from: "users",
+    localField: "vendor_id",
+    foreignField: "_id",
+    as: "vendorUser"
+  }
+},
+{
+  $unwind: {
+    path: "$vendorUser",
+    preserveNullAndEmptyArrays: false
+  }
+},
+{
+  $match: {
+    "vendorUser.status": true
+  }
+}
 );
     // After unionWith(s), dedupe by _id and collect entries
     agg.push(
@@ -2378,6 +2456,8 @@ export const getProductList = async (req: Request, resp: Response) => {
     combinationData: 1,
     form_values: 1,
     product_bedge: 1,
+    ratingAvg: 1,
+    userReviewCount: 1,
     shop_name: { $ifNull: ["$vendor.shop_name", ""] },
     shop_slug: { $ifNull: ["$vendor.slug", ""] },
   }
@@ -2572,6 +2652,7 @@ const data = await ProductModel.findOne(query)
       .populate({ path: 'variant_attribute_id', match: { status: true } })
       .populate({ path: 'shipping_templates' })
       .populate({ path: 'exchangePolicy', match: { status: true } })
+      .populate({ path: 'vendor_id', match: { status: true } })
       .populate({
         path: 'parent_id',
         populate: [
@@ -2582,7 +2663,7 @@ const data = await ProductModel.findOne(query)
 
       const finalProductId = data?._id;
 
-    if (!data) {
+    if (!data || !data.vendor_id) {
       return resp.status(404).json({
         message: 'Product not found or inactive.',
         data: []
@@ -3697,7 +3778,7 @@ export const bestsellerCategory = async (req: Request, res: Response) => {
 };
 export const bestRatedProduct = async (req: Request, res: Response) => {
   try {
-    const data = await Product.find({ ratingAvg: 5, status: true, draft_status: false, isDeleted: false, deletedByAdmin: false }).sort({ _id: -1 }).limit(10).populate('vendor_id')
+    const data = await Product.find({ ratingAvg: { $gte: 4.5 }, status: true, draft_status: false, isDeleted: false, deletedByAdmin: false }).sort({ ratingAvg: -1, userReviewCount: -1, _id: -1 }).limit(10).populate({ path: 'vendor_id', match: { status: true }, select: "_id"})
       .populate('category')
       .populate('brand_id')
       .populate('variant_id')
@@ -3705,7 +3786,7 @@ export const bestRatedProduct = async (req: Request, res: Response) => {
 
     let base_url = process.env.ASSET_URL + '/uploads/product/'
 
-    const product = await Promise.all(data.filter((item: any) =>{
+    const product = await Promise.all(data.filter((item: any) => item.vendor_id?._id).filter((item: any) =>{
       const productQty = item?.qty;
       const combinationData = item?.combinationData || [];
       const formValues = item?.form_values || {};
