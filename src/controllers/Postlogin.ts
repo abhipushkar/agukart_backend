@@ -5483,6 +5483,7 @@ export const getWishlist = async (req: CustomRequest, resp: Response) => {
                 isCombination: 1,
                 price: 1,
                 original_price: 1,
+                shipping_templates: 1,
                 vendor_id: 1,
                 sale_price: 1,
                 customize: 1,

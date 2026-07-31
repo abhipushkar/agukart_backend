@@ -3779,8 +3779,11 @@ export const addProduct = async (req: CustomRequest, resp: Response) => {
       const product = await Product.create(data);
 
       await PromotionalOfferModel.updateMany(
-        { purchased_items: "Entire Catalog" },
-        { $push: { product_id: product._id } }
+        { 
+            purchased_items: "Entire Catalog",
+            vendor_id: product.vendor_id
+        },
+        { $addToSet: { product_id: product._id } }
       );
 
       return resp.status(200).json({
@@ -4389,6 +4392,7 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
           parent_product_code: { $first: "$parent_product_code" },
           product_title: { $first: "$product_title" },
           image: { $first: "$image" },
+          edited_image: { $first: "$edited_image" },
           seller_sku: { $first: "$seller_sku" },
           updatedAt: { $first: "$updatedAt" },
           createdAt: { $first: "$createdAt"},
@@ -4409,6 +4413,18 @@ if (!["draft", "delete", "deleteByAdmin"].includes(type || "")) {
         then: { $concat: [parentBaseUrl, "$image"] },
         else: null,
       },
+    },
+    edited_image: {
+        $cond: {
+            if: {
+                $and: [
+                    { $ne: ["$edited_image", null] },
+                    { $ne: ["$edited_image", ""] }
+                ]
+            },
+            then: { $concat: [parentBaseUrl, "$edited_image"] },
+            else: null,
+        },
     },
     productData: {
       $map: {
@@ -8696,37 +8712,74 @@ export const addParentProduct = async (req: CustomRequest, resp: Response) => {
 export const addParentProductImage = async (req: CustomRequest, resp: Response) => {
     try {
         if (!req.body._id) {
-            return resp.status(400).json({ message: 'Parent Product id is required' });
+            return resp.status(400).json({ message: "Parent Product id is required" });
         }
 
-        if (!req.hasOwnProperty('file')) {
-            return resp.status(400).json({ message: 'Image is required' });
+        const files = req.files as {
+            image?: Express.Multer.File[];
+            edited_image?: Express.Multer.File[];
+        };
+
+        if (!files?.image?.length && !files?.edited_image?.length) {
+            return resp.status(400).json({ message: "Image is required" });
         }
 
-        const categoryImageFile = req.file;
-        let fileName = "";
+        const uploadDir = path.join("uploads", "parent_product");
 
-        if (categoryImageFile && !(categoryImageFile.mimetype.startsWith('image/'))) {
-            return resp.status(400).json({ message: 'Invalid file type. Only images are allowed.' });
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
         }
 
-        if (categoryImageFile) {
-            fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
-            const uploadDir = path.join('uploads', 'parent_product');
-            if (!fs.existsSync(uploadDir)) {
-                fs.mkdirSync(uploadDir, { recursive: true });
+        const updateData: any = {};
+
+        if (files?.image?.length) {
+            const originalImage = files.image[0];
+
+            if (!originalImage.mimetype.startsWith("image/")) {
+                return resp.status(400).json({ message: "Invalid original image type." });
             }
 
-            const destinationPath = path.join(uploadDir, fileName);
-            await convertToWebP(categoryImageFile.buffer, destinationPath);
+            const imageFileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
+
+            await convertToWebP(
+                originalImage.buffer,
+                path.join(uploadDir, imageFileName)
+            );
+
+            updateData.image = imageFileName;
         }
-        const query = { _id: req.body._id };
-        const updateData = { $set: { image: fileName } };
-        await ParentProduct.updateOne(query, updateData);
-        return resp.status(200).json({ message: 'Image added successfully.' });
+
+        if (files?.edited_image?.length) {
+            const editedImage = files.edited_image[0];
+
+            if (!editedImage.mimetype.startsWith("image/")) {
+                return resp.status(400).json({ message: "Invalid edited image type." });
+            }
+
+            const editedFileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}-edited.webp`;
+
+            await convertToWebP(
+                editedImage.buffer,
+                path.join(uploadDir, editedFileName)
+            );
+
+            updateData.edited_image = editedFileName;
+        }
+
+        await ParentProduct.updateOne(
+            { _id: req.body._id },
+            { $set: updateData }
+        );
+
+        return resp.status(200).json({
+            message: "Image updated successfully."
+        });
+
     } catch (err) {
-        console.error('Error in addParentProductImage:', err);
-        return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+        console.error("Error in addParentProductImage:", err);
+        return resp.status(500).json({
+            message: "Something went wrong. Please try again."
+        });
     }
 };
 
@@ -9881,13 +9934,6 @@ export const addVendor = async (req: Request, resp: Response) => {
                 return resp.status(400).json({ message: "This user is already exists." });
 
             } else {
-                const chkMobile = await User.findOne({ mobile: req.body.mobile });
-
-                if (chkMobile) {
-
-                    return resp.status(400).json({ message: "This mobile is already associated with another user." });
-
-                }
 
                 if (req.body.password != req.body.confirm_password) {
 
@@ -15424,8 +15470,11 @@ export const addDraftProduct = async (req: CustomRequest, res: Response) => {
         }
 
         await PromotionalOfferModel.updateMany(
-            { purchased_items: "Entire Catalog" },
-            { $push: { product_id: product._id } }
+            { 
+                purchased_items: "Entire Catalog",
+                vendor_id: product.vendor_id
+            },
+            { $addToSet: { product_id: product._id } }
         );
 
         return res.status(200).json({

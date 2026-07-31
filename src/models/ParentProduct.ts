@@ -26,6 +26,10 @@ const parentProductSchema = new Schema(
             type: String,
             default: '',
         },
+        edited_image: {
+            type: String,
+            default: '',
+        },
         sub_category: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Category'

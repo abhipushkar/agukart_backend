@@ -1984,6 +1984,7 @@ export const getProductList = async (req: Request, resp: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const q = ((req.query.q as string) || "").trim();
+    const bestseller = req.query.bestseller;
 
     // base filter used for everything
     const baseFilter: any = {
@@ -2002,7 +2003,6 @@ export const getProductList = async (req: Request, resp: Response) => {
   const brand_id = req.query.brand_id as string;
   const rating = req.query.rating;
   const featured = req.query.featured;
-  const bestseller = req.query.bestseller;
   const top_rated = req.query.top_rated;
   const categoryIds = req.query.categoryIds as string;
 
@@ -2268,6 +2268,9 @@ export const getProductList = async (req: Request, resp: Response) => {
     const categoryProductsMatch: any = { ...baseFilter, category: { $in: allTreeIds } };
     if (vendor_id) categoryProductsMatch.vendor_id = vendor_id;
     if (qOr.length > 0) categoryProductsMatch.$or = qOr;
+    if (bestseller) {
+    categoryProductsMatch.bestseller = bestseller;
+    }
 
     // Product collection name (used in $unionWith)
     const productCollName = ProductModel.collection.name; // usually 'products'
@@ -2338,6 +2341,9 @@ export const getProductList = async (req: Request, resp: Response) => {
       // Build condFilter (the $match fragment) for this category automation
       const condFilter: any = { ...baseFilter };
       if (vendor_id) condFilter.vendor_id = vendor_id;
+      if (bestseller) {
+        condFilter.bestseller = bestseller;
+      }
 
       // Determine scope for automation for this specific category:
       if (cat.categoryScope === "specific") {
@@ -3695,7 +3701,7 @@ export const blogList = async (req: Request, res: Response) => {
       query.title = { $regex: search, $options: 'i' };
     }
 
-    const blogs = await BlogModel.find(query).populate('tag_id').sort({ _id: -1 }).skip(offset).limit(limit);
+    const blogs = await BlogModel.find(query).populate('tag_id').sort({ updatedAt: -1 }).skip(offset).limit(limit);
 
     const baseurl = process.env.ASSET_URL + `/uploads/blog/`;
 
@@ -3736,7 +3742,7 @@ export const getBrands = async (req: Request, res: Response) => {
       query.featured = true;
     }
 
-    const brands = await BrandModel.find(query).sort({ _id: -1 });
+    const brands = await BrandModel.find(query).sort({ updatedAt: -1 });
 
     const baseurl = process.env.ASSET_URL + `/uploads/brand/`;
 

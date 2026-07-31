@@ -473,7 +473,14 @@ routes.post('/add-parent-product',   (req, res, next) => {
     next();
   },  upload.any(), addParentProduct);
 routes.get('/fetch-parent-product/:id', fetchParentProduct)
-routes.post('/add-parent-product-image', multer().single('file'), addParentProductImage)
+routes.post(
+    '/add-parent-product-image',
+    multer().fields([
+        { name: 'image', maxCount: 1 },
+        { name: 'edited_image', maxCount: 1 }
+    ]),
+    addParentProductImage
+);
 
 //Blog api
 routes.post('/add-blog', addBlog);
