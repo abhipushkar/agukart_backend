@@ -63,6 +63,7 @@ import Shipping from "../models/Shipping";
 import SaveForLater from "../models/SaveForLater";
 import { allocateInventory } from "../helpers/inventory";
 import { getProductPromotionData } from "./Prelogin";
+import { sendAdminOrderNotificationEmail, sendCustomerOrderConfirmationEmail } from "../helpers/orderEmail";
 
 interface CustomRequest extends Request {
   user?: any;
@@ -2015,15 +2016,12 @@ export const checkout = async (req: CustomRequest, resp: Response) => {
       });
     }
     
-  const cartCoupon = isVendorCheckout
-  ? await couponCart.findOne({
+  const cartCoupon = isVendorCheckout ? await couponCart.findOne({
       user_id: req.user._id,
       vendor_id: req.body.vendor_id,
-    })
-    : await couponCart.find({
-    user_id: req.user._id,
-    ...(couponVendorIds.length > 0
-      ? {
+    }) : await couponCart.find({
+      user_id: req.user._id,
+      ...(couponVendorIds.length > 0 ? {
           vendor_id: {
             $in: couponVendorIds.map(
               (id: string) =>
@@ -3091,6 +3089,15 @@ const couponMap: any = Array.isArray(cartCoupon)
         "checkout",
         "Checkout successfully with order ID: " + orderId,
       );
+
+      sendCustomerOrderConfirmationEmail(saleId).catch((emailError) => {
+        console.error(`[CUSTOMER ORDER EMAIL FAILED] order=${orderId}`, emailError );
+      });
+
+      sendAdminOrderNotificationEmail(saleId).catch((emailError) => {
+        console.error( `[ADMIN ORDER EMAIL FAILED] order=${orderId}`, emailError);
+      });
+
       return resp
         .status(200)
         .json({
@@ -6715,10 +6722,7 @@ export const getVendorCartDetails = async (
   }
 };
 
-export const getOrderDetailsById = async (
-  req: CustomRequest,
-  resp: Response,
-) => {
+export const getOrderDetailsById = async ( req: CustomRequest, resp: Response ) => {
   try {
     const orderId = req.params.orderId;
     const sales = await Sales.findOne({
@@ -7730,10 +7734,7 @@ export const listUserGiftCardTransactions = async (
   }
 };
 
-export const checkCouponForProduct = async (
-  req: CustomRequest,
-  resp: Response,
-) => {
+export const checkCouponForProduct = async ( req: CustomRequest, resp: Response ) => {
   try {
     let userStatus = "all";
     const userData = await User.findOne({ _id: req.user._id });
@@ -7895,10 +7896,7 @@ export const removeCouponForProduct = async (
   }
 };
 
-export const getPromotionAmount = async (
-  req: CustomRequest,
-  resp: Response,
-) => {
+export const getPromotionAmount = async ( req: CustomRequest, resp: Response ) => {
   try {
     const user_id = req.user._id;
     const userObjectId = new mongoose.Types.ObjectId(user_id);

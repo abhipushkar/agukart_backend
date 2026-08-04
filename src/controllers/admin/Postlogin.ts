@@ -8334,7 +8334,8 @@ export const getProfile = async (req: CustomRequest, resp: Response) => {
         if (image.includes("https")) {
             baseUrl = image
         } else if (image) {
-            baseUrl = process.env.ASSET_URL + '/uploads/vendor/' + image;
+            const imageFolder = user.designation_id === 2 ? "admin" : "vendor";
+            baseUrl = `${process.env.ASSET_URL}/uploads/${imageFolder}/${image}`;
         }
 
         let shopImageUrl = process.env.ASSET_URL + '/uploads/shop-icon/';
@@ -10082,6 +10083,56 @@ export const addVendorProfile = async (req: CustomRequest, resp: Response) => {
         console.log(err)
         return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
     }
+};
+
+export const addAdminProfile = async (req: CustomRequest, resp: Response) => {
+  try {
+    if (!req.file) {
+      return resp.status(400).json({ message: 'Profile Image is required.' });
+    }
+
+    if (!req.user?._id) {
+      return resp.status(400).json({ message: 'Admin id is required.' });
+    }
+
+    if (!req.file.mimetype.startsWith('image/')) {
+      return resp.status(400).json({ message: 'Invalid file type. Only images are allowed.' });
+    }
+
+    const admin = await User.findOne({
+      _id: req.user?._id,
+      designation_id: 2
+    });
+
+    if (!admin) {
+      return resp.status(404).json({ message: 'Admin not found.' });
+    }
+
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
+    const uploadDir = path.join('uploads', 'admin');
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const destinationPath = path.join(uploadDir, fileName);
+
+    await convertToWebP(req.file.buffer, destinationPath);
+
+    admin.image = fileName;
+    await admin.save();
+
+    return resp.status(200).json({
+      message: 'Admin profile image updated successfully.',
+      data: {
+        _id: admin._id,
+        image: fileName
+      }
+    });
+  } catch (err) {
+    console.error('addAdminProfile:', err);
+    return resp.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
 };
 
 export const addShopBanner = async (req: CustomRequest, resp: Response) => {

@@ -1,9 +1,6 @@
 import ProductModel from "../models/Product";
 
-export const allocateInventory = async (
-  productId: string,
-  cartItem: any
-) => {
+export const allocateInventory = async ( productId: string, cartItem: any ) => {
   let result: any = {
     success: false,
     inventoryStatus: "out_of_stock",

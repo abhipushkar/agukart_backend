@@ -274,7 +274,8 @@ import {
     addRatingNote,
     recheckInventory,
     refreshProducts,
-    getSalesCount
+    getSalesCount,
+    addAdminProfile
 } from "../controllers/admin/Postlogin";
 
 
@@ -522,6 +523,7 @@ routes.post('/update-information',validationMiddleware(informationValid), update
 // Vendor API
 routes.post('/add-vendor', addVendor)
 routes.post('/add-vendor-profile', multer().single('file'), addVendorProfile)
+routes.post('/add-admin-profile', multer().single('file'), addAdminProfile)
 routes.post('/add-shop-icon', multer().single('file'), addShopIcon)
 routes.post('/add-shop-video', uploadShopVideo);
 routes.post('/add-shop-photos',multer().single('file'), addShopPhotos);

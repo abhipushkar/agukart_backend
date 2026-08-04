@@ -749,7 +749,7 @@ export const getAdminSubcategory = async (req: Request, resp: Response) => {
   try {
     const id = req.body.id;
 
-    const adminCategory = await AdminCategoryModel.find({ parent_id: id, status: true }).sort({ _id: -1 });
+    const adminCategory = await AdminCategoryModel.find({ parent_id: id, status: true }).sort({ createdAt: -1 });
 
     const baseurl = process.env.ASSET_URL + `/uploads/admin-category/`;
 
@@ -1097,7 +1097,8 @@ export const getPopularGiftProducts = async (req: Request, resp: Response) => {
       draft_status: false,
       status: true,
       deletedByAdmin: false
-     }).populate('category')
+     }).sort({ refresh_date: -1, createdAt: -1 })
+      .populate('category')
       .populate('brand_id')
       .populate('variant_id')
       .populate('variant_attribute_id')

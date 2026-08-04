@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order Confirmed</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#101b3c;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f5f7;padding:25px 10px;">
+  <tr>
+    <td align="center">
+
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:760px;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+
+        <!-- HEADER -->
+        <tr>
+          <td align="center" style="background:#061a3b;padding:22px 20px;">
+            <div style="font-family:Georgia,'Times New Roman',serif;font-size:42px;line-height:46px;font-weight:bold;letter-spacing:2px;color:#f6b625;">
+              Agukart
+            </div>
+            <div style="font-size:14px;line-height:20px;color:#ffffff;font-weight:bold;margin-top:2px;">
+              Discover Unique. Deliver Happiness.
+            </div>
+          </td>
+        </tr>
+
+        <!-- CONFIRMATION -->
+        <tr>
+          <td align="center" style="padding:30px 25px 15px 25px;">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" style="width:52px;height:52px;background:#159438;border-radius:50%;font-size:30px;line-height:52px;color:#ffffff;font-weight:bold;">
+                  &#10003;
+                </td>
+              </tr>
+            </table>
+
+            <div style="font-size:27px;line-height:34px;font-weight:bold;color:#128237;margin-top:14px;">
+              ORDER CONFIRMED
+            </div>
+
+            <div style="font-size:21px;line-height:29px;font-weight:bold;color:#111111;margin-top:12px;">
+              Thanks for your order, <%= customerFirstName %>!
+            </div>
+
+            <div style="font-size:15px;line-height:23px;color:#555555;margin-top:3px;">
+              We've received your order successfully.
+            </div>
+          </td>
+        </tr>
+
+        <!-- ORDER HEADER -->
+        <tr>
+          <td style="padding:10px 20px 0 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e1e4e8;background:#fafafa;border-radius:6px;">
+              <tr>
+                <td style="padding:15px 18px;font-size:16px;font-weight:bold;color:#101b3c;">
+                  ORDER #<%= order.orderId %>
+                </td>
+                <td align="right" style="padding:15px 18px;font-size:14px;color:#35415e;">
+                  <%= order.orderDate %>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- SHOP GROUPS -->
+        <% shops.forEach(function(shop) { %>
+          <tr>
+            <td style="padding:16px 20px 0 20px;">
+
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e5e9;border-radius:6px;">
+
+                <tr>
+                  <td style="padding:11px 16px;background:#f6f8fc;border-bottom:1px solid #e2e5e9;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="font-size:14px;font-weight:bold;color:#101b3c;">
+                          <%= shop.shopName %>
+                        </td>
+                        <td align="right" style="font-size:12px;color:#657086;">
+                          Sub Order: <%= shop.subOrderId %>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <% shop.items.forEach(function(item, itemIndex) { %>
+                  <tr>
+                    <td style="padding:16px;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+
+                          <td width="105" valign="top" style="padding-right:16px;">
+                            <% if (item.image) { %>
+                              <img src="<%= item.image %>" width="100" height="100" alt="<%= item.title %>" style="display:block;width:100px;height:100px;object-fit:cover;border-radius:5px;border:0;">
+                            <% } else { %>
+                              <table width="100" height="100" cellpadding="0" cellspacing="0" border="0" style="background:#f1f2f4;border-radius:5px;">
+                                <tr>
+                                  <td align="center" valign="middle" style="font-size:12px;color:#999999;">
+                                    No Image
+                                  </td>
+                                </tr>
+                              </table>
+                            <% } %>
+                          </td>
+
+                          <td valign="top">
+                            <div style="font-size:16px;line-height:22px;font-weight:bold;color:#111111;">
+                              <%= item.title %>
+                            </div>
+
+                            <% if (item.productCode) { %>
+                              <div style="font-size:12px;line-height:19px;color:#6a6a6a;margin-top:3px;">
+                                Product Code: <%= item.productCode %>
+                              </div>
+                            <% } %>
+
+                            <% if (item.variants && item.variants.length) { %>
+                              <div style="font-size:13px;line-height:20px;color:#444444;margin-top:5px;">
+                                <% item.variants.forEach(function(variant, index) { %>
+                                  <strong><%= variant.variantName %>:</strong> <%= variant.attributeName %><% if (index < item.variants.length - 1) { %>&nbsp;&nbsp;|&nbsp;&nbsp;<% } %>
+                                <% }); %>
+                              </div>
+                            <% } %>
+
+                            <div style="font-size:13px;line-height:20px;color:#333333;margin-top:5px;">
+                              Qty: <%= item.qty %>
+                            </div>
+                          </td>
+
+                          <td width="110" align="right" valign="middle" style="font-size:16px;font-weight:bold;color:#111111;">
+                            <%= currencySymbol %><%= item.amountFormatted %>
+                          </td>
+
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <% if (itemIndex < shop.items.length - 1) { %>
+                    <tr>
+                      <td style="padding:0 16px;">
+                        <div style="border-top:1px solid #eeeeee;"></div>
+                      </td>
+                    </tr>
+                  <% } %>
+                <% }); %>
+
+              </table>
+            </td>
+          </tr>
+        <% }); %>
+
+        <!-- ORDER SUMMARY -->
+        <tr>
+          <td style="padding:16px 20px 0 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e5e9;border-radius:6px;">
+              <tr>
+                <td colspan="2" style="padding:16px 18px 8px 18px;font-size:16px;font-weight:bold;color:#101b3c;">
+                  ORDER SUMMARY
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:5px 18px;font-size:14px;color:#333333;">Subtotal</td>
+                <td align="right" style="padding:5px 18px;font-size:14px;color:#111111;"><%= currencySymbol %><%= summary.subtotal %></td>
+              </tr>
+
+              <% if (summary.promotionDiscountValue > 0) { %>
+                <tr>
+                  <td style="padding:5px 18px;font-size:14px;color:#333333;">Promotion Discount</td>
+                  <td align="right" style="padding:5px 18px;font-size:14px;color:#128237;">- <%= currencySymbol %><%= summary.promotionDiscount %></td>
+                </tr>
+              <% } %>
+
+              <% if (summary.couponDiscountValue > 0) { %>
+                <tr>
+                  <td style="padding:5px 18px;font-size:14px;color:#333333;">Coupon Discount</td>
+                  <td align="right" style="padding:5px 18px;font-size:14px;color:#128237;">- <%= currencySymbol %><%= summary.couponDiscount %></td>
+                </tr>
+              <% } %>
+
+              <% if (summary.voucherDiscountValue > 0) { %>
+                <tr>
+                  <td style="padding:5px 18px;font-size:14px;color:#333333;">Voucher Discount</td>
+                  <td align="right" style="padding:5px 18px;font-size:14px;color:#128237;">- <%= currencySymbol %><%= summary.voucherDiscount %></td>
+                </tr>
+              <% } %>
+
+              <% if (summary.shippingValue > 0) { %>
+                <tr>
+                  <td style="padding:5px 18px;font-size:14px;color:#333333;">Shipping</td>
+                  <td align="right" style="padding:5px 18px;font-size:14px;color:#111111;"><%= currencySymbol %><%= summary.shipping %></td>
+                </tr>
+              <% } %>
+
+              <% if (summary.walletUsedValue > 0) { %>
+                <tr>
+                  <td style="padding:5px 18px;font-size:14px;color:#333333;">Wallet Used</td>
+                  <td align="right" style="padding:5px 18px;font-size:14px;color:#128237;">- <%= currencySymbol %><%= summary.walletUsed %></td>
+                </tr>
+              <% } %>
+
+              <tr>
+                <td colspan="2" style="padding:8px 18px 0 18px;">
+                  <div style="border-top:1px dashed #c7cbd1;"></div>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:12px 18px 16px 18px;font-size:18px;font-weight:bold;color:#101b3c;">TOTAL</td>
+                <td align="right" style="padding:12px 18px 16px 18px;font-size:22px;font-weight:bold;color:#101b3c;"><%= currencySymbol %><%= summary.total %></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- SHIPPING -->
+        <tr>
+          <td style="padding:16px 20px 0 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e5e9;border-radius:6px;">
+              <tr>
+                <td width="70" align="center" valign="top" style="padding:20px 5px;font-size:30px;color:#0a3977;">
+                  &#9673;
+                </td>
+                <td style="padding:18px 18px 18px 5px;">
+                  <div style="font-size:16px;font-weight:bold;color:#101b3c;margin-bottom:7px;">SHIPPING TO</div>
+                  <div style="font-size:14px;line-height:21px;color:#333333;">
+                    <strong><%= shipping.name %></strong><br>
+                    <%= shipping.addressLine1 %><% if (shipping.addressLine2) { %>, <%= shipping.addressLine2 %><% } %><br>
+                    <%= shipping.city %><% if (shipping.state) { %>, <%= shipping.state %><% } %> <%= shipping.pincode %><br>
+                    <%= shipping.country %><br>
+                    <% if (shipping.phone) { %><%= shipping.phone %><% } %>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- PAYMENT -->
+        <tr>
+          <td style="padding:12px 20px 0 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e5e9;border-radius:6px;">
+              <tr>
+                <td width="70" align="center" style="padding:18px 5px;font-size:28px;color:#6d32df;">
+                  &#9635;
+                </td>
+                <td style="padding:16px 18px 16px 5px;">
+                  <div style="font-size:16px;font-weight:bold;color:#101b3c;margin-bottom:8px;">PAYMENT</div>
+                  <span style="font-size:14px;color:#333333;"><%= payment.method %></span>
+                  <span style="display:inline-block;margin-left:10px;padding:4px 9px;border-radius:4px;background:<%= payment.statusColor %>;color:<%= payment.statusTextColor %>;font-size:12px;font-weight:bold;">
+                    <%= payment.statusLabel %>
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        <tr>
+          <td align="center" style="padding:22px 20px;">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" bgcolor="#061f4d" style="border-radius:5px;">
+                  <a href="<%= orderUrl %>" target="_blank" style="display:inline-block;padding:15px 65px;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">
+                    VIEW YOUR ORDER
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- SUPPORT -->
+        <tr>
+          <td align="center" style="padding:18px 20px;background:#fff8ed;font-size:14px;line-height:22px;color:#333333;">
+            <strong>Need help?</strong> Contact
+            <a href="mailto:<%= supportEmail %>" style="color:#0755d9;text-decoration:underline;">Agukart Support</a><br>
+            We're here to help you!
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td align="center" style="background:#061a3b;padding:22px 20px;color:#ffffff;">
+            <div style="font-size:13px;line-height:20px;">
+              &copy; <%= currentYear %> Agukart. All rights reserved.
+            </div>
+          </td>
+        </tr>
+
+      </table>
+
+    </td>
+  </tr>
+</table>
+</body>
+</html>
