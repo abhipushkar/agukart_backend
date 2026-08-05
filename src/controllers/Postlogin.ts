@@ -4177,7 +4177,7 @@ export const orderList = async (req: CustomRequest, resp: Response) => {
                       replyShopIcon: {
                         $cond: [
                           { $eq: ["$replyUserData.designation_id", 2] },
-                          null,
+                          "$replyUserData.image",
                           "$replyVendorData.shop_icon"
                         ]
                       }
@@ -4469,8 +4469,92 @@ export const getOrderDetail = async ( req: CustomRequest, resp: Response ) => {
       {
         $lookup: {
           from: "ratings",
-          localField: "_id",
-          foreignField: "saledetail_id",
+          let: { saleDetailId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$saledetail_id", "$$saleDetailId"]
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "seller_reply.replied_by",
+                foreignField: "_id",
+                as: "replyUserData"
+              }
+            },
+            {
+              $unwind: {
+                path: "$replyUserData",
+                preserveNullAndEmptyArrays: true
+              }
+            },
+            {
+              $lookup: {
+                from: "vendordetails",
+                localField: "replyUserData._id",
+                foreignField: "user_id",
+                as: "replyVendorData"
+              }
+            },
+            {
+              $unwind: {
+                path: "$replyVendorData",
+                preserveNullAndEmptyArrays: true
+              }
+            },
+            {
+              $addFields: {
+                replyShopName: {
+                  $switch: {
+                    branches: [
+                      {
+                        case: {
+                          $eq: ["$seller_reply.replied_by", null]
+                        },
+                        then: null
+                      },
+                      {
+                        case: {
+                          $eq: ["$replyUserData.designation_id", 2]
+                        },
+                        then: "Agukart"
+                      }
+                    ],
+                    default: "$replyVendorData.shop_name"
+                  }
+                },
+                replyShopIcon: {
+                  $switch: {
+                    branches: [
+                      {
+                        case: {
+                          $eq: ["$seller_reply.replied_by", null]
+                        },
+                        then: null
+                      },
+                      {
+                        case: {
+                          $eq: ["$replyUserData.designation_id", 2]
+                        },
+                        then: "$replyUserData.image"
+                      }
+                    ],
+                    default: "$replyVendorData.shop_icon"
+                  }
+                }
+              }
+            },
+            {
+              $project: {
+                replyUserData: 0,
+                replyVendorData: 0
+              }
+            }
+          ],
           as: "rating"
         }
       },

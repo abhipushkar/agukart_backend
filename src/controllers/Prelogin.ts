@@ -1311,74 +1311,488 @@ function calculatePriceAfterDiscount(offer_type: string, discount: number, price
   return price;
 }
 
+// Old version of searchProductQuery function is commented out below. It was replaced with a more optimized version in the current codebase.
+// async function searchProductQuery(q: any) {
+
+//   const regex = new RegExp('^' + q, 'i');
+//   const removeWords = ['for', 'the', 'and', 'of'];
+//   const splitSearchWord = q
+//     .trim()
+//     .split(/\s+/)
+//     .filter((word: any) => !removeWords.includes(word.toLowerCase()));
+
+//   const regexConditions = splitSearchWord.map((word: any) => ({
+//     title: { $regex: new RegExp('^' + word, 'i') }
+//   }));
+
+//   const productQuery = {
+//     status: true,
+//     $or: [
+//       { title: { $in: regexConditions } },
+//       { searchTerms: { $elemMatch: { $in: regexConditions } } }
+//     ]
+//   };
+
+//   const lowerSplitSearchWords = splitSearchWord.map((word: any) => word.toLowerCase());
+
+//   const categoryPipeline = [
+//     {
+//       $match: {
+//         $and: [
+//           {
+//             $or: splitSearchWord.map((word: string) => ({
+//               title: {
+//                 $regex: new RegExp(`\\b${word}\\b`, 'i')
+//               }
+//             }))
+//           },
+//           { status: true }
+//         ]
+//       }
+//     },
+//     {
+//       $addFields: {
+//         restricted_keywords_lower: {
+//           $map: {
+//             input: { $ifNull: ["$restricted_keywords", []] },
+//             as: "item",
+//             in: { $toLower: "$$item" }
+//           }
+//         }
+//       }
+//     },
+//     {
+//       $addFields: {
+//         match_found: {
+//           $or: [
+//             {
+//               $eq: [{ $ifNull: ["$restricted_keywords", []] }, []]
+//             },
+//             {
+//               $gt: [
+//                 {
+//                   $size: {
+//                     $setIntersection: [
+//                       "$restricted_keywords_lower",
+//                       lowerSplitSearchWords
+//                     ]
+//                   }
+//                 },
+//                 0
+//               ]
+//             }
+//           ]
+//         }
+//       }
+//     },
+//     {
+//       $match: {
+//         match_found: true
+//       }
+//     },
+
+//     {
+//       $project: {
+//         _id: 1,
+//         title: 1,
+//         slug: 1,
+//         restricted_keywords: 1
+//       }
+//     },
+//     {
+//       $limit: 10
+//     }
+//   ];
+
+
+//   const [categories, adminCategories, products] = await Promise.all([
+//     Category.aggregate(categoryPipeline),
+
+//     AdminCategoryModel.aggregate(categoryPipeline),
+
+//     Product.aggregate([
+//       { $match: productQuery },
+//       {
+//         $lookup: {
+//           from: 'categories',
+//           localField: 'category',
+//           foreignField: '_id',
+//           as: 'categoryDetails'
+//         }
+//       },
+//       {
+//         $unwind: {
+//           path: '$categoryDetails',
+//           preserveNullAndEmptyArrays: true
+//         }
+//       },
+//       {
+//         $project: {
+//           _id: 1,
+//           product_title: 1,
+//           search_terms: 1,
+//           title: '$categoryDetails.title',
+//           slug: '$categoryDetails.slug',
+//           source: { $literal: 'product' }
+//         }
+//       },
+//       { $limit: 10 }
+//     ])
+
+//   ]);
+
+//   const combined = [
+//     ...categories.map(item => ({ ...item, source: 'category' })),
+//     ...adminCategories.map(item => ({ ...item, source: 'adminCategory' })),
+//     ...products.map(item => ({ ...item, source: 'products' }))
+//   ];
+
+
+//   const uniqueByTitle = Array.from(
+//     new Map(combined.map(item => [item.title.toLowerCase(), item])).values()
+//   );
+
+//   return uniqueByTitle;
+// }
+// Old version of searchProductList function is commented out below. It was replaced with a more optimized version in the current codebase.
+// export const searchProductList = async (req: Request, resp: Response) => {
+//   const sortBy = req.query.sortBy as string;
+//   const page = parseInt(req.query.page as string) || 1;
+//   const limit = parseInt(req.query.limit as string) || 10000000;
+//   const q = req.query.q as string;
+//   const removeWords = ['for', 'the', 'and', 'of'];
+//   const splitSearchWord = q
+//     .trim()
+//     .split(/\s+/)
+//     .filter((word: any) => !removeWords.includes(word.toLowerCase())); // Remove common words like 'for', 'the', etc.
+
+//   let filter: any = {
+//     isDeleted: false,
+//     draft_status: false,
+//     status: true
+//   };
+
+//   try {
+//     const uniqueByTitle = await searchProductQuery(q);
+//     const firstCategory = uniqueByTitle.length > 0 ? uniqueByTitle[0] : [];
+
+//     if (firstCategory.length === 0) {
+//       return resp.status(404).json({
+//         success: false,
+//         message: 'Category/Product not found, please try with another keyword.'
+//       });
+//     }
+
+//     let categoryId: any;
+//     let adminCategoryId: any;
+
+//     if (firstCategory.source === 'category' || firstCategory.source === 'products') {
+//       categoryId = firstCategory._id;
+//     }
+
+//     if (firstCategory.source === 'adminCategory') {
+//       adminCategoryId = firstCategory._id;
+//     }
+
+//     if (categoryId) {
+//       const getAllChildren = await getCategoryTreeNew(categoryId, splitSearchWord);
+//       const catID = [
+//         new mongoose.Types.ObjectId(categoryId),
+//         ...getAllChildren.map((e: any) => new mongoose.Types.ObjectId(e.id))
+//       ];
+
+//       const lastCategoryId = catID.length > 0 ? catID[catID.length - 1] : null;
+
+//       let matchProductTitle = '';
+//       let matchProductTag = '';
+//       let notMatchProductTitle = '';
+//       let notMatchProductTag = '';
+
+//       if (lastCategoryId) {
+//         const category = await Category.findOne({ _id: lastCategoryId, status: true });
+//         if (category) {
+//           if (category.productsMatch === 'Product Title' && category.equalTo === 'is equal to' && category.value) {
+//             matchProductTitle = category.value;
+//           } else if (category.productsMatch === 'Product Tag' && category.equalTo === 'is equal to' && category.value) {
+//             matchProductTag = category.value;
+//           } else if (category.productsMatch === 'Product Title' && category.equalTo === 'is not equal to' && category.value) {
+//             notMatchProductTitle = category.value;
+//           } else if (category.productsMatch === 'Product Tag' && category.equalTo === 'is not equal to' && category.value) {
+//             notMatchProductTag = category.value;
+//           }
+//         }
+//       }
+
+//       const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+//       const conditions: any[] = [{ category: { $in: catID } }];
+//       if (matchProductTitle) conditions.push({ product_title: { $regex: escapeRegExp(matchProductTitle), $options: 'i' } });
+//       if (matchProductTag) conditions.push({ search_terms: { $regex: escapeRegExp(matchProductTag), $options: 'i' } });
+//       if (notMatchProductTitle) conditions.push({ product_title: { $not: { $regex: escapeRegExp(notMatchProductTitle), $options: 'i' } } });
+//       if (notMatchProductTag) conditions.push({ search_terms: { $not: { $regex: escapeRegExp(notMatchProductTag), $options: 'i' } } });
+
+//       filter['$and'] = conditions;
+//     }
+
+//     if (adminCategoryId) {
+//       const adminCondition: any = { _id: adminCategoryId };
+//       if (splitSearchWord.length > 0) {
+//         adminCondition.restricted_keywords = { $not: { $elemMatch: { $in: splitSearchWord } } };
+//       }
+
+//       const adminCategory = await AdminCategoryModel.findOne(adminCondition);
+
+//       if (!adminCategory) {
+//         return resp.status(404).json({ message: "Category not found" });
+//       }
+
+//       const tags = adminCategory.tag;
+
+//       let matchProductTitle = '';
+//       let matchProductTag = '';
+//       let notMatchProductTitle = '';
+//       let notMatchProductTag = '';
+
+//       if (adminCategory) {
+//         if (adminCategory.productsMatch == 'Product Title' && adminCategory.equalTo == 'is equal to' && adminCategory.value != '') {
+//           matchProductTitle = adminCategory.value;
+//         } else if (adminCategory.productsMatch == 'Product Tag' && adminCategory.equalTo == 'is equal to' && adminCategory.value != '') {
+//           matchProductTag = adminCategory.value;
+//         } else if (adminCategory.productsMatch == 'Product Title' && adminCategory.equalTo == 'is not equal to' && adminCategory.value != '') {
+//           notMatchProductTitle = adminCategory.value;
+//         } else if (adminCategory.productsMatch == 'Product Tag' && adminCategory.equalTo == 'is not equal to' && adminCategory.value != '') {
+//           notMatchProductTag = adminCategory.value;
+//         }
+//       }
+
+//       function escapeRegExp(text: any) {
+//         return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+//       }
+
+//       const conditions: any[] = [{ search_terms: { $in: tags } }];
+
+//       if (matchProductTitle) {
+//         conditions.push({ product_title: { $regex: escapeRegExp(matchProductTitle), $options: 'i' } });
+//       }
+//       if (matchProductTag) {
+//         conditions.push({ search_terms: { $regex: escapeRegExp(matchProductTag), $options: 'i' } });
+//       }
+//       if (notMatchProductTitle) {
+//         conditions.push({
+//           product_title: {
+//             $not: { $regex: escapeRegExp(notMatchProductTitle), $options: 'i' }
+//           }
+//         });
+//       }
+//       if (notMatchProductTag) {
+//         conditions.push({
+//           search_terms: {
+//             $not: { $regex: escapeRegExp(notMatchProductTag), $options: 'i' }
+//           }
+//         });
+//       }
+
+//       filter['$or'] = conditions;
+//     }
+
+//     let query = ProductModel.find(filter)
+//       .populate('vendor_id')
+//       .populate('category')
+//       .populate('brand_id')
+//       .populate('variant_id')
+//       .populate('variant_attribute_id')
+//       .populate('exchangePolicy')
+//       .populate({
+//         path: 'parent_id',
+//         populate: [
+//           { path: 'variant_id' },
+//           { path: 'variant_attribute_id' }
+//         ]
+//       });
+
+
+//     query = query.sort({ createdAt: -1 });
+
+//     const allProducts = await query.exec();
+
+//     const base_url = process.env.ASSET_URL + '/uploads/product/';
+//     const video_base_url = process.env.ASSET_URL + '/uploads/video/';
+
+//     const enrichedData = await Promise.all(
+//       allProducts.map(async (item: any) => {
+//         const promotionData = await PromotionalOfferModel.find({ product_id: item._id, status: true, expiry_status: 'active', vendor_id: item.vendor_id?._id });
+//         const vendorDetails = await VendorModel.findOne({ user_id: item.vendor_id?._id });
+
+//         let finalPrice = +item?.sale_price;
+//         let originalPrice = +item?.sale_price;
+
+//         let promotion: any = null;
+//         if (Array.isArray(promotionData) && promotionData.length > 0) {
+//           promotion = promotionData.reduce((best: any, promo: any) => {
+//             if (!promo?.qty && promo?.qty !== 0) return best;
+//             if (!best || (!best?.qty && best?.qty !== 0) || promo.qty < best.qty) {
+//               return promo;
+//             }
+//             return best;
+//           }, null);
+//         }
+
+//         if (item?.isCombination) {
+//           const mergedCombinations = item.combinationData?.map((i: any) => i.combinations).flat() || [];
+//           const minComboPrice = mergedCombinations
+//             .filter((obj: any) => +obj.price > 0)
+//             .reduce((min: any, obj: any) => Math.min(min, +obj.price), Infinity);
+
+//           originalPrice = minComboPrice === Infinity ? +item.sale_price : minComboPrice;
+//           finalPrice = originalPrice;
+
+//           if (promotion && typeof promotion.qty === 'number' && promotion.qty <= 1) {
+//             finalPrice = calculatePriceAfterDiscount(
+//               promotion.offer_type,
+//               +promotion.discount_amount,
+//               originalPrice
+//             );
+//           }
+//         } else {
+//           if (promotion && typeof promotion.qty === 'number' && promotion.qty <= 1) {
+//             finalPrice = calculatePriceAfterDiscount(
+//               promotion.offer_type,
+//               +promotion.discount_amount,
+//               +item.sale_price
+//             );
+//           }
+//         }
+
+//         return {
+//           ...item.toObject(),
+//           promotionData: promotionData || [],
+//           vendorDetails: vendorDetails || {},
+//           originalPrice,
+//           finalPrice
+//         };
+//       })
+//     );
+
+//     const rankedProducts = enrichedData.map((product: any) => {
+//       let points = 0;
+
+//       const titleOccurrences = (product.product_title.match(new RegExp(q, 'gi')) || []).length;
+//       points += titleOccurrences * 3;
+
+//       const searchTermOccurrences = (product.search_terms?.join(' ').match(new RegExp(q, 'gi')) || []).length;
+//       points += searchTermOccurrences * 2;
+
+//       const attributeOccurrences = (product.attributes?.join(' ').match(new RegExp(q, 'gi')) || []).length;
+//       points += attributeOccurrences;
+
+//       return { ...product, points, isPopularNow: product.product_bedge === 'Popular Now' };
+//     }).sort((a, b) => {
+//       if (b.isPopularNow && !a.isPopularNow) return 1;
+//       if (!b.isPopularNow && a.isPopularNow) return -1;
+
+//       return b.points - a.points;
+//     });
+
+//     const totalItems = rankedProducts.length;
+//     const paginatedData = rankedProducts.slice((page - 1) * limit, page * limit);
+
+//     return resp.status(200).json({
+//       message: 'Product fetched successfully.',
+//       data: paginatedData,
+//       base_url,
+//       video_base_url,
+//       pagination: {
+//         currentPage: page,
+//         totalPages: Math.ceil(totalItems / limit),
+//         totalItems
+//       }
+//     });
+//   } catch (error: any) {
+//     console.log(error);
+//     return resp.status(500).json({
+//       message: 'Error fetching products.',
+//       error: error.message,
+//       data: []
+//     });
+//   }
+// };
+
+
+const SEARCH_STOP_WORDS = new Set(['for', 'the', 'and', 'of']);
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeSearchQuery = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+const getSearchWords = (query: string) => query.split(' ').map(word => word.trim()).filter(word => word && !SEARCH_STOP_WORDS.has(word.toLowerCase()));
+
+const buildPrefixRegex = (value: string) => new RegExp(`^${escapeRegex(value)}`, 'i');
+
+const buildWordRegex = (value: string) => new RegExp(`\\b${escapeRegex(value)}`, 'i');
+
+
 async function searchProductQuery(q: any) {
+  const query = normalizeSearchQuery(String(q || ''));
 
-  const regex = new RegExp('^' + q, 'i');
-  const removeWords = ['for', 'the', 'and', 'of'];
-  const splitSearchWord = q
-    .trim()
-    .split(/\s+/)
-    .filter((word: any) => !removeWords.includes(word.toLowerCase()));
+  if (!query) return [];
 
-  const regexConditions = splitSearchWord.map((word: any) => ({
-    title: { $regex: new RegExp('^' + word, 'i') }
-  }));
+  const searchWords = getSearchWords(query);
 
-  const productQuery = {
-    status: true,
-    $or: [
-      { title: { $in: regexConditions } },
-      { searchTerms: { $elemMatch: { $in: regexConditions } } }
-    ]
-  };
+  if (!searchWords.length) return [];
 
-  const lowerSplitSearchWords = splitSearchWord.map((word: any) => word.toLowerCase());
+  const lowerQuery = query.toLowerCase();
+  const prefixQueryRegex = buildPrefixRegex(query);
+  const wordRegexes = searchWords.map(word => buildWordRegex(word));
+  const prefixRegexes = searchWords.map(word => buildPrefixRegex(word));
 
-  const categoryPipeline = [
+  const categoryPipeline: any[] = [
     {
       $match: {
-        $and: [
-          {
-            $or: splitSearchWord.map((word: string) => ({
-              title: {
-                $regex: new RegExp(`\\b${word}\\b`, 'i')
-              }
-            }))
-          },
-          { status: true }
+        status: true,
+        $or: [
+          { title: prefixQueryRegex },
+          { title: { $in: wordRegexes } },
+          { search_terms: prefixQueryRegex },
+          { search_terms: { $in: prefixRegexes } }
         ]
       }
     },
     {
       $addFields: {
-        restricted_keywords_lower: {
-          $map: {
-            input: { $ifNull: ["$restricted_keywords", []] },
-            as: "item",
-            in: { $toLower: "$$item" }
-          }
-        }
-      }
-    },
-    {
-      $addFields: {
-        match_found: {
+        restrictedMatch: {
           $or: [
             {
-              $eq: [{ $ifNull: ["$restricted_keywords", []] }, []]
-            },
-            {
-              $gt: [
+              $eq: [
                 {
                   $size: {
-                    $setIntersection: [
-                      "$restricted_keywords_lower",
-                      lowerSplitSearchWords
-                    ]
+                    $ifNull: ['$restricted_keywords', []]
                   }
                 },
                 0
               ]
+            },
+            {
+              $anyElementTrue: {
+                $map: {
+                  input: {
+                    $ifNull: ['$restricted_keywords', []]
+                  },
+                  as: 'keyword',
+                  in: {
+                    $gte: [
+                      {
+                        $indexOfCP: [
+                          lowerQuery,
+                          {
+                            $toLower: '$$keyword'
+                          }
+                        ]
+                      },
+                      0
+                    ]
+                  }
+                }
+              }
             }
           ]
         }
@@ -1386,15 +1800,16 @@ async function searchProductQuery(q: any) {
     },
     {
       $match: {
-        match_found: true
+        restrictedMatch: true
       }
     },
-
     {
       $project: {
         _id: 1,
         title: 1,
         slug: 1,
+        fullSlug: 1,
+        search_terms: 1,
         restricted_keywords: 1
       }
     },
@@ -1403,57 +1818,185 @@ async function searchProductQuery(q: any) {
     }
   ];
 
+  const productPipeline: any[] = [
+    {
+      $match: {
+        status: true,
+        isDeleted: false,
+        deletedByAdmin: false,
+        draft_status: false,
+        $or: [
+          { product_title: prefixQueryRegex },
+          { product_title: { $in: wordRegexes } },
+          { search_terms: prefixQueryRegex },
+          { search_terms: { $in: prefixRegexes } }
+        ]
+      }
+    },
+    {
+      $addFields: {
+        titleScore: {
+          $size: {
+            $filter: {
+              input: searchWords,
+              as: 'word',
+              cond: {
+                $regexMatch: {
+                  input: {
+                    $ifNull: ['$product_title', '']
+                  },
+                  regex: {
+                    $concat: ['(?i)\\b', '$$word']
+                  }
+                }
+              }
+            }
+          }
+        },
+        searchTermScore: {
+          $size: {
+            $filter: {
+              input: searchWords,
+              as: 'word',
+              cond: {
+                $anyElementTrue: {
+                  $map: {
+                    input: {
+                      $ifNull: ['$search_terms', []]
+                    },
+                    as: 'term',
+                    in: {
+                      $regexMatch: {
+                        input: '$$term',
+                        regex: {
+                          $concat: ['(?i)\\b', '$$word']
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      $addFields: {
+        relevanceScore: {
+          $add: [
+            {
+              $multiply: ['$titleScore', 3]
+            },
+            {
+              $multiply: ['$searchTermScore', 2]
+            }
+          ]
+        }
+      }
+    },
+    {
+      $sort: {
+        relevanceScore: -1,
+        featured: -1,
+        bestseller: -1,
+        refresh_date: -1
+      }
+    },
+    {
+      $project: {
+        _id: 1,
+        product_title: 1,
+        slug: 1,
+        category: 1,
+        image: 1,
+        edited_image: 1,
+        search_terms: 1,
+        featured: 1,
+        bestseller: 1,
+        ratingAvg: 1,
+        relevanceScore: 1
+      }
+    },
+    {
+      $limit: 10
+    }
+  ];
 
-  const [categories, adminCategories, products] = await Promise.all([
+  const shopPipeline: any[] = [
+    {
+      $match: {
+        $or: [
+          { shop_name: prefixQueryRegex },
+          { shop_title: prefixQueryRegex },
+          { meta_keywords: prefixQueryRegex }
+        ]
+      }
+    },
+    {
+      $project: {
+        _id: 1,
+        title: '$shop_name',
+        shop_title: 1,
+        slug: 1,
+        shop_icon: 1
+      }
+    },
+    {
+      $limit: 5
+    }
+  ];
+
+  const brandPipeline: any[] = [
+    {
+      $match: {
+        status: true,
+        $or: [
+          { title: prefixQueryRegex },
+          { meta_keywords: prefixQueryRegex }
+        ]
+      }
+    },
+    {
+      $project: {
+        _id: 1,
+        title: 1,
+        slug: 1,
+        image: 1,
+        featured: 1
+      }
+    },
+    {
+      $limit: 5
+    }
+  ];
+
+  const [categories, adminCategories, products, shops, brands] = await Promise.all([
     Category.aggregate(categoryPipeline),
-
     AdminCategoryModel.aggregate(categoryPipeline),
-
-    Product.aggregate([
-      { $match: productQuery },
-      {
-        $lookup: {
-          from: 'categories',
-          localField: 'category',
-          foreignField: '_id',
-          as: 'categoryDetails'
-        }
-      },
-      {
-        $unwind: {
-          path: '$categoryDetails',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $project: {
-          _id: 1,
-          product_title: 1,
-          search_terms: 1,
-          title: '$categoryDetails.title',
-          slug: '$categoryDetails.slug',
-          source: { $literal: 'product' }
-        }
-      },
-      { $limit: 10 }
-    ])
-
+    Product.aggregate(productPipeline),
+    VendorModel.aggregate(shopPipeline),
+    BrandModel.aggregate(brandPipeline)
   ]);
 
   const combined = [
     ...categories.map(item => ({ ...item, source: 'category' })),
     ...adminCategories.map(item => ({ ...item, source: 'adminCategory' })),
-    ...products.map(item => ({ ...item, source: 'products' }))
+    ...products.map(item => ({ ...item, title: item.product_title, source: 'product' })),
+    ...shops.map(item => ({ ...item, source: 'shop' })),
+    ...brands.map(item => ({ ...item, source: 'brand' }))
   ];
 
-
-  const uniqueByTitle = Array.from(
-    new Map(combined.map(item => [item.title.toLowerCase(), item])).values()
+  const uniqueResults = Array.from(
+    new Map(
+      combined
+        .filter(item => item.title)
+        .map(item => [`${item.source}:${String(item.title).toLowerCase().trim()}`, item])
+    ).values()
   );
 
-  return uniqueByTitle;
+  return uniqueResults.slice(0, 10);
 }
-
 
 export const searchProduct = async (req: Request, resp: Response) => {
 
@@ -1482,266 +2025,1223 @@ export const searchProduct = async (req: Request, resp: Response) => {
 }
 
 export const searchProductList = async (req: Request, resp: Response) => {
-  const sortBy = req.query.sortBy as string;
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 10000000;
-  const q = req.query.q as string;
-  const removeWords = ['for', 'the', 'and', 'of'];
-  const splitSearchWord = q
-    .trim()
-    .split(/\s+/)
-    .filter((word: any) => !removeWords.includes(word.toLowerCase())); // Remove common words like 'for', 'the', etc.
-
-  let filter: any = {
-    isDeleted: false,
-    draft_status: false,
-    status: true
-  };
-
   try {
-    const uniqueByTitle = await searchProductQuery(q);
-    const firstCategory = uniqueByTitle.length > 0 ? uniqueByTitle[0] : [];
+    const rawQuery = String(req.query.q || '');
+    const q = normalizeSearchQuery(rawQuery);
+    const sortBy = String(req.query.sortBy || 'relevance');
+    const page = Math.max(parseInt(String(req.query.page || '1'), 10), 1);
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '20'), 10), 1), 100);
+    const skip = (page - 1) * limit;
 
-    if (firstCategory.length === 0) {
-      return resp.status(404).json({
+    if (!q) {
+      return resp.status(400).json({
         success: false,
-        message: 'Category/Product not found, please try with another keyword.'
+        message: 'Search query is required.',
+        data: []
       });
     }
 
-    let categoryId: any;
-    let adminCategoryId: any;
+    const searchWords = getSearchWords(q);
+    const escapedQuery = escapeRegex(q);
+    const wholeQueryRegex = new RegExp(`^${escapedQuery}$`, 'i');
+    const wholeQueryPrefixRegex = new RegExp(`^${escapedQuery}`, 'i');
+    const wordRegexes = searchWords.map(word => new RegExp(`\\b${escapeRegex(word)}`, 'i'));
+    const normalizedNoSpaceQuery = q.replace(/\s+/g, '').toLowerCase();
 
-    if (firstCategory.source === 'category' || firstCategory.source === 'products') {
-      categoryId = firstCategory._id;
+    /*
+    |--------------------------------------------------------------------------
+    | STEP 0: SHOP / BRAND SEARCH
+    |--------------------------------------------------------------------------
+    | PDF:
+    | Shop name search  -> search without space
+    | Brand name search -> search without space
+    |
+    | These are suggestions only.
+    | Product searching continues normally.
+    |--------------------------------------------------------------------------
+    */
+
+    const [shopSuggestions, brandSuggestions] = await Promise.all([
+      VendorModel.aggregate([
+        {
+          $addFields: {
+            normalizedShopName: {
+              $toLower: {
+                $replaceAll: {
+                  input: { $ifNull: ['$shop_name', ''] },
+                  find: ' ',
+                  replacement: ''
+                }
+              }
+            }
+          }
+        },
+        {
+          $match: {
+            normalizedShopName: normalizedNoSpaceQuery
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            title: '$shop_name',
+            shop_title: 1,
+            slug: 1,
+            shop_icon: 1
+          }
+        },
+        {
+          $limit: 3
+        }
+      ]),
+
+      BrandModel.aggregate([
+        {
+          $addFields: {
+            normalizedBrandName: {
+              $toLower: {
+                $replaceAll: {
+                  input: { $ifNull: ['$title', ''] },
+                  find: ' ',
+                  replacement: ''
+                }
+              }
+            }
+          }
+        },
+        {
+          $match: {
+            status: true,
+            normalizedBrandName: normalizedNoSpaceQuery
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            title: 1,
+            slug: 1,
+            image: 1
+          }
+        },
+        {
+          $limit: 3
+        }
+      ])
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | HELPER: RESTRICTED CATEGORY CHECK
+    |--------------------------------------------------------------------------
+    | Restricted category:
+    |
+    | restricted_keywords = ["blank", "empty", "without stone"]
+    |
+    | It is allowed ONLY when user's complete query contains one of those
+    | restricted keywords.
+    |--------------------------------------------------------------------------
+    */
+
+    const isRestrictedCategoryAllowed = (category: any) => {
+      const restrictedKeywords = Array.isArray(category?.restricted_keywords) ? category.restricted_keywords : [];
+
+      if (!restrictedKeywords.length) {
+        return true;
+      }
+
+      const lowerQuery = q.toLowerCase();
+
+      return restrictedKeywords.some((keyword: any) => {
+        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+
+        if (!normalizedKeyword) {
+          return false;
+        }
+
+        return lowerQuery.includes(normalizedKeyword);
+      });
+    };
+
+    /*
+    |--------------------------------------------------------------------------
+    | STEP 1: WHOLE QUERY DIRECT MATCH
+    |--------------------------------------------------------------------------
+    | IMPORTANT:
+    |
+    | 1. Frontend category FIRST.
+    | 2. Only if frontend category doesn't match -> Admin category.
+    | 3. Do NOT break words during this step.
+    |--------------------------------------------------------------------------
+    */
+
+    let matchedFrontendCategories: any[] = [];
+    let matchedAdminCategories: any[] = [];
+    let directCategoryMatch = false;
+    let directCategorySource: 'category' | 'adminCategory' | null = null;
+
+    const directFrontendCategories = await Category.find({
+      status: true,
+      $or: [
+        { title: wholeQueryRegex },
+        { search_terms: wholeQueryRegex }
+      ]
+    })
+      .select('_id title slug fullSlug restricted_keywords')
+      .lean();
+
+    const allowedDirectFrontendCategories = directFrontendCategories.filter(isRestrictedCategoryAllowed);
+
+    if (allowedDirectFrontendCategories.length > 0) {
+      matchedFrontendCategories = allowedDirectFrontendCategories;
+      directCategoryMatch = true;
+      directCategorySource = 'category';
+    } else {
+      const directAdminCategories = await AdminCategoryModel.find({
+        status: true,
+        $or: [
+          { title: wholeQueryRegex },
+          { search_terms: wholeQueryRegex }
+        ]
+      })
+        .select('_id title slug fullSlug tag restricted_keywords')
+        .lean();
+
+      const allowedDirectAdminCategories = directAdminCategories.filter(isRestrictedCategoryAllowed);
+
+      if (allowedDirectAdminCategories.length > 0) {
+        matchedAdminCategories = allowedDirectAdminCategories;
+        directCategoryMatch = true;
+        directCategorySource = 'adminCategory';
+      }
     }
 
-    if (firstCategory.source === 'adminCategory') {
-      adminCategoryId = firstCategory._id;
+    /*
+    |--------------------------------------------------------------------------
+    | STEP 2 + STEP 3:
+    | BREAK QUERY INTO WORDS AND MATCH CATEGORIES AT ALL LEVELS
+    |--------------------------------------------------------------------------
+    |
+    | Only execute this when Step 1 did NOT find a direct category.
+    |--------------------------------------------------------------------------
+    */
+
+    if (!directCategoryMatch && searchWords.length > 0) {
+      const categoryWordConditions = searchWords.flatMap(word => {
+        const regex = new RegExp(`\\b${escapeRegex(word)}`, 'i');
+
+        return [
+          { title: regex },
+          { search_terms: regex }
+        ];
+      });
+
+      const frontendCategoryCandidates = await Category.find({
+        status: true,
+        $or: categoryWordConditions
+      })
+        .select('_id title slug fullSlug parent_id search_terms restricted_keywords')
+        .lean();
+
+      matchedFrontendCategories = frontendCategoryCandidates.filter(isRestrictedCategoryAllowed);
+
+      /*
+      | Admin/hidden categories are checked too during token/category discovery.
+      */
+
+      const adminCategoryCandidates = await AdminCategoryModel.find({
+        status: true,
+        $or: categoryWordConditions
+      })
+        .select('_id title slug fullSlug parent_id tag search_terms restricted_keywords')
+        .lean();
+
+      matchedAdminCategories = adminCategoryCandidates.filter(isRestrictedCategoryAllowed);
     }
 
-    if (categoryId) {
-      const getAllChildren = await getCategoryTreeNew(categoryId, splitSearchWord);
-      const catID = [
-        new mongoose.Types.ObjectId(categoryId),
-        ...getAllChildren.map((e: any) => new mongoose.Types.ObjectId(e.id))
-      ];
+    /*
+    |--------------------------------------------------------------------------
+    | STEP 4 + STEP 5:
+    | RESTRICTED CATEGORY CHECK
+    |--------------------------------------------------------------------------
+    |
+    | Already applied above through isRestrictedCategoryAllowed().
+    |
+    | Example:
+    |
+    | query:
+    | "925 sterling silver black onyx ring for girls"
+    |
+    | Jewelry > Rings
+    | -> allowed
+    |
+    | Craft Supplies > Jewelry > Ring
+    | restricted_keywords = ["blank", "empty", "without stone"]
+    | -> blocked
+    |--------------------------------------------------------------------------
+    */
 
-      const lastCategoryId = catID.length > 0 ? catID[catID.length - 1] : null;
+    /*
+    |--------------------------------------------------------------------------
+    | STEP 6:
+    | BUILD CATEGORY PRODUCT SCOPE
+    |--------------------------------------------------------------------------
+    */
 
-      let matchProductTitle = '';
-      let matchProductTag = '';
-      let notMatchProductTitle = '';
-      let notMatchProductTag = '';
+    const categoryIds = new Set<string>();
 
-      if (lastCategoryId) {
-        const category = await Category.findOne({ _id: lastCategoryId, status: true });
-        if (category) {
-          if (category.productsMatch === 'Product Title' && category.equalTo === 'is equal to' && category.value) {
-            matchProductTitle = category.value;
-          } else if (category.productsMatch === 'Product Tag' && category.equalTo === 'is equal to' && category.value) {
-            matchProductTag = category.value;
-          } else if (category.productsMatch === 'Product Title' && category.equalTo === 'is not equal to' && category.value) {
-            notMatchProductTitle = category.value;
-          } else if (category.productsMatch === 'Product Tag' && category.equalTo === 'is not equal to' && category.value) {
-            notMatchProductTag = category.value;
+    for (const category of matchedFrontendCategories) {
+      categoryIds.add(String(category._id));
+
+      try {
+        const children = await getCategoryTreeNew(category._id, searchWords);
+
+        for (const child of children || []) {
+          if (child?.id) {
+            categoryIds.add(String(child.id));
           }
         }
+      } catch (error) {
+        console.log('Unable to fetch category children:', category._id, error);
       }
-
-      const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-      const conditions: any[] = [{ category: { $in: catID } }];
-      if (matchProductTitle) conditions.push({ product_title: { $regex: escapeRegExp(matchProductTitle), $options: 'i' } });
-      if (matchProductTag) conditions.push({ search_terms: { $regex: escapeRegExp(matchProductTag), $options: 'i' } });
-      if (notMatchProductTitle) conditions.push({ product_title: { $not: { $regex: escapeRegExp(notMatchProductTitle), $options: 'i' } } });
-      if (notMatchProductTag) conditions.push({ search_terms: { $not: { $regex: escapeRegExp(notMatchProductTag), $options: 'i' } } });
-
-      filter['$and'] = conditions;
     }
 
-    if (adminCategoryId) {
-      const adminCondition: any = { _id: adminCategoryId };
-      if (splitSearchWord.length > 0) {
-        adminCondition.restricted_keywords = { $not: { $elemMatch: { $in: splitSearchWord } } };
-      }
+    const categoryObjectIds = Array.from(categoryIds)
+      .filter(id => mongoose.Types.ObjectId.isValid(id))
+      .map(id => new mongoose.Types.ObjectId(id));
 
-      const adminCategory = await AdminCategoryModel.findOne(adminCondition);
+    /*
+    |--------------------------------------------------------------------------
+    | ADMIN CATEGORY PRODUCT RULES
+    |--------------------------------------------------------------------------
+    */
 
-      if (!adminCategory) {
-        return resp.status(404).json({ message: "Category not found" });
-      }
+    const adminProductConditions: any[] = [];
 
-      const tags = adminCategory.tag;
+    for (const adminCategory of matchedAdminCategories) {
+      const conditions: any[] = [];
 
-      let matchProductTitle = '';
-      let matchProductTag = '';
-      let notMatchProductTitle = '';
-      let notMatchProductTag = '';
-
-      if (adminCategory) {
-        if (adminCategory.productsMatch == 'Product Title' && adminCategory.equalTo == 'is equal to' && adminCategory.value != '') {
-          matchProductTitle = adminCategory.value;
-        } else if (adminCategory.productsMatch == 'Product Tag' && adminCategory.equalTo == 'is equal to' && adminCategory.value != '') {
-          matchProductTag = adminCategory.value;
-        } else if (adminCategory.productsMatch == 'Product Title' && adminCategory.equalTo == 'is not equal to' && adminCategory.value != '') {
-          notMatchProductTitle = adminCategory.value;
-        } else if (adminCategory.productsMatch == 'Product Tag' && adminCategory.equalTo == 'is not equal to' && adminCategory.value != '') {
-          notMatchProductTag = adminCategory.value;
-        }
-      }
-
-      function escapeRegExp(text: any) {
-        return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      }
-
-      const conditions: any[] = [{ search_terms: { $in: tags } }];
-
-      if (matchProductTitle) {
-        conditions.push({ product_title: { $regex: escapeRegExp(matchProductTitle), $options: 'i' } });
-      }
-      if (matchProductTag) {
-        conditions.push({ search_terms: { $regex: escapeRegExp(matchProductTag), $options: 'i' } });
-      }
-      if (notMatchProductTitle) {
-        conditions.push({
-          product_title: {
-            $not: { $regex: escapeRegExp(notMatchProductTitle), $options: 'i' }
-          }
-        });
-      }
-      if (notMatchProductTag) {
+      if (Array.isArray(adminCategory.tag) && adminCategory.tag.length > 0) {
         conditions.push({
           search_terms: {
-            $not: { $regex: escapeRegExp(notMatchProductTag), $options: 'i' }
+            $in: adminCategory.tag
           }
         });
       }
 
-      filter['$or'] = conditions;
+      if (adminCategory.productsMatch === 'Product Title' && adminCategory.value) {
+        const valueRegex = new RegExp(escapeRegex(adminCategory.value), 'i');
+
+        if (adminCategory.equalTo === 'is equal to') {
+          conditions.push({
+            product_title: valueRegex
+          });
+        }
+
+        if (adminCategory.equalTo === 'is not equal to') {
+          conditions.push({
+            product_title: {
+              $not: valueRegex
+            }
+          });
+        }
+      }
+
+      if (adminCategory.productsMatch === 'Product Tag' && adminCategory.value) {
+        const valueRegex = new RegExp(escapeRegex(adminCategory.value), 'i');
+
+        if (adminCategory.equalTo === 'is equal to') {
+          conditions.push({
+            search_terms: valueRegex
+          });
+        }
+
+        if (adminCategory.equalTo === 'is not equal to') {
+          conditions.push({
+            search_terms: {
+              $not: valueRegex
+            }
+          });
+        }
+      }
+
+      if (conditions.length > 0) {
+        adminProductConditions.push({
+          $and: conditions
+        });
+      }
     }
 
-    let query = ProductModel.find({ $or: [{ product_title: { $regex: new RegExp(q, 'i') } }, { search_terms: { $regex: new RegExp(q, 'i') } }] })
-      .populate('vendor_id')
-      .populate('category')
-      .populate('brand_id')
-      .populate('variant_id')
-      .populate('variant_attribute_id')
-      .populate('exchangePolicy')
-      .populate({
-        path: 'parent_id',
-        populate: [
-          { path: 'variant_id' },
-          { path: 'variant_attribute_id' }
-        ]
+    /*
+    |--------------------------------------------------------------------------
+    | PRODUCT SEARCH CONDITIONS
+    |--------------------------------------------------------------------------
+    |
+    | PDF:
+    |
+    | Match:
+    | - title
+    | - search terms
+    | - attributes
+    | - variants
+    |--------------------------------------------------------------------------
+    */
+
+    const productTextConditions: any[] = [];
+
+    for (const word of searchWords) {
+      const regex = new RegExp(`\\b${escapeRegex(word)}`, 'i');
+
+      productTextConditions.push({
+        product_title: regex
       });
 
+      productTextConditions.push({
+        search_terms: regex
+      });
 
-    query = query.sort({ createdAt: -1 });
+      productTextConditions.push({
+        'dynamicFields.value': regex
+      });
 
-    const allProducts = await query.exec();
+      productTextConditions.push({
+        'product_variants.variant_name': regex
+      });
+
+      productTextConditions.push({
+        'product_variants.variant_attributes.attribute': regex
+      });
+
+      productTextConditions.push({
+        'variations_data.name': regex
+      });
+
+      productTextConditions.push({
+        'variations_data.values': regex
+      });
+
+      productTextConditions.push({
+        'customizationData.customizations.title': regex
+      });
+
+      productTextConditions.push({
+        'customizationData.customizations.optionList.optionName': regex
+      });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CATEGORY SCOPE
+    |--------------------------------------------------------------------------
+    |
+    | If categories were found:
+    | Search those categories.
+    |
+    | If no category found:
+    | Search all products.
+    |--------------------------------------------------------------------------
+    */
+
+    const categoryScopeConditions: any[] = [];
+
+    if (categoryObjectIds.length > 0) {
+      categoryScopeConditions.push({
+        category: {
+          $in: categoryObjectIds
+        }
+      });
+    }
+
+    if (adminProductConditions.length > 0) {
+      categoryScopeConditions.push(...adminProductConditions);
+    }
+
+const productWordConditions = searchWords.map(word => {
+  const regex = new RegExp(`\\b${escapeRegex(word)}`, 'i');
+
+  return {
+    $or: [
+      { product_title: regex },
+      { search_terms: regex },
+      { material: regex },
+      { occasion: regex },
+      { gender: regex },
+      { color: regex },
+      { size: regex },
+      { design: regex },
+      { 'product_variants.variant_name': regex },
+      { 'product_variants.variant_attributes.attribute': regex },
+      { 'variations_data.name': regex },
+      { 'variations_data.values': regex },
+      { 'customizationData.customizations.title': regex },
+      { 'customizationData.customizations.label': regex },
+      { 'customizationData.customizations.optionList.optionName': regex }
+    ]
+  };
+});
+
+const directProductMatch = {
+  $and: productWordConditions
+};
+
+const categoryProductMatch = categoryScopeConditions.length > 0
+  ? {
+      $and: [
+        {
+          $or: categoryScopeConditions
+        },
+        {
+          $or: productTextConditions
+        }
+      ]
+    }
+  : null;
+
+const baseMatch: any = {
+  isDeleted: false,
+  deletedByAdmin: false,
+  draft_status: false,
+  status: true,
+  $or: [
+    directProductMatch,
+    ...(categoryProductMatch ? [categoryProductMatch] : [])
+  ]
+};
+
+    /*
+    |--------------------------------------------------------------------------
+    | SCORING
+    |--------------------------------------------------------------------------
+    |
+    | EXACT PDF SCORING:
+    |
+    | Title       = 3
+    | Search Term = 2
+    | Attribute   = 1
+    |
+    | Variant is included as additional product metadata matching because
+    | handwritten requirement adds variants.
+    |--------------------------------------------------------------------------
+    */
+
+    const scoreStages: any[] = [
+      {
+        $addFields: {
+          _searchTitle: {
+            $toLower: {
+              $ifNull: ['$product_title', '']
+            }
+          },
+
+          _searchTerms: {
+            $map: {
+              input: {
+                $ifNull: ['$search_terms', []]
+              },
+              as: 'term',
+              in: {
+                $toLower: '$$term'
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          titleMatchCount: {
+            $size: {
+              $filter: {
+                input: searchWords,
+                as: 'word',
+                cond: {
+                  $gte: [
+                    {
+                      $indexOfCP: [
+                        '$_searchTitle',
+                        {
+                          $toLower: '$$word'
+                        }
+                      ]
+                    },
+                    0
+                  ]
+                }
+              }
+            }
+          },
+
+          searchTermMatchCount: {
+            $size: {
+              $filter: {
+                input: searchWords,
+                as: 'word',
+                cond: {
+                  $anyElementTrue: {
+                    $map: {
+                      input: '$_searchTerms',
+                      as: 'term',
+                      in: {
+                        $gte: [
+                          {
+                            $indexOfCP: [
+                              '$$term',
+                              {
+                                $toLower: '$$word'
+                              }
+                            ]
+                          },
+                          0
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | ATTRIBUTE + VARIANT TEXT
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $addFields: {
+          attributeSearchText: {
+            $toLower: {
+              $concat: [
+                {
+                  $reduce: {
+                    input: {
+                      $ifNull: ['$material', []]
+                    },
+                    initialValue: '',
+                    in: {
+                      $concat: ['$$value', ' ', { $toString: '$$this' }]
+                    }
+                  }
+                },
+
+                ' ',
+
+                {
+                  $reduce: {
+                    input: {
+                      $ifNull: ['$occasion', []]
+                    },
+                    initialValue: '',
+                    in: {
+                      $concat: ['$$value', ' ', { $toString: '$$this' }]
+                    }
+                  }
+                },
+
+                ' ',
+
+                {
+                  $reduce: {
+                    input: {
+                      $ifNull: ['$gender', []]
+                    },
+                    initialValue: '',
+                    in: {
+                      $concat: ['$$value', ' ', { $toString: '$$this' }]
+                    }
+                  }
+                },
+
+                ' ',
+
+                {
+                  $ifNull: ['$color', '']
+                },
+
+                ' ',
+
+                {
+                  $ifNull: ['$size', '']
+                },
+
+                ' ',
+
+                {
+                  $ifNull: ['$design', '']
+                },
+
+                ' ',
+
+                {
+                  $reduce: {
+                    input: {
+                      $ifNull: ['$variations_data', []]
+                    },
+                    initialValue: '',
+                    in: {
+                      $concat: [
+                        '$$value',
+                        ' ',
+                        {
+                          $ifNull: ['$$this.name', '']
+                        },
+                        ' ',
+                        {
+                          $reduce: {
+                            input: {
+                              $ifNull: ['$$this.values', []]
+                            },
+                            initialValue: '',
+                            in: {
+                              $concat: ['$$value', ' ', { $toString: '$$this' }]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          attributeMatchCount: {
+            $size: {
+              $filter: {
+                input: searchWords,
+                as: 'word',
+                cond: {
+                  $gte: [
+                    {
+                      $indexOfCP: [
+                        '$attributeSearchText',
+                        {
+                          $toLower: '$$word'
+                        }
+                      ]
+                    },
+                    0
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | FINAL RELEVANCE SCORE
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $addFields: {
+          relevanceScore: {
+            $add: [
+              {
+                $multiply: ['$titleMatchCount', 3]
+              },
+              {
+                $multiply: ['$searchTermMatchCount', 2]
+              },
+              {
+                $multiply: ['$attributeMatchCount', 1]
+              }
+            ]
+          }
+        }
+      }
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | SORTING
+    |--------------------------------------------------------------------------
+    */
+
+    let sortStage: any;
+
+    if (sortBy === 'date') {
+      sortStage = {
+        createdAt: -1,
+        _id: -1
+      };
+    } else if (sortBy === 'asc') {
+      sortStage = {
+        searchPrice: 1,
+        _id: 1
+      };
+    } else if (sortBy === 'desc') {
+      sortStage = {
+        searchPrice: -1,
+        _id: 1
+      };
+    } else {
+      /*
+      | PDF:
+      |
+      | Featured + High Score = Top
+      | Non-featured + High Score = Next
+      |
+      | Score remains important.
+      */
+
+      sortStage = {
+        featured: -1,
+        relevanceScore: -1,
+        bestsellerScore: -1,
+        refresh_date: -1,
+        createdAt: -1,
+        _id: -1
+      };
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MAIN AGGREGATION
+    |--------------------------------------------------------------------------
+    */
+
+    const pipeline: any[] = [
+      {
+        $match: baseMatch
+      },
+
+      ...scoreStages,
+
+      /*
+      |--------------------------------------------------------------------------
+      | PRICE
+      |--------------------------------------------------------------------------
+      |
+      | Combination products use minimum positive combination price.
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $addFields: {
+          combinationPrices: {
+            $reduce: {
+              input: {
+                $ifNull: ['$combinationData', []]
+              },
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  '$$value',
+                  {
+                    $map: {
+                      input: {
+                        $ifNull: ['$$this.combinations', []]
+                      },
+                      as: 'combination',
+                      in: {
+                        $convert: {
+                          input: '$$combination.price',
+                          to: 'double',
+                          onError: 0,
+                          onNull: 0
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          validCombinationPrices: {
+            $filter: {
+              input: '$combinationPrices',
+              as: 'price',
+              cond: {
+                $gt: ['$$price', 0]
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          searchPrice: {
+            $cond: [
+              {
+                $and: [
+                  {
+                    $eq: ['$isCombination', true]
+                  },
+                  {
+                    $gt: [
+                      {
+                        $size: '$validCombinationPrices'
+                      },
+                      0
+                    ]
+                  }
+                ]
+              },
+
+              {
+                $min: '$validCombinationPrices'
+              },
+
+              {
+                $convert: {
+                  input: '$sale_price',
+                  to: 'double',
+                  onError: 0,
+                  onNull: 0
+                }
+              }
+            ]
+          },
+
+          bestsellerScore: {
+            $cond: [
+              {
+                $eq: ['$bestseller', 'Yes']
+              },
+              1,
+              0
+            ]
+          }
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | VENDOR
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $lookup: {
+          from: 'vendordetails',
+          localField: 'vendor_id',
+          foreignField: 'user_id',
+          as: 'vendorDetails'
+        }
+      },
+
+      {
+        $unwind: {
+          path: '$vendorDetails',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | CATEGORY
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'category',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+
+      {
+        $unwind: {
+          path: '$category',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | BRAND
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $lookup: {
+          from: 'brands',
+          localField: 'brand_id',
+          foreignField: '_id',
+          as: 'brand_id'
+        }
+      },
+
+      {
+        $unwind: {
+          path: '$brand_id',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | VARIANTS
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $lookup: {
+          from: 'variants',
+          localField: 'variant_id',
+          foreignField: '_id',
+          as: 'variant_id'
+        }
+      },
+
+      {
+        $lookup: {
+          from: 'variantattributes',
+          localField: 'variant_attribute_id',
+          foreignField: '_id',
+          as: 'variant_attribute_id'
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | EXCHANGE POLICY
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $lookup: {
+          from: 'exchangepolicies',
+          localField: 'exchangePolicy',
+          foreignField: '_id',
+          as: 'exchangePolicy'
+        }
+      },
+
+      {
+        $unwind: {
+          path: '$exchangePolicy',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | PROMOTIONS
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $lookup: {
+          from: 'promotionaloffers',
+          let: {
+            productId: '$_id',
+            vendorId: '$vendor_id'
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    {
+                      $in: [
+                        '$$productId',
+                        {
+                          $ifNull: ['$product_id', []]
+                        }
+                      ]
+                    },
+                    {
+                      $eq: ['$vendor_id', '$$vendorId']
+                    },
+                    {
+                      $eq: ['$status', true]
+                    },
+                    {
+                      $eq: ['$expiry_status', 'active']
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'promotionData'
+        }
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | SORT BEFORE PAGINATION
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $sort: sortStage
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | DATABASE PAGINATION
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $facet: {
+          data: [
+            {
+              $skip: skip
+            },
+            {
+              $limit: limit
+            },
+
+            {
+              $project: {
+                _searchTitle: 0,
+                _searchTerms: 0,
+                attributeSearchText: 0,
+                combinationPrices: 0,
+                validCombinationPrices: 0
+              }
+            }
+          ],
+
+          metadata: [
+            {
+              $count: 'totalItems'
+            }
+          ]
+        }
+      }
+    ];
+
+    const aggregationResult = await ProductModel.aggregate(pipeline);
+
+    const products = aggregationResult?.[0]?.data || [];
+    const totalItems = aggregationResult?.[0]?.metadata?.[0]?.totalItems || 0;
+
+    /*
+    |--------------------------------------------------------------------------
+    | FINAL PRICE AFTER PROMOTION
+    |--------------------------------------------------------------------------
+    |
+    | We only process CURRENT PAGE here.
+    |
+    | This is fine because DB already reduced 1-5 lakh records to max 100.
+    |--------------------------------------------------------------------------
+    */
+
+    const finalProducts = products.map((item: any) => {
+      let originalPrice = Number(item.searchPrice || item.sale_price || 0);
+      let finalPrice = originalPrice;
+
+      let promotion: any = null;
+
+      if (Array.isArray(item.promotionData) && item.promotionData.length > 0) {
+        promotion = item.promotionData.reduce((best: any, promo: any) => {
+          const qty = Number(promo?.qty);
+
+          if (Number.isNaN(qty)) {
+            return best;
+          }
+
+          if (!best) {
+            return promo;
+          }
+
+          return qty < Number(best.qty) ? promo : best;
+        }, null);
+      }
+
+      if (promotion && Number(promotion.qty) <= 1) {
+        finalPrice = calculatePriceAfterDiscount(
+          promotion.offer_type,
+          Number(promotion.discount_amount || 0),
+          originalPrice
+        );
+      }
+
+      return {
+        ...item,
+        originalPrice,
+        finalPrice
+      };
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
     const base_url = process.env.ASSET_URL + '/uploads/product/';
     const video_base_url = process.env.ASSET_URL + '/uploads/video/';
 
-    const enrichedData = await Promise.all(
-      allProducts.map(async (item: any) => {
-        const promotionData = await PromotionalOfferModel.find({ product_id: item._id, status: true, expiry_status: 'active', vendor_id: item.vendor_id?._id });
-        const vendorDetails = await VendorModel.findOne({ user_id: item.vendor_id?._id });
-
-        let finalPrice = +item?.sale_price;
-        let originalPrice = +item?.sale_price;
-
-        let promotion: any = null;
-        if (Array.isArray(promotionData) && promotionData.length > 0) {
-          promotion = promotionData.reduce((best: any, promo: any) => {
-            if (!promo?.qty && promo?.qty !== 0) return best;
-            if (!best || (!best?.qty && best?.qty !== 0) || promo.qty < best.qty) {
-              return promo;
-            }
-            return best;
-          }, null);
-        }
-
-        if (item?.isCombination) {
-          const mergedCombinations = item.combinationData?.map((i: any) => i.combinations).flat() || [];
-          const minComboPrice = mergedCombinations
-            .filter((obj: any) => +obj.price > 0)
-            .reduce((min: any, obj: any) => Math.min(min, +obj.price), Infinity);
-
-          originalPrice = minComboPrice === Infinity ? +item.sale_price : minComboPrice;
-          finalPrice = originalPrice;
-
-          if (promotion && typeof promotion.qty === 'number' && promotion.qty <= 1) {
-            finalPrice = calculatePriceAfterDiscount(
-              promotion.offer_type,
-              +promotion.discount_amount,
-              originalPrice
-            );
-          }
-        } else {
-          if (promotion && typeof promotion.qty === 'number' && promotion.qty <= 1) {
-            finalPrice = calculatePriceAfterDiscount(
-              promotion.offer_type,
-              +promotion.discount_amount,
-              +item.sale_price
-            );
-          }
-        }
-
-        return {
-          ...item.toObject(),
-          promotionData: promotionData || [],
-          vendorDetails: vendorDetails || {},
-          originalPrice,
-          finalPrice
-        };
-      })
-    );
-
-    const rankedProducts = enrichedData.map((product: any) => {
-      let points = 0;
-
-      const titleOccurrences = (product.product_title.match(new RegExp(q, 'gi')) || []).length;
-      points += titleOccurrences * 3;
-
-      const searchTermOccurrences = (product.search_terms?.join(' ').match(new RegExp(q, 'gi')) || []).length;
-      points += searchTermOccurrences * 2;
-
-      const attributeOccurrences = (product.attributes?.join(' ').match(new RegExp(q, 'gi')) || []).length;
-      points += attributeOccurrences;
-
-      return { ...product, points, isPopularNow: product.product_bedge === 'Popular Now' };
-    }).sort((a, b) => {
-      if (b.isPopularNow && !a.isPopularNow) return 1;
-      if (!b.isPopularNow && a.isPopularNow) return -1;
-
-      return b.points - a.points;
-    });
-
-    const totalItems = rankedProducts.length;
-    const paginatedData = rankedProducts.slice((page - 1) * limit, page * limit);
-
     return resp.status(200).json({
+      success: true,
       message: 'Product fetched successfully.',
-      data: paginatedData,
+      data: finalProducts,
       base_url,
       video_base_url,
+
+      suggestions: {
+        shops: shopSuggestions.map((shop: any) => ({
+          ...shop,
+          message: `Did you mean the shop ${shop.title}?`
+        })),
+
+        brands: brandSuggestions.map((brand: any) => ({
+          ...brand,
+          message: `Did you mean the brand ${brand.title}?`
+        }))
+      },
+
+      search: {
+        query: q,
+        words: searchWords,
+        directCategoryMatch,
+        directCategorySource,
+
+        matchedCategories: matchedFrontendCategories.map((category: any) => ({
+          _id: category._id,
+          title: category.title,
+          slug: category.slug,
+          fullSlug: category.fullSlug
+        })),
+
+        matchedAdminCategories: matchedAdminCategories.map((category: any) => ({
+          _id: category._id,
+          title: category.title,
+          slug: category.slug,
+          fullSlug: category.fullSlug
+        }))
+      },
+
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalItems / limit),
-        totalItems
+        totalItems,
+        limit
       }
     });
   } catch (error: any) {
-    console.log(error);
+    console.log('searchProductList error:', error);
+
     return resp.status(500).json({
+      success: false,
       message: 'Error fetching products.',
       error: error.message,
       data: []
     });
   }
 };
+
 
 const escapeForRegex = (s: string) => {
   if (!s) return "";
@@ -3131,7 +4631,7 @@ export const getProductReviews = async ( req: Request, resp: Response ) => {
                     2
                   ]
                 },
-                null,
+                "$replyUserData.image",
                 "$replyVendorData.shop_icon"
               ]
             }
