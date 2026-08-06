@@ -1908,6 +1908,7 @@ async function searchProductQuery(q: any) {
         _id: 1,
         product_title: 1,
         slug: 1,
+        product_code: 1,
         category: 1,
         image: 1,
         edited_image: 1,
@@ -1963,7 +1964,8 @@ async function searchProductQuery(q: any) {
         title: 1,
         slug: 1,
         image: 1,
-        featured: 1
+        featured: 1,
+        link: 1
       }
     },
     {
@@ -2042,6 +2044,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
     }
 
     const searchWords = getSearchWords(q);
+    const lowerQuery = q.toLowerCase();
     const escapedQuery = escapeRegex(q);
     const wholeQueryRegex = new RegExp(`^${escapedQuery}$`, 'i');
     const wholeQueryPrefixRegex = new RegExp(`^${escapedQuery}`, 'i');
@@ -2178,6 +2181,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
     let matchedAdminCategories: any[] = [];
     let directCategoryMatch = false;
     let directCategorySource: 'category' | 'adminCategory' | null = null;
+    let hasRestrictedCategory = false;
 
     const directFrontendCategories = await Category.find({
       status: true,
@@ -2242,7 +2246,31 @@ export const searchProductList = async (req: Request, resp: Response) => {
         .select('_id title slug fullSlug parent_id search_terms restricted_keywords')
         .lean();
 
-      matchedFrontendCategories = frontendCategoryCandidates.filter(isRestrictedCategoryAllowed);
+      // matchedFrontendCategories = frontendCategoryCandidates.filter(isRestrictedCategoryAllowed);
+      const restrictedFrontend = frontendCategoryCandidates.filter(category => {
+  const keywords = Array.isArray(category.restricted_keywords)
+    ? category.restricted_keywords
+    : [];
+
+  return keywords.some(keyword =>
+    lowerQuery.includes(String(keyword).toLowerCase())
+  );
+});
+
+const normalFrontend = frontendCategoryCandidates.filter(category => {
+  const keywords = Array.isArray(category.restricted_keywords)
+    ? category.restricted_keywords
+    : [];
+
+  return keywords.length === 0;
+});
+
+if (restrictedFrontend.length > 0) {
+  hasRestrictedCategory = true;
+  matchedFrontendCategories = restrictedFrontend;
+} else {
+  matchedFrontendCategories = normalFrontend;
+}
 
       /*
       | Admin/hidden categories are checked too during token/category discovery.
@@ -2255,7 +2283,31 @@ export const searchProductList = async (req: Request, resp: Response) => {
         .select('_id title slug fullSlug parent_id tag search_terms restricted_keywords')
         .lean();
 
-      matchedAdminCategories = adminCategoryCandidates.filter(isRestrictedCategoryAllowed);
+      // matchedAdminCategories = adminCategoryCandidates.filter(isRestrictedCategoryAllowed);
+      const restrictedAdmin = adminCategoryCandidates.filter(category => {
+  const keywords = Array.isArray(category.restricted_keywords)
+    ? category.restricted_keywords
+    : [];
+
+  return keywords.some(keyword =>
+    lowerQuery.includes(String(keyword).toLowerCase())
+  );
+});
+
+const normalAdmin = adminCategoryCandidates.filter(category => {
+  const keywords = Array.isArray(category.restricted_keywords)
+    ? category.restricted_keywords
+    : [];
+
+  return keywords.length === 0;
+});
+
+if (restrictedAdmin.length > 0) {
+  hasRestrictedCategory = true;
+  matchedAdminCategories = restrictedAdmin;
+} else {
+  matchedAdminCategories = normalAdmin;
+}
     }
 
     /*
@@ -2496,16 +2548,27 @@ const categoryProductMatch = categoryScopeConditions.length > 0
     }
   : null;
 
-const baseMatch: any = {
+let baseMatch: any = {
   isDeleted: false,
   deletedByAdmin: false,
   draft_status: false,
-  status: true,
-  $or: [
+  status: true
+};
+
+if (hasRestrictedCategory) {
+
+  if (categoryProductMatch) {
+    Object.assign(baseMatch, categoryProductMatch);
+  }
+
+} else {
+
+  baseMatch.$or = [
     directProductMatch,
     ...(categoryProductMatch ? [categoryProductMatch] : [])
-  ]
-};
+  ];
+
+}
 
     /*
     |--------------------------------------------------------------------------
