@@ -56,6 +56,7 @@ import giftCardVisitModel from "../models/Giftcardvisitcount";
 import AttributesList from "../models/AttributesList";
 import VariantAttributeModel from "../models/Variant_attribute";
 import VariantModel from "../models/Variant";
+import { processSearchQuery } from "../utils/searchProcessor";
 
 export const login = async (req: Request, resp: Response) => {
   try {
@@ -2043,7 +2044,10 @@ export const searchProductList = async (req: Request, resp: Response) => {
       });
     }
 
-    const searchWords = getSearchWords(q);
+    const processedSearch=processSearchQuery(q);
+    const searchWords=processedSearch.allTokens;
+    const phraseTokens=processedSearch.phraseTokens;
+    const wordTokens=processedSearch.wordTokens;
     const escapedQuery = escapeRegex(q);
     const wholeQueryRegex = new RegExp(`^${escapedQuery}$`, 'i');
     const wholeQueryPrefixRegex = new RegExp(`^${escapedQuery}`, 'i');
@@ -2311,6 +2315,8 @@ export const searchProductList = async (req: Request, resp: Response) => {
       .filter(id => mongoose.Types.ObjectId.isValid(id))
       .map(id => new mongoose.Types.ObjectId(id));
 
+    const matchedCategoryIds = categoryObjectIds.map(id => id.toString());
+
     /*
     |--------------------------------------------------------------------------
     | ADMIN CATEGORY PRODUCT RULES
@@ -2388,45 +2394,117 @@ export const searchProductList = async (req: Request, resp: Response) => {
     |--------------------------------------------------------------------------
     */
 
-    const productTextConditions: any[] = [];
+    const titleConditions:any[]=[];
 
-    for (const word of searchWords) {
-      const regex = new RegExp(`\\b${escapeRegex(word)}`, 'i');
+    for(const token of searchWords){
 
-      productTextConditions.push({
-        product_title: regex
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      titleConditions.push({
+        product_title:regex
+      });
+    }
+
+    const searchTermConditions:any[]=[];
+
+    for(const token of searchWords){
+
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      searchTermConditions.push({
+        search_terms:regex
+      });
+    }
+
+    const variantConditions:any[]=[];
+
+    for(const token of searchWords){
+
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      variantConditions.push({
+        "product_variants.variant_name":regex
       });
 
-      productTextConditions.push({
-        search_terms: regex
+      variantConditions.push({
+        "product_variants.variant_attributes.attribute":regex
+      });
+    }
+
+    const variationConditions:any[]=[];
+
+    for(const token of searchWords){
+
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      variationConditions.push({
+        "variations_data.name":regex
       });
 
-      productTextConditions.push({
-        'dynamicFields.value': regex
+      variationConditions.push({
+        "variations_data.values":regex
+      });
+    }
+
+    const customizationConditions:any[]=[];
+
+    for(const token of searchWords){
+
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      customizationConditions.push({
+        "customizationData.customizations.title":regex
       });
 
-      productTextConditions.push({
-        'product_variants.variant_name': regex
+      customizationConditions.push({
+        "customizationData.customizations.label":regex
       });
 
-      productTextConditions.push({
-        'product_variants.variant_attributes.attribute': regex
+      customizationConditions.push({
+        "customizationData.customizations.optionList.optionName":regex
+      });
+    }
+
+    const attributeConditions:any[]=[];
+
+    for(const token of searchWords){
+
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      attributeConditions.push({
+        material:regex
       });
 
-      productTextConditions.push({
-        'variations_data.name': regex
+      attributeConditions.push({
+        occasion:regex
       });
 
-      productTextConditions.push({
-        'variations_data.values': regex
+      attributeConditions.push({
+        gender:regex
       });
 
-      productTextConditions.push({
-        'customizationData.customizations.title': regex
+      attributeConditions.push({
+        color:regex
       });
 
-      productTextConditions.push({
-        'customizationData.customizations.optionList.optionName': regex
+      attributeConditions.push({
+        size:regex
+      });
+
+      attributeConditions.push({
+        design:regex
+      });
+
+    }
+
+    const dynamicFieldConditions:any[]=[];
+
+    for(const token of searchWords){
+
+      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
+
+      dynamicFieldConditions.push({
+        "dynamicFields.value":regex
       });
     }
 
@@ -2457,32 +2535,26 @@ export const searchProductList = async (req: Request, resp: Response) => {
       categoryScopeConditions.push(...adminProductConditions);
     }
 
-const productWordConditions = searchWords.map(word => {
-  const regex = new RegExp(`\\b${escapeRegex(word)}`, 'i');
+const directProductMatch={
 
-  return {
-    $or: [
-      { product_title: regex },
-      { search_terms: regex },
-      { material: regex },
-      { occasion: regex },
-      { gender: regex },
-      { color: regex },
-      { size: regex },
-      { design: regex },
-      { 'product_variants.variant_name': regex },
-      { 'product_variants.variant_attributes.attribute': regex },
-      { 'variations_data.name': regex },
-      { 'variations_data.values': regex },
-      { 'customizationData.customizations.title': regex },
-      { 'customizationData.customizations.label': regex },
-      { 'customizationData.customizations.optionList.optionName': regex }
+    $or:[
+
+        ...titleConditions,
+
+        ...searchTermConditions,
+
+        ...variantConditions,
+
+        ...variationConditions,
+
+        ...customizationConditions,
+
+        ...attributeConditions,
+
+        ...dynamicFieldConditions
+
     ]
-  };
-});
 
-const directProductMatch = {
-  $and: productWordConditions
 };
 
 const categoryProductMatch = categoryScopeConditions.length > 0
@@ -2492,7 +2564,23 @@ const categoryProductMatch = categoryScopeConditions.length > 0
           $or: categoryScopeConditions
         },
         {
-          $or: productTextConditions
+          $or: [
+
+            ...titleConditions,
+
+            ...searchTermConditions,
+
+            ...variantConditions,
+
+            ...variationConditions,
+
+            ...customizationConditions,
+
+            ...attributeConditions,
+
+            ...dynamicFieldConditions
+
+          ]
         }
       ]
     }
@@ -2528,79 +2616,247 @@ const baseMatch: any = {
     const scoreStages: any[] = [
       {
         $addFields: {
-          _searchTitle: {
+
+          _title: {
             $toLower: {
-              $ifNull: ['$product_title', '']
+                $ifNull: ["$product_title", ""]
             }
+          },
+
+          _orderedTitle: {
+            $split: [
+              {
+                $replaceAll: {
+                  input: "$_title",
+                  find: "-",
+                  replacement: " "
+                }
+              },
+              " "
+            ]
           },
 
           _searchTerms: {
             $map: {
-              input: {
-                $ifNull: ['$search_terms', []]
-              },
-              as: 'term',
-              in: {
-                $toLower: '$$term'
-              }
+                input: {
+                  $ifNull: ["$search_terms", []]
+                },
+                as: "term",
+                in: {
+                    $toLower: "$$term"
+                }
             }
+          }
+
+        }
+      },
+
+      {
+        $addFields: {
+
+          titleExactScore: {
+            $cond: [
+                {
+                  $eq: [
+                        "$_title",
+                        q.toLowerCase()
+                  ]
+                },
+                500,
+                0
+            ]
+          },
+
+          titlePrefixScore: {
+            $cond: [
+                {
+                    $regexMatch: {
+                        input: "$_title",
+                        regex: `^${escapeRegex(q.toLowerCase())}`
+                    }
+                },
+                300,
+                0
+            ]
+          },
+
+          titleWordScore: {
+            $sum: searchWords.map(word => ({
+              $let: {
+                vars: {
+                  pos: {
+                    $indexOfCP: [
+                      "$_title",
+                      word
+                    ]
+                  }
+                },
+                in: {
+                  $switch: {
+                    branches: [
+                      {
+                        case: { $eq: ["$$pos", 0] },
+                        then: 120
+                      },
+                      {
+                        case: {
+                          $and: [
+                            { $gte: ["$$pos", 1] },
+                            { $lte: ["$$pos", 10] }
+                          ]
+                        },
+                        then: 80
+                      },
+                      {
+                        case: { $gte: ["$$pos", 11] },
+                        then: 40
+                      }
+                    ],
+                    default: 0
+                  }
+                }
+              }
+            }))
+          },
+
+          phraseScore: {
+            $multiply: [
+              {
+                $size: {
+                  $filter: {
+                    input: phraseTokens,
+                    as: "phrase",
+                    cond: {
+                      $gte: [
+                        {
+                          $indexOfCP: [
+                            "$_title",
+                            "$$phrase"
+                          ]
+                        },
+                        0
+                      ]
+                    }
+                  }
+                }
+              },
+              250
+            ]
+          },
+          exactPhraseBonus: {
+            $cond: [
+              {
+                $regexMatch: {
+                  input: "$_title",
+                  regex: escapedQuery,
+                  options: "i"
+                }
+              },
+              250,
+              0
+            ]
           }
         }
       },
 
       {
         $addFields: {
-          titleMatchCount: {
-            $size: {
-              $filter: {
-                input: searchWords,
-                as: 'word',
-                cond: {
-                  $gte: [
-                    {
-                      $indexOfCP: [
-                        '$_searchTitle',
-                        {
-                          $toLower: '$$word'
+
+          searchTermExactScore: {
+            $multiply: [
+
+                {
+                    $size: {
+                        $filter: {
+                            input: "$_searchTerms",
+                            as: "term",
+                            cond: {
+                                $eq: [
+                                    "$$term",
+                                    q.toLowerCase()
+                                ]
+                            }
                         }
-                      ]
-                    },
-                    0
-                  ]
-                }
-              }
-            }
+                    }
+                },
+
+                250
+
+            ]
           },
 
-          searchTermMatchCount: {
-            $size: {
-              $filter: {
-                input: searchWords,
-                as: 'word',
-                cond: {
-                  $anyElementTrue: {
-                    $map: {
-                      input: '$_searchTerms',
-                      as: 'term',
-                      in: {
-                        $gte: [
-                          {
-                            $indexOfCP: [
-                              '$$term',
-                              {
-                                $toLower: '$$word'
-                              }
-                            ]
-                          },
-                          0
-                        ]
-                      }
+          searchTermPrefixScore: {
+            $multiply: [
+
+                {
+                    $size: {
+                        $filter: {
+                            input: "$_searchTerms",
+                            as: "term",
+                            cond: {
+                                $regexMatch: {
+                                    input: "$$term",
+                                    regex: `^${escapeRegex(q.toLowerCase())}`
+                                }
+                            }
+                        }
                     }
-                  }
-                }
-              }
-            }
+                },
+
+                150
+
+            ]
+          },
+
+          searchTermWordScore: {
+            $multiply: [
+
+                {
+                    $size: {
+                        $filter: {
+                            input: searchWords,
+                            as: "word",
+                            cond: {
+
+                                $anyElementTrue: {
+
+                                    $map: {
+
+                                        input: "$_searchTerms",
+                                        as: "term",
+
+                                        in: {
+
+                                            $gte: [
+
+                                                {
+                                                    $indexOfCP: [
+                                                        "$$term",
+                                                        "$$word"
+                                                    ]
+                                                },
+
+                                                0
+
+                                            ]
+
+                                        }
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+                    }
+                },
+
+                40
+
+            ]
           }
+
         }
       },
 
@@ -2609,156 +2865,348 @@ const baseMatch: any = {
       | ATTRIBUTE + VARIANT TEXT
       |--------------------------------------------------------------------------
       */
-
+       
       {
         $addFields: {
-          attributeSearchText: {
+
+          _variantText: {
             $toLower: {
-              $concat: [
-                {
-                  $reduce: {
-                    input: {
-                      $ifNull: ['$material', []]
-                    },
-                    initialValue: '',
-                    in: {
-                      $concat: ['$$value', ' ', { $toString: '$$this' }]
-                    }
-                  }
-                },
-
-                ' ',
-
-                {
-                  $reduce: {
-                    input: {
-                      $ifNull: ['$occasion', []]
-                    },
-                    initialValue: '',
-                    in: {
-                      $concat: ['$$value', ' ', { $toString: '$$this' }]
-                    }
-                  }
-                },
-
-                ' ',
-
-                {
-                  $reduce: {
-                    input: {
-                      $ifNull: ['$gender', []]
-                    },
-                    initialValue: '',
-                    in: {
-                      $concat: ['$$value', ' ', { $toString: '$$this' }]
-                    }
-                  }
-                },
-
-                ' ',
-
-                {
-                  $ifNull: ['$color', '']
-                },
-
-                ' ',
-
-                {
-                  $ifNull: ['$size', '']
-                },
-
-                ' ',
-
-                {
-                  $ifNull: ['$design', '']
-                },
-
-                ' ',
-
-                {
-                  $reduce: {
-                    input: {
-                      $ifNull: ['$variations_data', []]
-                    },
-                    initialValue: '',
-                    in: {
-                      $concat: [
-                        '$$value',
-                        ' ',
-                        {
-                          $ifNull: ['$$this.name', '']
-                        },
-                        ' ',
-                        {
-                          $reduce: {
-                            input: {
-                              $ifNull: ['$$this.values', []]
-                            },
-                            initialValue: '',
+                $concat: [
+                    {
+                        $reduce: {
+                            input: { $ifNull: ["$product_variants", []] },
+                            initialValue: "",
                             in: {
-                              $concat: ['$$value', ' ', { $toString: '$$this' }]
+                                $concat: [
+                                    "$$value",
+                                    " ",
+                                    { $ifNull: ["$$this.variant_name", ""] },
+                                    " ",
+                                    {
+                                        $reduce: {
+                                            input: { $ifNull: ["$$this.variant_attributes", []] },
+                                            initialValue: "",
+                                            in: {
+                                                $concat: [
+                                                    "$$value",
+                                                    " ",
+                                                    { $ifNull: ["$$this.attribute", ""] }
+                                                ]
+                                            }
+                                        }
+                                    }
+                                ]
                             }
-                          }
                         }
-                      ]
                     }
-                  }
+                ]
+            }
+          },
+
+          _variationText: {
+            $toLower: {
+                $reduce: {
+                    input: { $ifNull: ["$variations_data", []] },
+                    initialValue: "",
+                    in: {
+                        $concat: [
+                            "$$value",
+                            " ",
+                            { $ifNull: ["$$this.name", ""] },
+                            " ",
+                            {
+                                $reduce: {
+                                    input: { $ifNull: ["$$this.values", []] },
+                                    initialValue: "",
+                                    in: {
+                                        $concat: [
+                                            "$$value",
+                                            " ",
+                                            { $toString: "$$this" }
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    }
                 }
-              ]
+            }
+          },
+
+          _customizationText: {
+            $toLower: {
+                $reduce: {
+                    input: { $ifNull: ["$customizationData.customizations", []] },
+                    initialValue: "",
+                    in: {
+                        $concat: [
+                            "$$value",
+                            " ",
+                            { $ifNull: ["$$this.title", ""] },
+                            " ",
+                            { $ifNull: ["$$this.label", ""] }
+                        ]
+                    }
+                }
+            }
+          },
+
+          _attributeText: {
+            $toLower: {
+                $concat: [
+                    { $ifNull: ["$material", ""] },
+                    " ",
+                    { $ifNull: ["$occasion", ""] },
+                    " ",
+                    { $ifNull: ["$gender", ""] },
+                    " ",
+                    { $ifNull: ["$color", ""] },
+                    " ",
+                    { $ifNull: ["$size", ""] },
+                    " ",
+                    { $ifNull: ["$design", ""] }
+                ]
             }
           }
+
         }
       },
 
       {
         $addFields: {
-          attributeMatchCount: {
-            $size: {
-              $filter: {
-                input: searchWords,
-                as: 'word',
-                cond: {
-                  $gte: [
-                    {
-                      $indexOfCP: [
-                        '$attributeSearchText',
-                        {
-                          $toLower: '$$word'
+
+          variantScore: {
+            $multiply: [
+              {
+                $size: {
+                  $filter: {
+                    input: searchWords,
+                      as: "word",
+                        cond: {
+                          $gte: [
+                            {
+                              $indexOfCP: [
+                                "$_variantText",
+                                "$$word"
+                              ]
+                            },
+                            0
+                          ]
                         }
+                      }
+                    }
+                  },
+                  20
+                ]
+              },
+
+              variationScore: {
+                $multiply: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: searchWords,
+                        as: "word",
+                        cond: {
+                          $gte: [
+                              {
+                                $indexOfCP: [
+                                  "$_variationText",
+                                  "$$word"
+                                ]
+                              },
+                              0
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  20
+                ]
+              },
+
+              customizationScore: {
+                $multiply: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: searchWords,
+                        as: "word",
+                        cond: {
+                          $gte: [
+                            {
+                              $indexOfCP: [
+                                "$_customizationText",
+                                "$$word"
+                              ]
+                            },
+                            0
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  15
+                ]
+              },
+
+              attributeScore: {
+                $multiply: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: searchWords,
+                        as: "word",
+                        cond: {
+                          $gte: [
+                            {
+                              $indexOfCP: [
+                                "$_attributeText",
+                                "$$word"
+                              ]
+                            },
+                            0
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  10
+                ]
+              }
+            }
+          },
+
+          {
+            $addFields: {
+
+              matchedWordCount: {
+                $size: {
+                  $setIntersection: [
+                    searchWords,
+                      {
+                        $split: [
+                          "$_title",
+                          " "
+                        ]
+                      }
+                    ]
+                  }
+              }
+            }
+          },
+           
+          {
+            $addFields: {
+
+            coverageScore: {
+              $switch: {
+
+                branches: [
+
+                  {
+                    case: {
+                      $eq: [
+                        "$matchedWordCount",
+                        searchWords.length
                       ]
                     },
+                    then: 300
+                  },
+
+                  {
+                    case: {
+                      $gte: [
+                        "$matchedWordCount",
+                        Math.ceil(searchWords.length * 0.8)
+                      ]
+                    },
+                    then: 180
+                  },
+
+                  {
+                    case: {
+                      $gte: [
+                        "$matchedWordCount",
+                        Math.ceil(searchWords.length * 0.5)
+                      ]
+                    },
+                    then: 80
+                  }
+
+                ],
+
+                default: 0
+
+              }
+            },
+            orderScore: {
+              $let: {
+                vars: {
+                  positions: searchWords.map(word => ({
+                    $indexOfCP: [
+                      "$_title",
+                      word
+                    ]
+                  }))
+                },
+                in: {
+                  $cond: [
+                    {
+                      $reduce: {
+                        input: "$$positions",
+                        initialValue: {
+                          valid: true,
+                          prev: -1
+                        },
+                        in: {
+                          valid: {
+                            $and: [
+                              "$$value.valid",
+                              {
+                                $gt: [
+                                  "$$this",
+                                  "$$value.prev"
+                                ]
+                              }
+                            ]
+                          },
+                          prev: "$$this"
+                        }
+                      }
+                    },
+                    120,
                     0
                   ]
                 }
               }
             }
-          }
-        }
-      },
 
-      /*
-      |--------------------------------------------------------------------------
-      | FINAL RELEVANCE SCORE
-      |--------------------------------------------------------------------------
-      */
+          }
+      },
 
       {
         $addFields: {
-          relevanceScore: {
-            $add: [
+
+          categoryScore: {
+
+            $cond: [
+
               {
-                $multiply: ['$titleMatchCount', 3]
+                $in: [
+                  { $toString: "$category" },
+                  matchedCategoryIds
+                ]
               },
-              {
-                $multiply: ['$searchTermMatchCount', 2]
-              },
-              {
-                $multiply: ['$attributeMatchCount', 1]
-              }
+              35,
+              0
+
             ]
+
           }
+
         }
-      }
+      },
     ];
 
     /*
@@ -2798,6 +3246,8 @@ const baseMatch: any = {
         featured: -1,
         relevanceScore: -1,
         bestsellerScore: -1,
+        wishlistScore: -1,
+        viewScore: -1,
         refresh_date: -1,
         createdAt: -1,
         _id: -1
@@ -2914,9 +3364,47 @@ const baseMatch: any = {
               {
                 $eq: ['$bestseller', 'Yes']
               },
-              1,
+              50,
               0
             ]
+          },
+
+          freshnessScore: {
+            $switch: {
+              branches: [
+                {
+                  case: {
+                    $gte: [
+                      "$refresh_date",
+                          {
+                            $dateSubtract: {
+                              startDate: "$$NOW",
+                              unit: "day",
+                              amount: 30
+                            }
+                          }
+                    ]
+                  },
+                  then: 30
+                },
+                {
+                  case: {
+                    $gte: [
+                      "$refresh_date",
+                        {
+                          $dateSubtract: {
+                            startDate: "$$NOW",
+                            unit: "day",
+                            amount: 90
+                          }
+                        }
+                    ]
+                  },
+                  then: 15
+                }
+              ],
+              default: 0
+            }
           }
         }
       },
@@ -2940,6 +3428,42 @@ const baseMatch: any = {
         $unwind: {
           path: '$vendorDetails',
           preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $addFields: {
+          shopScore: {
+            $multiply: [
+              {
+                $size: {
+                  $filter: {
+                    input: searchWords,
+                      as: "word",
+                      cond: {
+                        $gte: [
+                          {
+                            $indexOfCP: [
+                              {
+                                $toLower: {
+                                  $ifNull: [
+                                    "$vendorDetails.shop_name",
+                                    ""
+                                  ]
+                                }
+                              },
+                              "$$word"
+                            ]
+                          },
+                          0
+                        ]
+                      }
+                  }
+                }
+              },
+              30
+            ]
+          }
         }
       },
 
@@ -2984,6 +3508,102 @@ const baseMatch: any = {
         $unwind: {
           path: '$brand_id',
           preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $addFields: {
+
+          brandScore: {
+            $multiply: [
+              {
+                $size: {
+                  $filter: {
+                    input: searchWords,
+                    as: "word",
+                    cond: {
+                      $gte: [
+                        {
+                          $indexOfCP: [
+                            {
+                              $toLower: {
+                                $ifNull: [
+                                  "$brand_id.title",
+                                  ""
+                                ]
+                              }
+                            },
+                            "$$word"
+                          ]
+                        },
+                        0
+                      ]
+                    }
+                  }
+                }
+              },
+              30
+            ]
+          }
+        }
+      },
+
+            /*
+      |--------------------------------------------------------------------------
+      | FINAL RELEVANCE SCORE
+      |--------------------------------------------------------------------------
+      */
+
+      {
+        $addFields: {
+
+          relevanceScore: {
+            $add: [
+
+                "$titleExactScore",
+
+                "$titlePrefixScore",
+
+                "$titleWordScore",
+
+                "$phraseScore",
+
+                "$searchTermExactScore",
+
+                "$searchTermPrefixScore",
+
+                "$searchTermWordScore",
+
+                "$variantScore",
+
+                "$variationScore",
+
+                "$customizationScore",
+
+                "$attributeScore",
+
+                "$coverageScore",
+
+                "$categoryScore",
+
+                "$brandScore",
+
+                "$shopScore",
+
+                "$bestsellerScore",
+
+                "$freshnessScore",
+
+                "$viewScore",
+
+                "$wishlistScore",
+
+                "$exactPhraseBonus",
+
+                "$orderScore",
+              ]
+          }
+
         }
       },
 
@@ -3074,6 +3694,54 @@ const baseMatch: any = {
             }
           ],
           as: 'promotionData'
+        }
+      },
+
+      {
+        $lookup: {
+          from: "userproductviews",
+          localField: "_id",
+          foreignField: "product_id",
+          as: "viewData"
+        }
+      },
+      {
+        $addFields: {
+          viewScore: {
+            $min: [
+              {
+                $multiply: [
+                  { $size: "$viewData" },
+                  2
+                ]
+              },
+              40
+            ]
+          }
+        }
+      },
+
+      {
+        $lookup: {
+          from: "wishlists",
+          localField: "_id",
+          foreignField: "product_id",
+          as: "wishlistData"
+        }
+      },
+      {
+        $addFields: {
+          wishlistScore: {
+            $min: [
+              {
+                $multiply: [
+                  { $size: "$wishlistData" },
+                  3
+                ]
+              },
+              45
+            ]
+          }
         }
       },
 

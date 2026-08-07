@@ -27,6 +27,7 @@
     "express": "^4.18.2",
     "express-flash": "0.0.2",
     "express-session": "^1.17.3",
+    "fastest-levenshtein": "^1.0.16",
     "got": "^11.8.6",
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
