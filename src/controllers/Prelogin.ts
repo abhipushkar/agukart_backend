@@ -56,7 +56,7 @@ import giftCardVisitModel from "../models/Giftcardvisitcount";
 import AttributesList from "../models/AttributesList";
 import VariantAttributeModel from "../models/Variant_attribute";
 import VariantModel from "../models/Variant";
-import { processSearchQuery } from "../utils/searchProcessor";
+import { normalizeWord, processSearchQuery } from "../utils/searchProcessor";
 
 export const login = async (req: Request, resp: Response) => {
   try {
@@ -2047,6 +2047,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
     const processedSearch=processSearchQuery(q);
     const searchWords=processedSearch.allTokens;
     const phraseTokens=processedSearch.phraseTokens;
+    const categoryQuery = q.split(/\s+/).filter(Boolean).map(normalizeWord).join(' ');
     const escapedQuery = escapeRegex(q);
     const wholeQueryRegex = new RegExp(`^${escapedQuery}$`, 'i');
     const normalizedNoSpaceQuery = q.replace(/\s+/g, '').toLowerCase();
@@ -2183,19 +2184,21 @@ export const searchProductList = async (req: Request, resp: Response) => {
     let directCategorySource: 'category' | 'adminCategory' | null = null;
 
     const directFrontendCategories = await Category.find({
-      status: true,
-      $or: [
-        { title: wholeQueryRegex },
-        { search_terms: wholeQueryRegex }
-      ]
-    })
-      .select('_id title slug fullSlug restricted_keywords')
-      .lean();
+      status: true
+    }).select('_id title slug fullSlug restricted_keywords search_terms').lean();
 
-    const allowedDirectFrontendCategories = directFrontendCategories.filter(isRestrictedCategoryAllowed);
+    const allowedDirectFrontendCategories = directFrontendCategories.filter((category: any) => {
+      if (!isRestrictedCategoryAllowed(category)) {
+        return false;
+      }
+
+      const normalizedTitle = String(category.title || '').toLowerCase().trim().split(/\s+/).filter(Boolean).map(normalizeWord).join(' ');
+
+      return normalizedTitle === categoryQuery;
+    });
 
     if (allowedDirectFrontendCategories.length > 0) {
-      matchedFrontendCategories = allowedDirectFrontendCategories;
+      matchedFrontendCategories = [allowedDirectFrontendCategories[0]];
       directCategoryMatch = true;
       directCategorySource = 'category';
     } else {
@@ -2465,43 +2468,44 @@ export const searchProductList = async (req: Request, resp: Response) => {
     const attributeConditions:any[]=[];
 
     for(const token of searchWords){
-
-      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
-
-      attributeConditions.push({
-        material:regex
-      });
+      const regex=escapeRegex(token);
 
       attributeConditions.push({
-        occasion:regex
-      });
-
-      attributeConditions.push({
-        gender:regex
-      });
-
-      attributeConditions.push({
-        color:regex
-      });
-
-      attributeConditions.push({
-        size:regex
-      });
-
-      attributeConditions.push({
-        design:regex
-      });
-
-    }
-
-    const dynamicFieldConditions:any[]=[];
-
-    for(const token of searchWords){
-
-      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
-
-      dynamicFieldConditions.push({
-        "dynamicFields.value":regex
+        $expr:{
+          $anyElementTrue:{
+            $map:{
+              input:{$objectToArray:{$ifNull:['$dynamicFields',{}]}},
+              as:'field',
+              in:{
+                $cond:[
+                  {$isArray:'$$field.v'},
+                  {
+                    $anyElementTrue:{
+                      $map:{
+                        input:'$$field.v',
+                        as:'value',
+                        in:{
+                          $regexMatch:{
+                            input:{$convert:{input:'$$value',to:'string',onError:'',onNull:''}},
+                            regex,
+                            options:'i'
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    $regexMatch:{
+                      input:{$convert:{input:'$$field.v',to:'string',onError:'',onNull:''}},
+                      regex,
+                      options:'i'
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
       });
     }
 
@@ -2539,7 +2543,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
       ...variationConditions,
       ...customizationConditions,
       ...attributeConditions,
-      ...dynamicFieldConditions
     ];
 
     const directProductMatch = {
@@ -2679,6 +2682,44 @@ export const searchProductList = async (req: Request, resp: Response) => {
                     ],
                     default: 0
                   }
+                }
+              }
+            }))
+          },
+
+          commaStartScore: {
+            $sum: searchWords.map(word => ({
+              $let: {
+                vars: {
+                  pos: {
+                    $indexOfCP: [
+                      "$_title",
+                      word
+                    ]
+                  }
+                },
+                in: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $gte: ["$$pos", 1] },
+                        {
+                          $regexMatch: {
+                            input: {
+                              $substrCP: [
+                                "$_title",
+                                0,
+                                "$$pos"
+                              ]
+                            },
+                            regex: ",\\s*$"
+                          }
+                        }
+                      ]
+                    },
+                    100,
+                    0
+                  ]
                 }
               }
             }))
@@ -2912,132 +2953,158 @@ export const searchProductList = async (req: Request, resp: Response) => {
               }
             },
 
-          _attributeText: {
-            $toLower: {
-              $concat: [
-                {
-                  $cond: [
-                    { $isArray: "$material" },
+          _attributeText:{
+            $toLower:{
+              $reduce:{
+                input:{$objectToArray:{$ifNull:['$dynamicFields',{}]}},
+                initialValue:'',
+                in:{
+                  $concat:[
+                    '$$value',
+                    ' ',
                     {
-                      $reduce: {
-                        input: "$material",
-                        initialValue: "",
-                        in: {
-                          $concat: [
-                            "$$value",
-                            " ",
-                            { $convert: { input: "$$this", to: "string", onError: "", onNull: "" } }
-                          ]
-                        }
-                      }
-                    },
-                    { $convert: { input: "$material", to: "string", onError: "", onNull: "" } }
-                  ]
-                },
-                " ",
-                {
-                  $cond: [
-                    { $isArray: "$occasion" },
-                    {
-                      $reduce: {
-                        input: "$occasion",
-                        initialValue: "",
-                        in: {
-                          $concat: [
-                            "$$value",
-                            " ",
-                            { $convert: { input: "$$this", to: "string", onError: "", onNull: "" } }
-                          ]
-                        }
-                      }
-                    },
-                    { $convert: { input: "$occasion", to: "string", onError: "", onNull: "" } }
-                  ]
-                },
-                " ",
-                {
-                  $cond: [
-                    { $isArray: "$gender" },
-                    {
-                      $reduce: {
-                        input: "$gender",
-                        initialValue: "",
-                        in: {
-                          $concat: [
-                            "$$value",
-                            " ",
-                            { $convert: { input: "$$this", to: "string", onError: "", onNull: "" } }
-                          ]
-                        }
-                      }
-                    },
-                    { $convert: { input: "$gender", to: "string", onError: "", onNull: "" } }
-                  ]
-                },
-                " ",
-                {
-                  $cond: [
-                    { $isArray: "$color" },
-                    {
-                      $reduce: {
-                        input: "$color",
-                          initialValue: "",
-                          in: {
-                            $concat: [
-                              "$$value",
-                              " ",
-                              { $convert: { input: "$$this", to: "string", onError: "", onNull: "" } }
-                            ]
+                      $cond:[
+                        {$isArray:'$$this.v'},
+                        {
+                          $reduce:{
+                            input:'$$this.v',
+                            initialValue:'',
+                            in:{
+                              $concat:[
+                                '$$value',
+                                ' ',
+                                {$convert:{input:'$$this',to:'string',onError:'',onNull:''}}
+                              ]
+                            }
                           }
-                        }
-                    },
-                    { $convert: { input: "$color", to: "string", onError: "", onNull: "" } }
-                  ]
-                },
-                " ",
-                {
-                  $cond: [
-                    { $isArray: "$size" },
-                    {
-                      $reduce: {
-                        input: "$size",
-                        initialValue: "",
-                        in: {
-                          $concat: [
-                            "$$value",
-                            " ",
-                            { $convert: { input: "$$this", to: "string", onError: "", onNull: "" } }
-                          ]
-                        }
-                      }
-                    },
-                    { $convert: { input: "$size", to: "string", onError: "", onNull: "" } }
-                  ]
-                },
-                " ",
-                {
-                  $cond: [
-                    { $isArray: "$design" },
-                    {
-                      $reduce: {
-                        input: "$design",
-                        initialValue: "",
-                        in: {
-                          $concat: [
-                            "$$value",
-                            " ",
-                            { $convert: { input: "$$this", to: "string", onError: "", onNull: "" } }
-                          ]
-                        }
-                      }
-                    },
-                    { $convert: { input: "$design", to: "string", onError: "", onNull: "" } }
+                        },
+                        {$convert:{input:'$$this.v',to:'string',onError:'',onNull:''}}
+                      ]
+                    }
                   ]
                 }
-              ]
+              }
             }
-          },
+          }
+        }
+      },
 
+      {
+        $addFields: {
+          matchedVariant: {
+            $let: {
+              vars: {
+                matchedVariants: {
+                  $reduce: {
+                    input: { $ifNull: ["$product_variants", []] },
+                      initialValue: [],
+                      in: {
+                      $concatArrays: [
+                      "$$value",
+                      {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: { $ifNull: ["$$this.variant_attributes", []] },
+                                as: "attr",
+                                cond: {
+                                  $anyElementTrue: {
+                                    $map: {
+                                      input: searchWords,
+                                      as: "word",
+                                      in: {
+                                        $gte: [
+                                          {
+                                            $indexOfCP: [
+                                              {
+                                                $toLower: {
+                                                  $convert: {
+                                                    input: "$$attr.attribute",
+                                                    to: "string",
+                                                    onError: "",
+                                                    onNull: ""
+                                                  }
+                                                }
+                                              },
+                                              "$$word"
+                                            ]
+                                          },
+                                          0
+                                        ]
+                                       }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              as: "attr",
+                              in: {
+                                variantName: {
+                                  $convert: {
+                                    input: "$$this.variant_name",
+                                    to: "string",
+                                    onError: "",
+                                    onNull: ""
+                                  }
+                                },
+                                attribute: {
+                                  $convert: {
+                                    input: "$$attr.attribute",
+                                      to: "string",
+                                      onError: "",
+                                      onNull: ""
+                                    }
+                                  },
+                                  image: {
+                                    $let: {
+                                      vars: {
+                                        validImages: {
+                                          $filter: {
+                                            input: { $ifNull: ["$$attr.main_images", []] },
+                                            as: "image",
+                                            cond: {
+                                                $and: [
+                                                  { $ne: ["$$image", null] },
+                                                  {
+                                                    $ne: [
+                                                      {
+                                                        $trim: {
+                                                          input: {
+                                                            $convert: {
+                                                              input: "$$image",
+                                                              to: "string",
+                                                              onError: "",
+                                                              onNull: ""
+                                                            }
+                                                          }
+                                                        }
+                                                      },
+                                                      ""
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                          }
+                                        }
+                                      },
+                                      in: {
+                                        $arrayElemAt: ["$$validImages", 0]
+                                      }
+                                    }
+                                  }
+                              }
+                        }
+                      }
+                      ]
+                      }
+                  }
+                }
+              },
+              in: {
+                $arrayElemAt: ["$$matchedVariants", 0]
+              }
+            }
+          }
         }
       },
 
@@ -3140,7 +3207,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
                       }
                     }
                   },
-                  10
+                  40
                 ]
               }
             }
@@ -3271,7 +3338,8 @@ export const searchProductList = async (req: Request, resp: Response) => {
               "$attributeScore",
               "$coverageScore",
               "$exactPhraseBonus",
-              "$orderScore"
+              "$orderScore",
+              "$commaStartScore",
             ]
           }
         }
