@@ -2047,6 +2047,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
     const processedSearch=processSearchQuery(q);
     const searchWords=processedSearch.allTokens;
     const phraseTokens=processedSearch.phraseTokens;
+    const groupingTokens = processedSearch.groupingTokens;
     const categoryQuery = q.split(/\s+/).filter(Boolean).map(normalizeWord).join(' ');
     const escapedQuery = escapeRegex(q);
     const wholeQueryRegex = new RegExp(`^${escapedQuery}$`, 'i');
@@ -2613,6 +2614,31 @@ export const searchProductList = async (req: Request, resp: Response) => {
               as: "term",
               in: {
                 $toLower: "$$term"
+              }
+            }
+          },
+
+          _searchTermsText: {
+            $toLower: {
+              $reduce: {
+                  input: {
+                    $ifNull: ["$search_terms", []]
+                  },
+                  initialValue: "",
+                  in: {
+                    $concat: [
+                      "$$value",
+                      " ",
+                      {
+                        $convert: {
+                          input: "$$this",
+                          to: "string",
+                          onError: "",
+                          onNull: ""
+                        }
+                      }
+                    ]
+                  }
               }
             }
           }
@@ -3606,6 +3632,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
       */
 
       sortStage = {
+        phraseMatchCount: -1,
         featured: -1,
         relevanceScore: -1,
         bestsellerScore: -1,
@@ -4020,6 +4047,321 @@ export const searchProductList = async (req: Request, resp: Response) => {
               "$viewScore",
               "$wishlistScore"
             ]
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          groupingVariantMatches: {
+            $filter: {
+              input: {
+                $reduce: {
+                  input: { $ifNull: ["$product_variants", []] },
+                  initialValue: [],
+                  in: {
+                    $concatArrays: [
+                      "$$value",
+                      {
+                        $map: {
+                          input: { $ifNull: ["$$this.variant_attributes", []] },
+                          as: "attr",
+                          in: {
+                            text: {
+                              $toLower: {
+                                $convert: {
+                                  input: "$$attr.attribute",
+                                  to: "string",
+                                  onError: "",
+                                  onNull: ""
+                                }
+                              }
+                            },
+                            image: {
+                              $cond: [
+                                {
+                                  $ne: [
+                                    {
+                                      $trim: {
+                                        input: {
+                                          $convert: {
+                                            input: "$$attr.edit_main_image",
+                                            to: "string",
+                                            onError: "",
+                                            onNull: ""
+                                          }
+                                        }
+                                      }
+                                    },
+                                    ""
+                                  ]
+                                },
+                                {
+                                  $trim: {
+                                    input: {
+                                      $convert: {
+                                        input: "$$attr.edit_main_image",
+                                        to: "string",
+                                        onError: "",
+                                        onNull: ""
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  $arrayElemAt: [
+                                    {
+                                      $filter: {
+                                        input: { $ifNull: ["$$attr.main_images", []] },
+                                        as: "image",
+                                        cond: {
+                                          $ne: [
+                                            {
+                                              $trim: {
+                                                input: {
+                                                  $convert: {
+                                                    input: "$$image",
+                                                    to: "string",
+                                                    onError: "",
+                                                    onNull: ""
+                                                  }
+                                                }
+                                              }
+                                            },
+                                            ""
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    0
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              as: "variant",
+              cond: {
+                $and: [
+                  {
+                    $ne: ["$$variant.image", null]
+                  },
+                  {
+                    $ne: ["$$variant.image", ""]
+                  }
+                ]
+              }
+            }
+          },
+
+          groupingCustomizationMatches: {
+            $filter: {
+              input: {
+                $reduce: {
+                  input: { $ifNull: ["$customizationData.customizations", []] },
+                  initialValue: [],
+                  in: {
+                    $concatArrays: [
+                      "$$value",
+                      {
+                        $map: {
+                          input: { $ifNull: ["$$this.optionList", []] },
+                          as: "option",
+                          in: {
+                            text: {
+                              $toLower: {
+                                $convert: {
+                                  input: "$$option.optionName",
+                                  to: "string",
+                                  onError: "",
+                                  onNull: ""
+                                }
+                              }
+                            },
+                            image: {
+                              $cond: [
+                                {
+                                  $ne: [
+                                    {
+                                      $trim: {
+                                        input: {
+                                          $convert: {
+                                            input: "$$option.edit_main_image",
+                                            to: "string",
+                                            onError: "",
+                                            onNull: ""
+                                          }
+                                        }
+                                      }
+                                    },
+                                    ""
+                                  ]
+                                },
+                                {
+                                  $trim: {
+                                    input: {
+                                      $convert: {
+                                        input: "$$option.edit_main_image",
+                                        to: "string",
+                                        onError: "",
+                                        onNull: ""
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  $arrayElemAt: [
+                                    {
+                                      $filter: {
+                                        input: { $ifNull: ["$$option.main_images", []] },
+                                        as: "image",
+                                        cond: {
+                                          $ne: [
+                                            {
+                                              $trim: {
+                                                input: {
+                                                  $convert: {
+                                                    input: "$$image",
+                                                    to: "string",
+                                                    onError: "",
+                                                    onNull: ""
+                                                  }
+                                                }
+                                              }
+                                            },
+                                            ""
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    0
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              as: "customization",
+              cond: {
+                $and: [
+                  {
+                    $ne: ["$$customization.image", null]
+                  },
+                  {
+                    $ne: ["$$customization.image", ""]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          phraseMatchCount: {
+            $size: {
+              $filter: {
+                input: groupingTokens,
+                as: "searchUnit",
+                cond: {
+                  $or: [
+                    {
+                      $gte: [
+                        {
+                          $indexOfCP: [
+                            "$_title",
+                            "$$searchUnit"
+                          ]
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      $gte: [
+                        {
+                          $indexOfCP: [
+                            "$_searchTermsText",
+                            "$$searchUnit"
+                          ]
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      $anyElementTrue: {
+                        $map: {
+                          input: "$groupingVariantMatches",
+                          as: "variant",
+                          in: {
+                            $gte: [
+                              {
+                                $indexOfCP: [
+                                  "$$variant.text",
+                                  "$$searchUnit"
+                                ]
+                              },
+                              0
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      $gte: [
+                        {
+                          $indexOfCP: [
+                            "$_variationText",
+                            "$$searchUnit"
+                          ]
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      $anyElementTrue: {
+                        $map: {
+                          input: "$groupingCustomizationMatches",
+                          as: "customization",
+                          in: {
+                            $gte: [
+                              {
+                                $indexOfCP: [
+                                  "$$customization.text",
+                                  "$$searchUnit"
+                                ]
+                              },
+                              0
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      $gte: [
+                        {
+                          $indexOfCP: [
+                            "$_attributeText",
+                            "$$searchUnit"
+                          ]
+                        },
+                        0
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },

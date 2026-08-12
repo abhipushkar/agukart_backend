@@ -117,35 +117,41 @@ export function processSearchQuery(query: string) {
   const phraseData = extractPhrases(query);
 
   const normalizedPhrases = phraseData.phrases.map((phrase) =>
-    phrase.split(/\s+/).map(normalizeWord).join(" "),
+    phrase.split(/\s+/).map(normalizeWord).join(" ")
   );
 
-  let words = phraseData.remaining
+  let originalWords = phraseData.remaining
     .split(/\s+/)
     .filter(Boolean)
     .map(normalizeWord);
 
-  words = removeStopWords(words);
+  originalWords = removeStopWords(originalWords);
 
-  words = expandSynonyms(words);
+  const groupingTokens = [
+    ...normalizedPhrases,
+    ...originalWords
+  ];
 
-  const phraseTokens = normalizedPhrases.flatMap((phrase) => [
-    phrase,
-    ...phrase.split(" "),
-  ]);
+  const words = expandSynonyms(originalWords);
 
-  const allTokens = [...phraseTokens, ...words];
+  const phraseTokens = [...new Set(normalizedPhrases)];
 
-  const normalizedQuery = [...normalizedPhrases, ...words].join(" ");
+  const allTokens = [
+    ...phraseTokens,
+    ...words
+  ];
+
+  const normalizedQuery = [
+    ...normalizedPhrases,
+    ...words
+  ].join(" ");
 
   return {
     normalizedQuery,
-
     phraseTokens,
-
     wordTokens: words,
-
-    allTokens: [...new Set(allTokens)],
+    groupingTokens: [...new Set(groupingTokens)],
+    allTokens: [...new Set(allTokens)]
   };
 }
 
