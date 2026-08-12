@@ -4112,7 +4112,13 @@ export const searchProductList = async (req: Request, resp: Response) => {
                                   $arrayElemAt: [
                                     {
                                       $filter: {
-                                        input: { $ifNull: ["$$attr.main_images", []] },
+                                        input: {
+                                          $cond: [
+                                            { $isArray: "$$attr.main_images" },
+                                            "$$attr.main_images",
+                                            []
+                                          ]
+                                        },
                                         as: "image",
                                         cond: {
                                           $ne: [
@@ -4218,7 +4224,13 @@ export const searchProductList = async (req: Request, resp: Response) => {
                                   $arrayElemAt: [
                                     {
                                       $filter: {
-                                        input: { $ifNull: ["$$option.main_images", []] },
+                                        input: {
+                                          $cond: [
+                                            { $isArray: "$$option.main_images" },
+                                            "$$option.main_images",
+                                            []
+                                          ]
+                                        },
                                         as: "image",
                                         cond: {
                                           $ne: [
