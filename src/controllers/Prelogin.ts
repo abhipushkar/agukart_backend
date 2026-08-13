@@ -2432,21 +2432,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
       });
     }
 
-    const variationConditions:any[]=[];
-
-    for(const token of searchWords){
-
-      const regex=new RegExp(`\\b${escapeRegex(token)}`,'i');
-
-      variationConditions.push({
-        "variations_data.name":regex
-      });
-
-      variationConditions.push({
-        "variations_data.values":regex
-      });
-    }
-
     const customizationConditions:any[]=[];
 
     for(const token of searchWords){
@@ -2541,7 +2526,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
       ...titleConditions,
       ...searchTermConditions,
       ...variantConditions,
-      ...variationConditions,
       ...customizationConditions,
       ...attributeConditions,
     ];
@@ -2928,36 +2912,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
                       ]
                     }
               }
-            }
-          },
-
-          _variationText: {
-            $toLower: {
-                $reduce: {
-                    input: { $ifNull: ["$variations_data", []] },
-                    initialValue: "",
-                    in: {
-                        $concat: [
-                            "$$value",
-                            " ",
-                            { $ifNull: ["$$this.name", ""] },
-                            " ",
-                            {
-                                $reduce: {
-                                    input: { $ifNull: ["$$this.values", []] },
-                                    initialValue: "",
-                                    in: {
-                                        $concat: [
-                                            "$$value",
-                                            " ",
-                                            { $toString: "$$this" }
-                                        ]
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                }
             }
           },
 
@@ -3376,31 +3330,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
                 ]
               },
 
-              variationScore: {
-                $multiply: [
-                  {
-                    $size: {
-                      $filter: {
-                        input: searchWords,
-                        as: "word",
-                        cond: {
-                          $gte: [
-                              {
-                                $indexOfCP: [
-                                  "$_variationText",
-                                  "$$word"
-                                ]
-                              },
-                              0
-                          ]
-                        }
-                      }
-                    }
-                  },
-                  20
-                ]
-              },
-
               customizationScore: {
                 $multiply: [
                   {
@@ -3573,7 +3502,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
               "$searchTermPrefixScore",
               "$searchTermWordScore",
               "$variantScore",
-              "$variationScore",
               "$customizationScore",
               "$attributeScore",
               "$coverageScore",
@@ -4088,71 +4016,33 @@ export const searchProductList = async (req: Request, resp: Response) => {
                                 }
                               }
                             },
-                            image: {
+                            mainImages: {
                               $cond: [
+                                { $isArray: "$$attr.main_images" },
                                 {
-                                  $ne: [
-                                    {
-                                      $trim: {
-                                        input: {
-                                          $convert: {
-                                            input: "$$attr.edit_main_image",
-                                            to: "string",
-                                            onError: "",
-                                            onNull: ""
+                                  $filter: {
+                                    input: "$$attr.main_images",
+                                    as: "image",
+                                    cond: {
+                                      $ne: [
+                                        {
+                                          $trim: {
+                                            input: {
+                                              $convert: {
+                                                input: "$$image",
+                                                to: "string",
+                                                onError: "",
+                                                onNull: ""
+                                              }
+                                            }
                                           }
-                                        }
-                                      }
-                                    },
-                                    ""
-                                  ]
-                                },
-                                {
-                                  $trim: {
-                                    input: {
-                                      $convert: {
-                                        input: "$$attr.edit_main_image",
-                                        to: "string",
-                                        onError: "",
-                                        onNull: ""
-                                      }
+                                        },
+                                        ""
+                                      ]
                                     }
                                   }
                                 },
-                                {
-                                  $arrayElemAt: [
-                                    {
-                                      $filter: {
-                                        input: {
-                                          $cond: [
-                                            { $isArray: "$$attr.main_images" },
-                                            "$$attr.main_images",
-                                            []
-                                          ]
-                                        },
-                                        as: "image",
-                                        cond: {
-                                          $ne: [
-                                            {
-                                              $trim: {
-                                                input: {
-                                                  $convert: {
-                                                    input: "$$image",
-                                                    to: "string",
-                                                    onError: "",
-                                                    onNull: ""
-                                                  }
-                                                }
-                                              }
-                                            },
-                                            ""
-                                          ]
-                                        }
-                                      }
-                                    },
-                                    0
-                                  ]
-                                }
+                                []
                               ]
                             }
                           }
@@ -4164,13 +4054,9 @@ export const searchProductList = async (req: Request, resp: Response) => {
               },
               as: "variant",
               cond: {
-                $and: [
-                  {
-                    $ne: ["$$variant.image", null]
-                  },
-                  {
-                    $ne: ["$$variant.image", ""]
-                  }
+                $gt: [
+                  { $size: "$$variant.mainImages" },
+                  0
                 ]
               }
             }
@@ -4200,71 +4086,33 @@ export const searchProductList = async (req: Request, resp: Response) => {
                                 }
                               }
                             },
-                            image: {
+                            mainImages: {
                               $cond: [
+                                { $isArray: "$$option.main_images" },
                                 {
-                                  $ne: [
-                                    {
-                                      $trim: {
-                                        input: {
-                                          $convert: {
-                                            input: "$$option.edit_main_image",
-                                            to: "string",
-                                            onError: "",
-                                            onNull: ""
+                                  $filter: {
+                                    input: "$$option.main_images",
+                                    as: "image",
+                                    cond: {
+                                      $ne: [
+                                        {
+                                          $trim: {
+                                            input: {
+                                              $convert: {
+                                                input: "$$image",
+                                                to: "string",
+                                                onError: "",
+                                                onNull: ""
+                                              }
+                                            }
                                           }
-                                        }
-                                      }
-                                    },
-                                    ""
-                                  ]
-                                },
-                                {
-                                  $trim: {
-                                    input: {
-                                      $convert: {
-                                        input: "$$option.edit_main_image",
-                                        to: "string",
-                                        onError: "",
-                                        onNull: ""
-                                      }
+                                        },
+                                        ""
+                                      ]
                                     }
                                   }
                                 },
-                                {
-                                  $arrayElemAt: [
-                                    {
-                                      $filter: {
-                                        input: {
-                                          $cond: [
-                                            { $isArray: "$$option.main_images" },
-                                            "$$option.main_images",
-                                            []
-                                          ]
-                                        },
-                                        as: "image",
-                                        cond: {
-                                          $ne: [
-                                            {
-                                              $trim: {
-                                                input: {
-                                                  $convert: {
-                                                    input: "$$image",
-                                                    to: "string",
-                                                    onError: "",
-                                                    onNull: ""
-                                                  }
-                                                }
-                                              }
-                                            },
-                                            ""
-                                          ]
-                                        }
-                                      }
-                                    },
-                                    0
-                                  ]
-                                }
+                                []
                               ]
                             }
                           }
@@ -4276,13 +4124,9 @@ export const searchProductList = async (req: Request, resp: Response) => {
               },
               as: "customization",
               cond: {
-                $and: [
-                  {
-                    $ne: ["$$customization.image", null]
-                  },
-                  {
-                    $ne: ["$$customization.image", ""]
-                  }
+                $gt: [
+                  { $size: "$$customization.mainImages" },
+                  0
                 ]
               }
             }
@@ -4339,17 +4183,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
                           }
                         }
                       }
-                    },
-                    {
-                      $gte: [
-                        {
-                          $indexOfCP: [
-                            "$_variationText",
-                            "$$searchUnit"
-                          ]
-                        },
-                        0
-                      ]
                     },
                     {
                       $anyElementTrue: {
@@ -4494,7 +4327,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
                 _titleNormalized: 0,
                 _searchTerms: 0,
                 _variantText: 0,
-                _variationText: 0,
                 _customizationText: 0,
                 _attributeText: 0,
                 combinationPrices: 0,
