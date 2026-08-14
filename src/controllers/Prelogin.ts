@@ -2167,6 +2167,26 @@ export const searchProductList = async (req: Request, resp: Response) => {
       });
     };
 
+    const hasRestrictedKeywordMatch = (category: any) => {
+      const restrictedKeywords = Array.isArray(category?.restricted_keywords) ? category.restricted_keywords : [];
+
+      if (!restrictedKeywords.length) {
+        return false;
+      }
+
+      const lowerQuery = q.toLowerCase();
+
+      return restrictedKeywords.some((keyword: any) => {
+        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+
+        if (!normalizedKeyword) {
+          return false;
+        }
+
+        return lowerQuery.includes(normalizedKeyword);
+      });
+    };
+
     /*
     |--------------------------------------------------------------------------
     | STEP 1: WHOLE QUERY DIRECT MATCH
@@ -2180,9 +2200,9 @@ export const searchProductList = async (req: Request, resp: Response) => {
     */
 
     let matchedFrontendCategories: any[] = [];
-    let matchedAdminCategories: any[] = [];
     let directCategoryMatch = false;
-    let directCategorySource: 'category' | 'adminCategory' | null = null;
+    let directCategorySource: 'category' | null = null;
+    let restrictedCategoryMatch = false;
 
     const directFrontendCategories = await Category.find({
       status: true
@@ -2199,27 +2219,17 @@ export const searchProductList = async (req: Request, resp: Response) => {
     });
 
     if (allowedDirectFrontendCategories.length > 0) {
-      matchedFrontendCategories = [allowedDirectFrontendCategories[0]];
+      const restrictedMatch = allowedDirectFrontendCategories.find(hasRestrictedKeywordMatch);
+
+      if (restrictedMatch) {
+        matchedFrontendCategories = [restrictedMatch];
+        restrictedCategoryMatch = true;
+      } else {
+        matchedFrontendCategories = [allowedDirectFrontendCategories[0]];
+      }
+
       directCategoryMatch = true;
       directCategorySource = 'category';
-    } else {
-      const directAdminCategories = await AdminCategoryModel.find({
-        status: true,
-        $or: [
-          { title: wholeQueryRegex },
-          { search_terms: wholeQueryRegex }
-        ]
-      })
-        .select('_id title slug fullSlug tag restricted_keywords productsMatch value equalTo')
-        .lean();
-
-      const allowedDirectAdminCategories = directAdminCategories.filter(isRestrictedCategoryAllowed);
-
-      if (allowedDirectAdminCategories.length > 0) {
-        matchedAdminCategories = allowedDirectAdminCategories;
-        directCategoryMatch = true;
-        directCategorySource = 'adminCategory';
-      }
     }
 
     /*
@@ -2249,20 +2259,54 @@ export const searchProductList = async (req: Request, resp: Response) => {
         .select('_id title slug fullSlug parent_id search_terms restricted_keywords')
         .lean();
 
-      matchedFrontendCategories = frontendCategoryCandidates.filter(isRestrictedCategoryAllowed);
+        console.log('\n========== CATEGORY DEBUG ==========');
+        console.log('SEARCH QUERY:', q);
 
+        console.log('\nALL CATEGORY CANDIDATES:');
+console.table(
+  frontendCategoryCandidates.map((category: any) => ({
+    id: String(category._id),
+    title: category.title,
+    fullSlug: category.fullSlug,
+    restricted_keywords: category.restricted_keywords || []
+  }))
+);
+
+      const allowedFrontendCategories = frontendCategoryCandidates.filter(isRestrictedCategoryAllowed);
+
+      console.log('\nALLOWED CATEGORIES:');
+console.table(
+  allowedFrontendCategories.map((category: any) => ({
+    id: String(category._id),
+    title: category.title,
+    fullSlug: category.fullSlug,
+    restricted_keywords: category.restricted_keywords || []
+  }))
+);
+
+      const restrictedMatches = allowedFrontendCategories.filter(hasRestrictedKeywordMatch);
+
+      if (restrictedMatches.length > 0) {
+        matchedFrontendCategories = restrictedMatches;
+        restrictedCategoryMatch = true;
+      } else {
+        matchedFrontendCategories = allowedFrontendCategories;
+      } 
+      
+      console.log('\nFINAL MATCHED CATEGORIES:');
+console.table(
+  matchedFrontendCategories.map((category: any) => ({
+    id: String(category._id),
+    title: category.title,
+    fullSlug: category.fullSlug,
+    restricted_keywords: category.restricted_keywords || []
+  }))
+);
+
+console.log('====================================\n');
       /*
       | Admin/hidden categories are checked too during token/category discovery.
       */
-
-      const adminCategoryCandidates = await AdminCategoryModel.find({
-        status: true,
-        $or: categoryWordConditions
-      })
-        .select('_id title slug fullSlug parent_id tag search_terms restricted_keywords productsMatch value equalTo')
-        .lean();
-
-      matchedAdminCategories = adminCategoryCandidates.filter(isRestrictedCategoryAllowed);
     }
 
     /*
@@ -2318,67 +2362,15 @@ export const searchProductList = async (req: Request, resp: Response) => {
 
     const matchedCategoryIds = categoryObjectIds.map(id => id.toString());
 
+    console.log("SEARCH:", q);
+console.log("MATCHED ROOT CATEGORIES:", matchedFrontendCategories.map((c: any) => ({ id: String(c._id), title: c.title, restricted_keywords: c.restricted_keywords })));
+console.log("FINAL CATEGORY IDS:", [...categoryIds]);
+
     /*
     |--------------------------------------------------------------------------
     | ADMIN CATEGORY PRODUCT RULES
     |--------------------------------------------------------------------------
     */
-
-    const adminProductConditions: any[] = [];
-
-    for (const adminCategory of matchedAdminCategories) {
-      const conditions: any[] = [];
-
-      if (Array.isArray(adminCategory.tag) && adminCategory.tag.length > 0) {
-        conditions.push({
-          search_terms: {
-            $in: adminCategory.tag
-          }
-        });
-      }
-
-      if (adminCategory.productsMatch === 'Product Title' && adminCategory.value) {
-        const valueRegex = new RegExp(escapeRegex(adminCategory.value), 'i');
-
-        if (adminCategory.equalTo === 'is equal to') {
-          conditions.push({
-            product_title: valueRegex
-          });
-        }
-
-        if (adminCategory.equalTo === 'is not equal to') {
-          conditions.push({
-            product_title: {
-              $not: valueRegex
-            }
-          });
-        }
-      }
-
-      if (adminCategory.productsMatch === 'Product Tag' && adminCategory.value) {
-        const valueRegex = new RegExp(escapeRegex(adminCategory.value), 'i');
-
-        if (adminCategory.equalTo === 'is equal to') {
-          conditions.push({
-            search_terms: valueRegex
-          });
-        }
-
-        if (adminCategory.equalTo === 'is not equal to') {
-          conditions.push({
-            search_terms: {
-              $not: valueRegex
-            }
-          });
-        }
-      }
-
-      if (conditions.length > 0) {
-        adminProductConditions.push({
-          $and: conditions
-        });
-      }
-    }
 
     /*
     |--------------------------------------------------------------------------
@@ -2516,10 +2508,6 @@ export const searchProductList = async (req: Request, resp: Response) => {
           $in: categoryObjectIds
         }
       });
-    }
-
-    if (adminProductConditions.length > 0) {
-      categoryScopeConditions.push(...adminProductConditions);
     }
 
     const productTextConditions = [
@@ -3094,15 +3082,17 @@ export const searchProductList = async (req: Request, resp: Response) => {
                                 input: searchWords,
                                 as: "word",
                                 cond: {
-                                  $gte: [
-                                    {
-                                      $indexOfCP: [
-                                        "$$variant.attributeLower",
-                                        "$$word"
+                                  $regexMatch: {
+                                    input: "$$variant.attributeLower",
+                                    regex: {
+                                      $concat: [
+                                        "(^|[^a-z0-9])",
+                                        "$$word",
+                                        "([^a-z0-9]|$)"
                                       ]
                                     },
-                                    0
-                                  ]
+                                    options: "i"
+                                  }
                                 }
                               }
                             }
@@ -4445,8 +4435,7 @@ if (process.env.NODE_ENV !== 'production') {
       video_base_url,
 
       suggestions: {
-        shops: shopSuggestions.map((shop: any) => ({
-          ...shop,
+        shops: shopSuggestions.map((shop: any) => ({ ...shop,
           message: `Did you mean the shop ${shop.title}?`
         })),
 
@@ -4468,13 +4457,6 @@ if (process.env.NODE_ENV !== 'production') {
           slug: category.slug,
           fullSlug: category.fullSlug
         })),
-
-        matchedAdminCategories: matchedAdminCategories.map((category: any) => ({
-          _id: category._id,
-          title: category.title,
-          slug: category.slug,
-          fullSlug: category.fullSlug
-        }))
       },
 
       pagination: {
