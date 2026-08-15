@@ -32,11 +32,8 @@ export const SEARCH_PHRASES = [
 
 export const SEARCH_SYNONYMS: Record<string, string[]> = {
   ring: ["rings", "band", "bands"],
-
   earring: ["earrings"],
-
   bracelet: ["bracelets", "bangle", "bangles"],
-
   necklace: ["necklaces"],
 };
 

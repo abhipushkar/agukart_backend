@@ -2027,6 +2027,36 @@ export const searchProduct = async (req: Request, resp: Response) => {
 
 }
 
+const collectExcludedCategoryIds = async (rejectedIds: Set<string>) => {
+  const excludedIds = new Set<string>(rejectedIds);
+
+  let parentIds = [...rejectedIds];
+
+  while (parentIds.length > 0) {
+    const children = await Category.find({
+      parent_id: {
+        $in: parentIds.map(id => new mongoose.Types.ObjectId(id))
+      },
+      status: true
+    }).select('_id').lean();
+
+    const childIds: string[] = [];
+
+    for (const child of children) {
+      const childId = String(child._id);
+
+      if (!excludedIds.has(childId)) {
+        excludedIds.add(childId);
+        childIds.push(childId);
+      }
+    }
+
+    parentIds = childIds;
+  }
+
+  return excludedIds;
+};
+
 export const searchProductList = async (req: Request, resp: Response) => {
   try {
     const rawQuery = String(req.query.q || '');
@@ -2203,6 +2233,7 @@ export const searchProductList = async (req: Request, resp: Response) => {
     let directCategoryMatch = false;
     let directCategorySource: 'category' | null = null;
     let restrictedCategoryMatch = false;
+    let excludedCategoryIds = new Set<string>();
 
     const directFrontendCategories = await Category.find({
       status: true
@@ -2271,8 +2302,18 @@ console.table(
     restricted_keywords: category.restricted_keywords || []
   }))
 );
+      const rejectedCategoryIds = new Set<string>();
+      const allowedFrontendCategories = frontendCategoryCandidates.filter((category: any) => {
+        const allowed = isRestrictedCategoryAllowed(category);
 
-      const allowedFrontendCategories = frontendCategoryCandidates.filter(isRestrictedCategoryAllowed);
+        if (!allowed) {
+          rejectedCategoryIds.add(String(category._id));
+        }
+
+        return allowed;
+      });
+
+      excludedCategoryIds = await collectExcludedCategoryIds(rejectedCategoryIds);
 
       console.log('\nALLOWED CATEGORIES:');
 console.table(
@@ -2347,9 +2388,17 @@ console.log('====================================\n');
         const children = await getCategoryTreeNew(category._id, searchWords);
 
         for (const child of children || []) {
-          if (child?.id) {
-            categoryIds.add(String(child.id));
+          if (!child?.id) {
+            continue;
           }
+
+          const childId = String(child.id);
+
+          if (excludedCategoryIds.has(childId)) {
+            continue;
+          }
+
+          categoryIds.add(childId);
         }
       } catch (error) {
         console.log('Unable to fetch category children:', category._id, error);
@@ -5025,7 +5074,7 @@ export const getProductList = async (req: Request, resp: Response) => {
     const catIdsToFetch = [new mongoose.Types.ObjectId(categoryId), ...children.map((c: any) => new mongoose.Types.ObjectId(c.id))];
     const catDocs = await Category.find({ _id: { $in: catIdsToFetch } }).lean();
 
-    // For each automatic category, prepare a pipeline to union (automation result)
+    //  For each automatic category, prepare a pipeline to union (automation result)
     for (const cat of catDocs) {
       if (!cat || !cat.isAutomatic) continue;
 
