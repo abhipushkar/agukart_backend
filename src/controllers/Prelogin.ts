@@ -2083,6 +2083,14 @@ export const searchProductList = async (req: Request, resp: Response) => {
     const wholeQueryRegex = new RegExp(`^${escapedQuery}$`, 'i');
     const normalizedNoSpaceQuery = q.replace(/\s+/g, '').toLowerCase();
 
+
+    console.log('\n========== SEARCH TOKEN DEBUG ==========');
+console.log('RAW QUERY:', rawQuery);
+console.log('NORMALIZED QUERY:', q);
+console.log('ALL TOKENS:', processedSearch.allTokens);
+console.log('PHRASE TOKENS:', processedSearch.phraseTokens);
+console.log('GROUPING TOKENS:', processedSearch.groupingTokens);
+console.log('========================================\n');
     /*
     |--------------------------------------------------------------------------
     | STEP 0: SHOP / BRAND SEARCH
@@ -2166,55 +2174,94 @@ export const searchProductList = async (req: Request, resp: Response) => {
 
     /*
     |--------------------------------------------------------------------------
-    | HELPER: RESTRICTED CATEGORY CHECK
+    | HELPER: CATEGORY KEYWORD DECISION
     |--------------------------------------------------------------------------
-    | Restricted category:
     |
-    | restricted_keywords = ["blank", "empty", "without stone"]
+    | Priority:
     |
-    | It is allowed ONLY when user's complete query contains one of those
-    | restricted keywords.
+    | 1. restricted_keywords match -> ALLOW
+    | 2. block_keywords match      -> REJECT
+    | 3. restricted_keywords exist
+    |    but no match               -> REJECT
+    | 4. no restrictions            -> ALLOW
+    |
+    | IMPORTANT:
+    | restricted_keywords have higher
+    | precedence than block_keywords.
     |--------------------------------------------------------------------------
     */
 
-    const isRestrictedCategoryAllowed = (category: any) => {
+    const getCategoryKeywordDecision = (category: any) => {
       const restrictedKeywords = Array.isArray(category?.restricted_keywords) ? category.restricted_keywords : [];
 
-      if (!restrictedKeywords.length) {
-        return true;
-      }
+      const blockKeywords = Array.isArray(category?.block_keywords) ? category.block_keywords : [];
 
       const lowerQuery = q.toLowerCase();
 
-      return restrictedKeywords.some((keyword: any) => {
-        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+      const hasKeywordMatch = (keywords: any[]) => {
+        const queryTokens = lowerQuery.split(/\s+/).map(normalizeWord).filter(Boolean);
 
-        if (!normalizedKeyword) {
-          return false;
-        }
+        return keywords.some((keyword: any) => {
+          const normalizedKeyword = String(keyword || '').trim().toLowerCase();
 
-        return lowerQuery.includes(normalizedKeyword);
-      });
-    };
+          if (!normalizedKeyword) {
+            return false;
+          }
 
-    const hasRestrictedKeywordMatch = (category: any) => {
-      const restrictedKeywords = Array.isArray(category?.restricted_keywords) ? category.restricted_keywords : [];
+          const keywordTokens = normalizedKeyword.split(/\s+/).map(normalizeWord).filter(Boolean);
 
-      if (!restrictedKeywords.length) {
-        return false;
+          if (!keywordTokens.length) {
+            return false;
+          }
+
+          return keywordTokens.every(keywordToken =>
+            queryTokens.includes(keywordToken)
+          );
+        });
+      };
+
+      const restrictedMatch = hasKeywordMatch(restrictedKeywords);
+      const blockMatch = hasKeywordMatch(blockKeywords);
+
+      /*
+        * PRECEDENCE:
+        *
+        * restricted match > block match
+        */
+
+      if (restrictedMatch) {
+        return {
+          allowed: true,
+          reason: 'restricted_match',
+          restrictedMatch: true,
+          blockMatch
+        };
       }
 
-      const lowerQuery = q.toLowerCase();
+      if (blockMatch) {
+        return {
+          allowed: false,
+          reason: 'block_match',
+          restrictedMatch: false,
+          blockMatch: true
+        };
+      }
 
-      return restrictedKeywords.some((keyword: any) => {
-        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+      if (restrictedKeywords.length > 0) {
+        return {
+          allowed: false,
+          reason: 'restricted_keyword_not_matched',
+          restrictedMatch: false,
+          blockMatch: false
+        };
+      }
 
-        if (!normalizedKeyword) {
-          return false;
-        }
-
-        return lowerQuery.includes(normalizedKeyword);
-      });
+      return {
+        allowed: true,
+        reason: 'normal_category',
+        restrictedMatch: false,
+        blockMatch: false
+      };
     };
 
     /*
@@ -2237,27 +2284,27 @@ export const searchProductList = async (req: Request, resp: Response) => {
 
     const directFrontendCategories = await Category.find({
       status: true
-    }).select('_id title slug fullSlug restricted_keywords search_terms').lean();
+    }).select('_id title slug fullSlug parent_id restricted_keywords block_keywords search_terms search_keywords').lean();
 
     const allowedDirectFrontendCategories = directFrontendCategories.filter((category: any) => {
-      if (!isRestrictedCategoryAllowed(category)) {
+      const normalizedTitle = String(category.title || '').toLowerCase().trim().split(/\s+/).filter(Boolean).map(normalizeWord).join(' ');
+
+      if (normalizedTitle !== categoryQuery) {
         return false;
       }
 
-      const normalizedTitle = String(category.title || '').toLowerCase().trim().split(/\s+/).filter(Boolean).map(normalizeWord).join(' ');
+      const decision = getCategoryKeywordDecision(category);
 
-      return normalizedTitle === categoryQuery;
+      return decision.allowed;
     });
 
     if (allowedDirectFrontendCategories.length > 0) {
-      const restrictedMatch = allowedDirectFrontendCategories.find(hasRestrictedKeywordMatch);
+      matchedFrontendCategories = allowedDirectFrontendCategories;
 
-      if (restrictedMatch) {
-        matchedFrontendCategories = [restrictedMatch];
-        restrictedCategoryMatch = true;
-      } else {
-        matchedFrontendCategories = [allowedDirectFrontendCategories[0]];
-      }
+      restrictedCategoryMatch = matchedFrontendCategories.some((category: any) => {
+        const decision = getCategoryKeywordDecision(category);
+        return decision.restrictedMatch;
+      });
 
       directCategoryMatch = true;
       directCategorySource = 'category';
@@ -2273,13 +2320,14 @@ export const searchProductList = async (req: Request, resp: Response) => {
     |--------------------------------------------------------------------------
     */
 
-    if (!directCategoryMatch && searchWords.length > 0) {
-      const categoryWordConditions = searchWords.flatMap(word => {
+    if (!directCategoryMatch && groupingTokens.length > 0) {
+      const categoryWordConditions = groupingTokens.flatMap(word => {
         const regex = new RegExp(`\\b${escapeRegex(word)}`, 'i');
 
         return [
           { title: regex },
-          { search_terms: regex }
+          // { search_terms: regex }
+          { search_keywords: word }
         ];
       });
 
@@ -2287,64 +2335,137 @@ export const searchProductList = async (req: Request, resp: Response) => {
         status: true,
         $or: categoryWordConditions
       })
-        .select('_id title slug fullSlug parent_id search_terms restricted_keywords')
-        .lean();
+        .select('_id title slug fullSlug parent_id search_terms search_keywords restricted_keywords block_keywords').lean();
 
         console.log('\n========== CATEGORY DEBUG ==========');
         console.log('SEARCH QUERY:', q);
 
         console.log('\nALL CATEGORY CANDIDATES:');
-console.table(
-  frontendCategoryCandidates.map((category: any) => ({
-    id: String(category._id),
-    title: category.title,
-    fullSlug: category.fullSlug,
-    restricted_keywords: category.restricted_keywords || []
-  }))
-);
+        console.table(
+          frontendCategoryCandidates.map((category: any) => ({
+            id: String(category._id),
+            title: category.title,
+            fullSlug: category.fullSlug,
+            search_terms: category.search_terms || [],
+            restricted_keywords: category.restricted_keywords || []
+          }))
+        );
       const rejectedCategoryIds = new Set<string>();
-      const allowedFrontendCategories = frontendCategoryCandidates.filter((category: any) => {
-        const allowed = isRestrictedCategoryAllowed(category);
 
-        if (!allowed) {
+      const categoryDecisions = frontendCategoryCandidates.map((category: any) => {
+        const decision = getCategoryKeywordDecision(category);
+
+        if (!decision.allowed) {
           rejectedCategoryIds.add(String(category._id));
         }
 
-        return allowed;
+        return {
+          category,
+          decision
+        };
       });
+
+      const restrictedMatches = categoryDecisions.filter(({ decision }) => decision.restrictedMatch).map(({ category }) => category);
+
+      let allowedFrontendCategories: any[];
+
+      if (restrictedMatches.length > 0) {
+        allowedFrontendCategories = restrictedMatches;
+      } else {
+        allowedFrontendCategories = categoryDecisions.filter(({ decision }) => decision.allowed).map(({ category }) =>     category);
+      }
 
       excludedCategoryIds = await collectExcludedCategoryIds(rejectedCategoryIds);
 
-      console.log('\nALLOWED CATEGORIES:');
-console.table(
-  allowedFrontendCategories.map((category: any) => ({
-    id: String(category._id),
-    title: category.title,
-    fullSlug: category.fullSlug,
-    restricted_keywords: category.restricted_keywords || []
-  }))
-);
+      console.log('\n========== CATEGORY SHORTLIST DEBUG ==========');
+      console.log('SEARCH QUERY:', q);
+      console.log('CATEGORY SEARCH TOKENS:', groupingTokens);
+      console.log('TOTAL CATEGORY CANDIDATES:', frontendCategoryCandidates.length);
 
-      const restrictedMatches = allowedFrontendCategories.filter(hasRestrictedKeywordMatch);
+      console.log('\nALL CATEGORY CANDIDATES:');
+      console.table(
+        frontendCategoryCandidates.map((category: any, index: number) => {
+          const decision = getCategoryKeywordDecision(category);
 
-      if (restrictedMatches.length > 0) {
-        matchedFrontendCategories = restrictedMatches;
-        restrictedCategoryMatch = true;
-      } else {
-        matchedFrontendCategories = allowedFrontendCategories;
-      } 
+          return {
+            no: index + 1,
+            id: String(category._id),
+            title: category.title,
+            fullSlug: category.fullSlug,
+            parent_id: category.parent_id ? String(category.parent_id) : null,
+            restricted_keywords: category.restricted_keywords || [],
+            block_keywords: category.block_keywords || [],
+            restrictedMatch: decision.restrictedMatch,
+            blockMatch: decision.blockMatch,
+            decision: decision.reason,
+            allowed: decision.allowed
+          };
+        })
+      );
+
+      console.log('\nREJECTED CATEGORY IDS:');
+      console.log([...rejectedCategoryIds]);
+
+      console.log('\nALLOWED CATEGORY SHORTLIST:');
+      console.table(
+        allowedFrontendCategories.map((category: any, index: number) => ({
+          no: index + 1,
+          id: String(category._id),
+          title: category.title,
+          fullSlug: category.fullSlug,
+          parent_id: category.parent_id ? String(category.parent_id) : null,
+          restricted_keywords: category.restricted_keywords || []
+        }))
+      );
+
+      console.log('TOTAL ALLOWED CATEGORIES:', allowedFrontendCategories.length);
+
+      console.log('\nRESTRICTED MATCHES:');
+      console.table(
+        restrictedMatches.map((category: any) => {
+          const decision = getCategoryKeywordDecision(category);
+
+          return {
+            id: String(category._id),
+            title: category.title,
+            fullSlug: category.fullSlug,
+            restricted_keywords: category.restricted_keywords || [],
+            block_keywords: category.block_keywords || [],
+            restrictedMatch: decision.restrictedMatch,
+            blockMatch: decision.blockMatch,
+            decision: decision.reason
+          };
+        })
+      );
+
+      console.log('TOTAL RESTRICTED MATCHES:', restrictedMatches.length);
+
+      console.log(
+        'CATEGORY MODE:',
+        restrictedMatches.length > 0 ? 'RESTRICTED_ONLY' : 'NORMAL'
+      );
+
+    matchedFrontendCategories = allowedFrontendCategories;
+
+    restrictedCategoryMatch = matchedFrontendCategories.some((category: any) => {
+      const decision = getCategoryKeywordDecision(category);
+      return decision.restrictedMatch;
+    });
       
-      console.log('\nFINAL MATCHED CATEGORIES:');
+console.log('\nFINAL MATCHED CATEGORY SHORTLIST:');
+
 console.table(
-  matchedFrontendCategories.map((category: any) => ({
+  matchedFrontendCategories.map((category: any, index: number) => ({
+    no: index + 1,
     id: String(category._id),
     title: category.title,
     fullSlug: category.fullSlug,
-    restricted_keywords: category.restricted_keywords || []
+    parent_id: category.parent_id ? String(category.parent_id) : null
   }))
 );
 
-console.log('====================================\n');
+console.log('TOTAL FINAL MATCHED ROOT CATEGORIES:', matchedFrontendCategories.length);
+console.log('============================================\n');
       /*
       | Admin/hidden categories are checked too during token/category discovery.
       */
@@ -2385,7 +2506,7 @@ console.log('====================================\n');
       categoryIds.add(String(category._id));
 
       try {
-        const children = await getCategoryTreeNew(category._id, searchWords);
+        const children = await getCategoryTreeNew(category._id, groupingTokens);
 
         for (const child of children || []) {
           if (!child?.id) {
@@ -2411,9 +2532,29 @@ console.log('====================================\n');
 
     const matchedCategoryIds = categoryObjectIds.map(id => id.toString());
 
-    console.log("SEARCH:", q);
-console.log("MATCHED ROOT CATEGORIES:", matchedFrontendCategories.map((c: any) => ({ id: String(c._id), title: c.title, restricted_keywords: c.restricted_keywords })));
-console.log("FINAL CATEGORY IDS:", [...categoryIds]);
+console.log('\n========== FINAL CATEGORY SCOPE ==========');
+
+console.log('SEARCH QUERY:', q);
+
+console.log('\nROOT CATEGORIES:');
+console.table(
+  matchedFrontendCategories.map((category: any, index: number) => ({
+    no: index + 1,
+    id: String(category._id),
+    title: category.title,
+    fullSlug: category.fullSlug
+  }))
+);
+
+console.log('\nFINAL CATEGORY IDS INCLUDING CHILDREN:');
+console.log([...categoryIds]);
+
+console.log('TOTAL FINAL CATEGORY IDS:', categoryIds.size);
+
+console.log('\nFINAL CATEGORY OBJECT IDS USED IN PRODUCT SEARCH:');
+console.log(matchedCategoryIds);
+
+console.log('===========================================\n');
 
     /*
     |--------------------------------------------------------------------------

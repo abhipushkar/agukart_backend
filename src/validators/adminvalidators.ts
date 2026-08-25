@@ -62,6 +62,16 @@ export const categoryValid = Joi.object({
             'array.base': 'Search terms must be an array',
             'string.base': 'Each search term must be a string'
         }),
+    search_keywords: Joi.array().items(Joi.string().trim().lowercase())
+        .optional().messages({
+            'array.base': 'search_keywords must be an array',
+            'string.base': 'Each search_keywords must be a string'
+        }),
+    block_keywords: Joi.array().items(Joi.string().trim().lowercase())
+        .optional().messages({
+            'array.base': 'block_keywords must be an array',
+            'string.base': 'Each block_keywords must be a string'
+        }),
 
     conditionType: Joi.string()
         .valid('all', 'any')

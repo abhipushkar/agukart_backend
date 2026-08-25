@@ -501,6 +501,8 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
       productsMatch,
       value,
       restricted_keywords,
+      search_keywords = [],
+      block_keywords = [],
       search_terms = []
     } = req.body;
 
@@ -628,6 +630,8 @@ categoryDoc.equalTo = equalTo;
 categoryDoc.value = value;
 categoryDoc.restricted_keywords = restricted_keywords;
 categoryDoc.search_terms = search_terms;
+categoryDoc.block_keywords = block_keywords;
+categoryDoc.search_keywords = search_keywords;
 categoryDoc.conditions = req.body.conditions || [];
 categoryDoc.conditionType = req.body.conditionType || 'all';
 categoryDoc.isAutomatic = req.body.isAutomatic || false;
@@ -679,6 +683,8 @@ categoryDoc.equalTo = equalTo;
 categoryDoc.value = value;
 categoryDoc.restricted_keywords = restricted_keywords;
 categoryDoc.search_terms = search_terms;
+categoryDoc.search_keywords = search_keywords;
+categoryDoc.block_keywords = block_keywords;
 categoryDoc.conditions = req.body.conditions || [];
 categoryDoc.conditionType = req.body.conditionType || 'all';
 categoryDoc.isAutomatic = req.body.isAutomatic ?? false;
@@ -1194,6 +1200,8 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
           meta_title: 1,
           meta_keywords: 1,
           search_terms: 1,
+          block_keywords: 1,
+          search_keywords: 1,
           meta_description: 1,
           bestseller: 1,
           parent_id: 1,
@@ -1244,6 +1252,8 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
       meta_keywords: category.meta_keywords,
       meta_description: category.meta_description,
       search_terms: category.search_terms,
+      block_keywords: category.block_keywords,
+      search_keywords: category.search_keywords,
       variant_data: category.variant_data,
       attributeList_data: category.attributeList_data,
       productsMatch: category.productsMatch,

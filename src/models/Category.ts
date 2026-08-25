@@ -101,6 +101,14 @@ const categorySchema = new Schema(
       type: String,
       default: [],
     }],
+    search_keywords: [{
+      type: String,
+      default: []
+    }],
+    block_keywords: [{
+      type: String,
+      default: []
+    }],
     productsMatch: {
       type: String,
       enum: ['', 'Product Title', 'Product Tag'],
