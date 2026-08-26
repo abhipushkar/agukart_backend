@@ -2229,21 +2229,21 @@ console.log('========================================\n');
         * restricted match > block match
         */
 
+      if (blockMatch) {
+        return {
+          allowed: false,
+          reason: 'block_match',
+          restrictedMatch: true,
+          blockMatch: true
+        };
+      }
+
       if (restrictedMatch) {
         return {
           allowed: true,
           reason: 'restricted_match',
           restrictedMatch: true,
-          blockMatch
-        };
-      }
-
-      if (blockMatch) {
-        return {
-          allowed: false,
-          reason: 'block_match',
-          restrictedMatch: false,
-          blockMatch: true
+          blockMatch: false
         };
       }
 
@@ -2365,7 +2365,7 @@ console.log('========================================\n');
         };
       });
 
-      const restrictedMatches = categoryDecisions.filter(({ decision }) => decision.restrictedMatch).map(({ category }) => category);
+      const restrictedMatches = categoryDecisions.filter(({ decision }) => decision.restrictedMatch && !decision.blockMatch).map(({ category }) => category);
 
       let allowedFrontendCategories: any[];
 
