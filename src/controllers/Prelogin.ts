@@ -3804,8 +3804,8 @@ console.log('===========================================\n');
 
       sortStage = {
         phraseMatchCount: -1,
-        featured: -1,
         relevanceScore: -1,
+        featured: -1,
         bestsellerScore: -1,
         wishlistScore: -1,
         viewScore: -1,
@@ -5372,42 +5372,43 @@ export const getProductList = async (req: Request, resp: Response) => {
           pipeline: childPipeline
         }
       });
-    } // end for each automatic category
-agg.push(
-{
-  $lookup: {
-    from: "vendordetails",
-    localField: "vendor_id",
-    foreignField: "user_id",
-    as: "vendor"
-  }
-},
-{
-  $unwind: {
-    path: "$vendor",
-    preserveNullAndEmptyArrays: true
-  }
-},
-{
-  $lookup: {
-    from: "users",
-    localField: "vendor_id",
-    foreignField: "_id",
-    as: "vendorUser"
-  }
-},
-{
-  $unwind: {
-    path: "$vendorUser",
-    preserveNullAndEmptyArrays: false
-  }
-},
-{
-  $match: {
-    "vendorUser.status": true
-  }
-}
-);
+    } 
+    // end for each automatic category
+    agg.push(
+      {
+        $lookup: {
+          from: "vendordetails",
+          localField: "vendor_id",
+          foreignField: "user_id",
+          as: "vendor"
+        }
+      },
+      {
+        $unwind: {
+          path: "$vendor",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "vendor_id",
+          foreignField: "_id",
+          as: "vendorUser"
+        }
+      },
+      {
+        $unwind: {
+          path: "$vendorUser",
+          preserveNullAndEmptyArrays: false
+        }
+      },
+      {
+        $match: {
+          "vendorUser.status": true
+        }
+      }
+    );
     // After unionWith(s), dedupe by _id and collect entries
     agg.push(
       // group by _id to dedupe
@@ -5420,33 +5421,33 @@ agg.push(
       // bring doc back to root
       { $replaceRoot: { newRoot: "$doc" } }
     );
-     agg.push({
-  $project: {
-    _id: 1,
-    product_title: 1,
-    sale_price: 1,
-    image: 1,
-    videos: 1,
-    edited_image: 1,
-    altText: 1,
-    product_variants: 1,
-    dynamicFields: 1,
-    vendor_id: 1,
-    search_terms: 1,
-    createdAt: 1,
-    product_code: 1,
-    slug: 1,
-    category: 1,
-    qty: 1,
-    combinationData: 1,
-    form_values: 1,
-    product_bedge: 1,
-    ratingAvg: 1,
-    userReviewCount: 1,
-    shop_name: { $ifNull: ["$vendor.shop_name", ""] },
-    shop_slug: { $ifNull: ["$vendor.slug", ""] },
-  }
-});
+    agg.push({
+      $project: {
+        _id: 1,
+        product_title: 1,
+        sale_price: 1,
+        image: 1,
+        videos: 1,
+        edited_image: 1,
+        altText: 1,
+        product_variants: 1,
+        dynamicFields: 1,
+        vendor_id: 1,
+        search_terms: 1,
+        createdAt: 1,
+        product_code: 1,
+        slug: 1,
+        category: 1,
+        qty: 1,
+        combinationData: 1,
+        form_values: 1,
+        product_bedge: 1,
+        ratingAvg: 1,
+        userReviewCount: 1,
+        shop_name: { $ifNull: ["$vendor.shop_name", ""] },
+        shop_slug: { $ifNull: ["$vendor.slug", ""] },
+      }
+    });
 
     // Now sorting
     if (sortBy === "asc") {
