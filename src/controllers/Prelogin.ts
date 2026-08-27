@@ -3111,32 +3111,84 @@ console.log('===========================================\n');
               }
             },
 
-          _attributeText:{
-            $toLower:{
-              $reduce:{
-                input:{$objectToArray:{$ifNull:['$dynamicFields',{}]}},
-                initialValue:'',
-                in:{
-                  $concat:[
-                    '$$value',
-                    ' ',
+          _attributeText: {
+            $toLower: {
+              $reduce: {
+                input: { $objectToArray: { $ifNull: ["$dynamicFields", {}] } },
+                initialValue: "",
+                in: {
+                  $concat: [
+                    "$$value",
+                    " ",
                     {
-                      $cond:[
-                        {$isArray:'$$this.v'},
+                      $cond: [
+                        { $isArray: "$$this.v" },
                         {
-                          $reduce:{
-                            input:'$$this.v',
-                            initialValue:'',
-                            in:{
-                              $concat:[
-                                '$$value',
-                                ' ',
-                                {$convert:{input:'$$this',to:'string',onError:'',onNull:''}}
+                          $reduce: {
+                            input: "$$this.v",
+                            initialValue: "",
+                            in: {
+                              $concat: [
+                                "$$value",
+                                " ",
+                                {
+                                  $convert: {
+                                    input: "$$this",
+                                    to: "string",
+                                    onError: "",
+                                    onNull: ""
+                                  }
+                                }
                               ]
                             }
                           }
                         },
-                        {$convert:{input:'$$this.v',to:'string',onError:'',onNull:''}}
+                        {
+                          $convert: {
+                            input: "$$this.v",
+                            to: "string",
+                            onError: "",
+                            onNull: ""
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      $cond: [
+                        {
+                          $and: [
+                            { $not: { $isArray: "$$this.v" } },
+                            {
+                              $eq: [
+                                {
+                                  $toLower: {
+                                    $convert: {
+                                      input: "$$this.v",
+                                      to: "string",
+                                      onError: "",
+                                      onNull: ""
+                                    }
+                                  }
+                                },
+                                "yes"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          $concat: [
+                            " ",
+                            {
+                              $convert: {
+                                input: "$$this.k",
+                                to: "string",
+                                onError: "",
+                                onNull: ""
+                              }
+                            }
+                          ]
+                        },
+                        ""
                       ]
                     }
                   ]
