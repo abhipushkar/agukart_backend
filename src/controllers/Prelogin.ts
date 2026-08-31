@@ -3831,16 +3831,25 @@ console.log('===========================================\n');
 
     if (sortBy === 'date') {
       sortStage = {
+        phraseMatchCount: -1,
         createdAt: -1,
+        refresh_date: -1,
+        relevanceScore: -1,
+        featured: -1,
+        bestsellerScore: -1,
+        wishlistScore: -1,
+        viewScore: -1,
         _id: -1
       };
     } else if (sortBy === 'asc') {
       sortStage = {
+        phraseMatchCount: -1,
         searchPrice: 1,
         _id: 1
       };
     } else if (sortBy === 'desc') {
       sortStage = {
+        phraseMatchCount: -1,
         searchPrice: -1,
         _id: 1
       };
