@@ -1,4 +1,5 @@
 import { Response, Request } from "express";
+import { PipelineStage } from 'mongoose';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
@@ -2057,11 +2058,430 @@ const collectExcludedCategoryIds = async (rejectedIds: Set<string>) => {
   return excludedIds;
 };
 
+const buildSearchFilterPipeline = (filterAttributes: any[]): PipelineStage[] => {
+  const allowedDynamicFields = filterAttributes.filter(attribute => attribute.type === 'Dropdown' || attribute.type === 'Yes/No').map(attribute => ({
+      name: String(attribute.name || '').trim(),
+      nameLower: String(attribute.name || '').trim().toLowerCase(),
+      type: attribute.type
+    })).filter(attribute => attribute.nameLower);
+
+  return [
+    {
+      $addFields: {
+        combinationPrices: {
+          $reduce: {
+            input: { $ifNull: ['$combinationData', []] },
+            initialValue: [],
+            in: {
+              $concatArrays: [
+                '$$value',
+                {
+                  $map: {
+                    input: { $ifNull: ['$$this.combinations', []] },
+                    as: 'combination',
+                    in: {
+                      $convert: {
+                        input: '$$combination.price',
+                        to: 'double',
+                        onError: 0,
+                        onNull: 0
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+
+    {
+      $addFields: {
+        validCombinationPrices: {
+          $filter: {
+            input: '$combinationPrices',
+            as: 'price',
+            cond: { $gt: ['$$price', 0] }
+          }
+        }
+      }
+    },
+
+    {
+      $addFields: {
+        filterPrice: {
+          $cond: [
+            {
+              $and: [
+                { $eq: ['$isCombination', true] },
+                { $gt: [{ $size: '$validCombinationPrices' }, 0] }
+              ]
+            },
+            { $min: '$validCombinationPrices' },
+            {
+              $convert: {
+                input: '$sale_price',
+                to: 'double',
+                onError: 0,
+                onNull: 0
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      $project: {
+        dynamicFields: 1,
+        brand_id: 1,
+        ratingAvg: 1,
+        featured: 1,
+        bestseller: 1,
+        popular_gifts: 1,
+        top_rated: 1,
+        product_bedge: 1,
+        filterPrice: 1
+      }
+    },
+
+    {
+      $facet: {
+        price: [
+          {
+            $match: {
+              filterPrice: { $gt: 0 }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              min: { $min: '$filterPrice' },
+              max: { $max: '$filterPrice' }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              min: 1,
+              max: 1
+            }
+          }
+        ],
+
+        ratings: [
+          {
+            $group: {
+              _id: '$ratingAvg',
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $sort: { _id: 1 }
+          },
+          {
+            $project: {
+              _id: 0,
+              rating: '$_id',
+              count: 1
+            }
+          }
+        ],
+
+        brands: [
+          {
+            $match: {
+              brand_id: { $ne: null }
+            }
+          },
+          {
+            $group: {
+              _id: '$brand_id',
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $lookup: {
+              from: 'brands',
+              localField: '_id',
+              foreignField: '_id',
+              as: 'brand'
+            }
+          },
+          {
+            $unwind: '$brand'
+          },
+          {
+            $match: {
+              'brand.status': true
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              id: '$_id',
+              title: '$brand.title',
+              slug: '$brand.slug',
+              image: '$brand.image',
+              count: 1
+            }
+          },
+          {
+            $sort: {
+              count: -1,
+              title: 1
+            }
+          }
+        ],
+        featured: [
+          {
+            $match: {
+              featured: true
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              value: true,
+              count: 1
+            }
+          }
+        ],
+
+        bestseller: [
+          {
+            $match: {
+              bestseller: 'Yes'
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              value: 'Yes',
+             count: 1
+            }
+          }
+        ],
+
+        popularGifts: [
+          {
+            $match: {
+              popular_gifts: 'Yes'
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              value: 'Yes',
+              count: 1
+            }
+          }
+        ],
+
+        topRated: [
+          {
+            $match: {
+              top_rated: true
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              value: true,
+              count: 1
+            }
+          }
+        ],
+
+        badges: [
+          {
+            $match: {
+              product_bedge: {
+                $nin: ['', null]
+              }
+            }
+          },
+          {
+            $group: {
+              _id: '$product_bedge',
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              value: '$_id',
+              count: 1
+            }
+          },
+          {
+            $sort: {
+              count: -1,
+              value: 1
+            }
+          }
+        ],
+
+        dynamicFields: [
+          {
+            $project: {
+              fields: {
+                $filter: {
+                  input: {
+                    $objectToArray: {
+                      $ifNull: ['$dynamicFields', {}]
+                    }
+                  },
+                  as: 'field',
+                  cond: {
+                    $in: [
+                      {
+                        $toLower: {
+                          $convert: {
+                            input: '$$field.k',
+                            to: 'string',
+                            onError: '',
+                            onNull: ''
+                          }
+                        }
+                      },
+                      allowedDynamicFields.map(attribute => attribute.nameLower)
+                    ]
+                  }
+                }
+              }
+            }
+          },
+
+          {
+            $unwind: '$fields'
+          },
+
+          {
+            $project: {
+              key: '$fields.k',
+              value: '$fields.v'
+            }
+          },
+
+          {
+            $project: {
+              key: 1,
+              values: {
+                $cond: [
+                  { $isArray: '$value' },
+                  '$value',
+                  ['$value']
+                ]
+              }
+            }
+          },
+
+          {
+            $unwind: '$values'
+          },
+
+          {
+            $project: {
+              key: 1,
+              value: {
+                $convert: {
+                  input: '$values',
+                  to: 'string',
+                  onError: '',
+                  onNull: ''
+                }
+              }
+            }
+          },
+
+          {
+            $match: {
+              value: { $ne: '' }
+            }
+          },
+
+          {
+            $group: {
+              _id: {
+                key: '$key',
+                value: '$value'
+              },
+              count: { $sum: 1 }
+            }
+          },
+
+          {
+            $group: {
+              _id: '$_id.key',
+              values: {
+                $push: {
+                  value: '$_id.value',
+                  count: '$count'
+                }
+              }
+            }
+          },
+
+          {
+            $project: {
+              _id: 0,
+              key: '$_id',
+              values: 1
+            }
+          },
+
+          {
+            $sort: {
+              key: 1
+            }
+          }
+        ]
+      }
+    }
+  ] as PipelineStage[];
+};
+
 export const searchProductList = async (req: Request, resp: Response) => {
   try {
     const rawQuery = String(req.query.q || '');
     const q = normalizeSearchQuery(rawQuery);
     const sortBy = String(req.query.sortBy || 'relevance');
+    const selectedBrandIds = Array.isArray(req.query.brands) ? req.query.brands.map(String) : String(req.query.brands || '').split(',').filter(Boolean);
+    const selectedRatings = Array.isArray(req.query.ratings) ? req.query.ratings.map(Number) : String(req.query.ratings || '').split(',').filter(Boolean).map(Number);
+    const minPrice = req.query.minPrice !== undefined ? Number(req.query.minPrice) : null;
+    const maxPrice = req.query.maxPrice !== undefined ? Number(req.query.maxPrice) : null;
+    const selectedFeatured = String(req.query.featured || '').toLowerCase();
+    const selectedBestseller = String(req.query.bestseller || '').toLowerCase();
+    const selectedPopularGifts = String(req.query.popularGifts || '').toLowerCase();
+    const selectedTopRated = String(req.query.topRated || '').toLowerCase();
+
+    const selectedBadges = Array.isArray(req.query.badges)? req.query.badges.map(String).map(v => v.trim()).filter(Boolean): String(req.query.badges || '').split(',').map(v => v.trim()).filter(Boolean);
     const page = Math.max(parseInt(String(req.query.page || '1'), 10), 1);
     const limit = Math.min(Math.max(parseInt(String(req.query.limit || '20'), 10), 1), 100);
     const skip = (page - 1) * limit;
@@ -2708,6 +3128,23 @@ console.log('===========================================\n');
       ...attributeConditions,
     ];
 
+    const filterAttributes = await AttributesList.find({ viewInFilters: true, type: { $in: ['Dropdown', 'Yes/No'] }}).select('name type').lean();
+
+    const filterAttributeMap = new Map<string, any>();
+
+    for (const attribute of filterAttributes) {
+      const name = String(attribute.name || '').trim();
+
+      if (!name) {
+        continue;
+      }
+
+      filterAttributeMap.set(name.toLowerCase(), {
+        name,
+        type: attribute.type
+      });
+    }
+
     const directProductMatch = {
       $or: productTextConditions
     };
@@ -2723,13 +3160,84 @@ console.log('===========================================\n');
       ]
     } : null;
 
+    let selectedDynamicFilters: Record<string, any> = {};
+
+    if (req.query.dynamicFields) {
+      try {
+        selectedDynamicFilters = JSON.parse(String(req.query.dynamicFields));
+      } catch {
+        selectedDynamicFilters = {};
+      }
+    }
+
+    const selectedFilterConditions: any[] = [];
+
+    if (selectedBrandIds.length > 0) {
+      const validBrandIds = selectedBrandIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+
+      if (validBrandIds.length > 0) {
+        selectedFilterConditions.push({brand_id: { $in: validBrandIds }});
+      }
+    }
+
+    if (selectedFeatured === 'true' || selectedFeatured === 'yes') {
+      selectedFilterConditions.push({ featured: true });
+    }
+
+    if (selectedBestseller === 'yes' || selectedBestseller === 'true') {
+      selectedFilterConditions.push({ bestseller: 'Yes' });
+    }
+
+    if (selectedPopularGifts === 'yes' || selectedPopularGifts === 'true') {
+      selectedFilterConditions.push({ popular_gifts: 'Yes' });
+    }
+
+    if (selectedTopRated === 'true' || selectedTopRated === 'yes') {
+      selectedFilterConditions.push({ top_rated: true });
+    }
+
+    if (selectedBadges.length > 0) {
+      selectedFilterConditions.push({ product_bedge: { $in: selectedBadges }});
+    }
+
+    if (selectedRatings.length > 0) {
+      selectedFilterConditions.push({ ratingAvg: { $gte: Math.min(...selectedRatings) }});
+    }
+
+    for (const [fieldName, values] of Object.entries(selectedDynamicFilters)) {
+      if (!Array.isArray(values) || values.length === 0) {
+        continue;
+      }
+
+      const attribute = filterAttributeMap.get(
+        String(fieldName).trim().toLowerCase()
+      );
+
+      if (!attribute) {
+        continue;
+      }
+
+      selectedFilterConditions.push({[`dynamicFields.${attribute.name}`]: { $in: values }
+      });
+    }
+
+
+
     const baseMatch: any = {
       isDeleted: false,
       deletedByAdmin: false,
       draft_status: false,
       status: true,
-      ...(categoryProductMatch ? categoryProductMatch : directProductMatch)
+      ...(categoryProductMatch ? categoryProductMatch : directProductMatch),
+      ...(selectedFilterConditions.length > 0 ? { $and: selectedFilterConditions } : {})
     };
+
+    const filterPipeline: PipelineStage[] = [
+      { $match: baseMatch },
+      ...buildSearchFilterPipeline(filterAttributes)
+    ];
+
+    const filterAggregationPromise = ProductModel.aggregate(filterPipeline);
 
     /*
     |--------------------------------------------------------------------------
@@ -3882,6 +4390,16 @@ console.log('===========================================\n');
     |--------------------------------------------------------------------------
     */
 
+    const priceMatch: Record<string, any> = {};
+
+    if (minPrice !== null && !Number.isNaN(minPrice)) {
+      priceMatch.$gte = minPrice;
+    }
+
+    if (maxPrice !== null && !Number.isNaN(maxPrice)) {
+      priceMatch.$lte = maxPrice;
+    }
+
     const pipeline: any[] = [
       {
         $match: baseMatch
@@ -4029,6 +4547,10 @@ console.log('===========================================\n');
             }
           }
         }
+      },
+
+      {
+        $match: Object.keys(priceMatch).length > 0 ? { searchPrice: priceMatch } : {} 
       },
 
       /*
@@ -4640,7 +5162,10 @@ console.log('===========================================\n');
       }
     ];
 
-const aggregationResult = await ProductModel.aggregate(pipeline);
+const [aggregationResult, filterAggregationResult] = await Promise.all([
+  ProductModel.aggregate(pipeline),
+  filterAggregationPromise
+]);
 
 if (process.env.NODE_ENV !== 'production') {
   const explainResult: any = await ProductModel.aggregate(pipeline).explain('executionStats');
@@ -4672,6 +5197,37 @@ if (process.env.NODE_ENV !== 'production') {
 
     const products = aggregationResult?.[0]?.data || [];
     const totalItems = aggregationResult?.[0]?.metadata?.[0]?.totalItems || 0;
+
+    const filterData = filterAggregationResult?.[0] || {};
+
+    const priceFilter = filterData.price?.[0] || {
+      min: 0,
+      max: 0
+    };
+
+    const ratingFilters = filterData.ratings || [];
+    const brandFilters = filterData.brands || [];
+    const featuredFilters = filterData.featured || [];
+    const bestsellerFilters = filterData.bestseller || [];
+    const popularGiftFilters = filterData.popularGifts || [];
+    const topRatedFilters = filterData.topRated || [];
+    const badgeFilters = filterData.badges || [];
+    const dynamicFieldFilters = filterData.dynamicFields || [];
+
+    const dynamicFilters: Record<string, any> = {};
+
+    for (const field of dynamicFieldFilters) {
+      const attribute = filterAttributeMap.get(String(field.key).trim().toLowerCase());
+
+      if (!attribute) {
+        continue;
+      }
+
+      dynamicFilters[field.key] = {
+        type: attribute.type,
+        values: field.values || []
+      };
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -4734,6 +5290,20 @@ if (process.env.NODE_ENV !== 'production') {
       success: true,
       message: 'Product fetched successfully.',
       data: finalProducts,
+      filters: {
+        price: {
+          min: priceFilter.min,
+          max: priceFilter.max
+        },
+        ratings: ratingFilters,
+        brands: brandFilters,
+        featured: featuredFilters,
+        bestseller: bestsellerFilters,
+        popularGifts: popularGiftFilters,
+        topRated: topRatedFilters,
+        badges: badgeFilters,
+        dynamicFields: dynamicFilters
+      },
       base_url,
       video_base_url,
 
