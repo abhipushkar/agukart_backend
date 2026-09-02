@@ -5240,40 +5240,17 @@ if (process.env.NODE_ENV !== 'production') {
     |--------------------------------------------------------------------------
     */
 
-    const finalProducts = products.map((item: any) => {
-      let originalPrice = Number(item.searchPrice || item.sale_price || 0);
-      let finalPrice = originalPrice;
-
-      let promotion: any = null;
-
-      if (Array.isArray(item.promotionData) && item.promotionData.length > 0) {
-        promotion = item.promotionData.reduce((best: any, promo: any) => {
-          const qty = Number(promo?.qty);
-
-          if (Number.isNaN(qty)) {
-            return best;
-          }
-
-          if (!best) {
-            return promo;
-          }
-
-          return qty < Number(best.qty) ? promo : best;
-        }, null);
-      }
-
-      if (promotion && Number(promotion.qty) <= 1) {
-        finalPrice = calculatePriceAfterDiscount(
-          promotion.offer_type,
-          Number(promotion.discount_amount || 0),
-          originalPrice
-        );
-      }
-
+    const finalProducts = products.map((item:any) => {
+      const originalPrice = Number(item.searchPrice || item.sale_price || 0);
+      const promotionResult = getProductPromotionData(item.promotionData || [], originalPrice, item.shop_name || '');
       return {
         ...item,
-        originalPrice,
-        finalPrice
+        originalPrice: promotionResult.originalPrice,
+        finalPrice: promotionResult.finalPrice,
+        currentPromotion: promotionResult.currentPromotion,
+        nextPromotion: promotionResult.nextPromotion,
+        promotionLabel: promotionResult.promotionLabel,
+        promotionData: promotionResult.promotionData
       };
     });
 
