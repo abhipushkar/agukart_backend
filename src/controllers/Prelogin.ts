@@ -5167,34 +5167,6 @@ const [aggregationResult, filterAggregationResult] = await Promise.all([
   filterAggregationPromise
 ]);
 
-if (process.env.NODE_ENV !== 'production') {
-  const explainResult: any = await ProductModel.aggregate(pipeline).explain('executionStats');
-
-  console.log('========== SEARCH PIPELINE PERFORMANCE ==========');
-
-  for (const [index, stage] of (explainResult?.stages || []).entries()) {
-    const stageName = Object.keys(stage)[0];
-    const stageData = stage[stageName];
-
-    console.log(`\nSTAGE ${index}: ${stageName}`);
-    console.log('executionTimeMillisEstimate:', stage.executionTimeMillisEstimate);
-
-    if (stageName === '$cursor') {
-      console.log('executionTimeMillis:', stageData?.executionStats?.executionTimeMillis);
-      console.log('nReturned:', stageData?.executionStats?.nReturned);
-      console.log('totalKeysExamined:', stageData?.executionStats?.totalKeysExamined);
-      console.log('totalDocsExamined:', stageData?.executionStats?.totalDocsExamined);
-    }
-
-    if (stageName === '$lookup') {
-      console.log('from:', stageData?.from);
-      console.log('as:', stageData?.as);
-    }
-  }
-
-  console.log('================================================');
-}
-
     const products = aggregationResult?.[0]?.data || [];
     const totalItems = aggregationResult?.[0]?.metadata?.[0]?.totalItems || 0;
 
