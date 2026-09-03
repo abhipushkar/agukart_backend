@@ -2702,9 +2702,42 @@ console.log('========================================\n');
     let restrictedCategoryMatch = false;
     let excludedCategoryIds = new Set<string>();
 
-    const directFrontendCategories = await Category.find({
-      status: true
-    }).select('_id title slug fullSlug parent_id restricted_keywords block_keywords search_terms search_keywords').lean();
+    const allActiveCategories = await Category.find({ status: true })
+    .select('_id title slug fullSlug parent_id restricted_keywords block_keywords search_terms search_keywords').lean();
+
+    const categoryChildrenMap = new Map<string, any[]>();
+
+    for (const category of allActiveCategories) {
+      const parentId = category.parent_id ? String(category.parent_id) : null;
+      if (!parentId) continue;
+
+      const children = categoryChildrenMap.get(parentId) || [];
+      children.push(category);
+      categoryChildrenMap.set(parentId, children);
+    }
+
+    const collectExcludedCategoryIds = (rejectedIds: Set<string>) => {
+      const excludedIds = new Set<string>(rejectedIds);
+      const queue = [...rejectedIds];
+
+      while (queue.length > 0) {
+        const parentId = queue.shift()!;
+        const children = categoryChildrenMap.get(parentId) || [];
+
+        for (const child of children) {
+          const childId = String(child._id);
+
+          if (excludedIds.has(childId)) continue;
+
+          excludedIds.add(childId);
+          queue.push(childId);
+        }
+      }
+
+      return excludedIds;
+    };
+
+    const directFrontendCategories = allActiveCategories;
 
     const allowedDirectFrontendCategories = directFrontendCategories.filter((category: any) => {
       const normalizedTitle = String(category.title || '').toLowerCase().trim().split(/\s+/).filter(Boolean).map(normalizeWord).join(' ');
@@ -2751,11 +2784,15 @@ console.log('========================================\n');
         ];
       });
 
-      const frontendCategoryCandidates = await Category.find({
-        status: true,
-        $or: categoryWordConditions
-      })
-        .select('_id title slug fullSlug parent_id search_terms search_keywords restricted_keywords block_keywords').lean();
+      const frontendCategoryCandidates = allActiveCategories.filter((category:any) =>
+        categoryWordConditions.some((condition:any) => {
+          if (condition.title) return condition.title.test(String(category.title || ''));
+          if (condition.search_keywords !== undefined) {
+            return Array.isArray(category.search_keywords) && category.search_keywords.some((keyword:any) => keyword === condition.search_keywords);
+          }
+          return false;
+        })
+      );
 
         console.log('\n========== CATEGORY DEBUG ==========');
         console.log('SEARCH QUERY:', q);
@@ -2795,7 +2832,7 @@ console.log('========================================\n');
         allowedFrontendCategories = categoryDecisions.filter(({ decision }) => decision.allowed).map(({ category }) =>     category);
       }
 
-      excludedCategoryIds = await collectExcludedCategoryIds(rejectedCategoryIds);
+      excludedCategoryIds = collectExcludedCategoryIds(rejectedCategoryIds);
 
       console.log('\n========== CATEGORY SHORTLIST DEBUG ==========');
       console.log('SEARCH QUERY:', q);
@@ -2922,28 +2959,26 @@ console.log('============================================\n');
 
     const categoryIds = new Set<string>();
 
-    for (const category of matchedFrontendCategories) {
-      categoryIds.add(String(category._id));
+    const addCategoryDescendants = (parentId: string) => {
+      const children = categoryChildrenMap.get(parentId) || [];
 
-      try {
-        const children = await getCategoryTreeNew(category._id, groupingTokens);
+      for (const child of children) {
+        const childId = String(child._id);
 
-        for (const child of children || []) {
-          if (!child?.id) {
-            continue;
-          }
+        if (excludedCategoryIds.has(childId) || categoryIds.has(childId)) continue;
 
-          const childId = String(child.id);
-
-          if (excludedCategoryIds.has(childId)) {
-            continue;
-          }
-
-          categoryIds.add(childId);
-        }
-      } catch (error) {
-        console.log('Unable to fetch category children:', category._id, error);
+        categoryIds.add(childId);
+        addCategoryDescendants(childId);
       }
+    };
+
+    for (const category of matchedFrontendCategories) {
+      const categoryId = String(category._id);
+
+      if (excludedCategoryIds.has(categoryId)) continue;
+
+      categoryIds.add(categoryId);
+      addCategoryDescendants(categoryId);
     }
 
     const categoryObjectIds = Array.from(categoryIds)
@@ -5162,10 +5197,10 @@ console.log('===========================================\n');
       }
     ];
 
-const [aggregationResult, filterAggregationResult] = await Promise.all([
-  ProductModel.aggregate(pipeline),
-  filterAggregationPromise
-]);
+    const [aggregationResult, filterAggregationResult] = await Promise.all([
+      ProductModel.aggregate(pipeline),
+      filterAggregationPromise
+    ]);
 
     const products = aggregationResult?.[0]?.data || [];
     const totalItems = aggregationResult?.[0]?.metadata?.[0]?.totalItems || 0;
