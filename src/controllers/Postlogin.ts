@@ -5744,6 +5744,11 @@ export const addDeleteWishlist = async (req: CustomRequest, resp: Response) => {
         user_id: user,
         product_id: product_id,
       });
+
+      await ProductModel.updateOne(
+        { _id: product_id },
+        { $inc: { wishlistCount: -1 } }
+      );
     } else {
       await wishlistModel.create({
         user_id: user,
@@ -5754,6 +5759,11 @@ export const addDeleteWishlist = async (req: CustomRequest, resp: Response) => {
         price: price,
         original_price: original_price,
       });
+
+      await ProductModel.updateOne(
+        { _id: product_id },
+        { $inc: { wishlistCount: 1 } }
+      );
     }
     const productData = await ProductModel.findOne({ _id: product_id });
     await activity(
@@ -5781,26 +5791,47 @@ export const addDeleteWishlist = async (req: CustomRequest, resp: Response) => {
 
 export const addViewedProducts = async (req: CustomRequest, resp: Response) => {
   try {
-    const data: any = {
-      user_id: req.user._id,
-      product_id: req.body.product_id,
-    };
-    const vendor = await ProductModel.findOne({ _id: data.product_id });
-    data.vendor_id = vendor?.vendor_id;
+    const productId = req.body.product_id;
+    const userId = req.user._id;
 
-    const userView = await UserProductViewModel.findOne(data);
-    if (!userView) {
-      await UserProductViewModel.create(data);
+    const product = await ProductModel.findById(productId).select('_id vendor_id').lean();
+
+    if (!product) {
+      return resp.status(404).json({
+        message: 'Product not found.'
+      });
+    }
+
+    const result = await UserProductViewModel.updateOne(
+      {
+        user_id: userId,
+        product_id: productId
+      },
+      {
+        $setOnInsert: {
+          vendor_id: product.vendor_id
+        }
+      },
+      {
+        upsert: true
+      }
+    );
+
+    if (result.upsertedCount === 1) {
+      await ProductModel.updateOne(
+        { _id: productId },
+        { $inc: { viewCount: 1 } }
+      );
     }
 
     return resp.status(200).json({
-      message: "Product viewed successfully.",
+      message: 'Product viewed successfully.'
     });
   } catch (error: any) {
     return resp.status(500).json({
-      message: "Error fetching product.",
+      message: 'Error fetching product.',
       error: error.message,
-      data: [],
+      data: []
     });
   }
 };

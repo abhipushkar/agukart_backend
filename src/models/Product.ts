@@ -335,6 +335,16 @@ const productSchema = new Schema(
       type: Number,
       default: 0,
     },
+    viewCount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    wishlistCount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
     isCombination:{
       type: Boolean,
       default: false

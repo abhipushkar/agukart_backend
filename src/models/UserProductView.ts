@@ -24,6 +24,11 @@ const userProductViewSchema = new Schema(
   }
 );
 
+userProductViewSchema.index(
+  { user_id: 1, product_id: 1 },
+  { unique: true }
+);
+
 const UserProductViewModel = model('UserProductView', userProductViewSchema);
 
 export default UserProductViewModel;

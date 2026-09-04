@@ -4737,80 +4737,21 @@ console.log('===========================================\n');
           }
         }
       },
-
-      {
-        $lookup: {
-          from: "userproductviews",
-          localField: "_id",
-          foreignField: "product_id",
-          pipeline: [
-            {
-              $count: "count"
-            }
-          ],
-          as: "viewCountData"
-        }
-      },
       {
         $addFields: {
-          viewCount: {
-            $ifNull: [
-              { $arrayElemAt: ["$viewCountData.count", 0] },
-              0
-            ]
-          },
           viewScore: {
             $min: [
-              {
-                $multiply: [
-                  {
-                    $ifNull: [
-                      { $arrayElemAt: ["$viewCountData.count", 0] },
-                      0
-                    ]
-                  },
-                  2
-                ]
-              },
+              { $multiply: [{ $ifNull: ["$viewCount", 0] }, 2] },
               40
             ]
           }
         }
       },
       {
-        $lookup: {
-          from: "wishlists",
-          localField: "_id",
-          foreignField: "product_id",
-          pipeline: [
-            {
-              $count: "count"
-            }
-          ],
-          as: "wishlistCountData"
-        }
-      },
-      {
         $addFields: {
-          wishlistCount: {
-            $ifNull: [
-              { $arrayElemAt: ["$wishlistCountData.count", 0] },
-              0
-            ]
-          },
           wishlistScore: {
             $min: [
-              {
-                $multiply: [
-                  {
-                    $ifNull: [
-                      { $arrayElemAt: ["$wishlistCountData.count", 0] },
-                      0
-                    ]
-                  },
-                  3
-                ]
-              },
+              { $multiply: [{ $ifNull: ["$wishlistCount", 0] }, 3] },
               45
             ]
           }
@@ -5181,8 +5122,6 @@ console.log('===========================================\n');
                 _attributeText: 0,
                 combinationPrices: 0,
                 validCombinationPrices: 0,
-                viewCountData: 0,
-                wishlistCountData: 0,
                 textScore: 0
               }
             }
