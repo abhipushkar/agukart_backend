@@ -5112,19 +5112,57 @@ console.log('===========================================\n');
               }
             },
 
+            // {
+            //   $project: {
+            //     _title: 0,
+            //     _titleNormalized: 0,
+            //     _searchTerms: 0,
+            //     _variantText: 0,
+            //     _customizationText: 0,
+            //     _attributeText: 0,
+            //     combinationPrices: 0,
+            //     validCombinationPrices: 0,
+            //     textScore: 0
+            //   }
+            // }
             {
-              $project: {
-                _title: 0,
-                _titleNormalized: 0,
-                _searchTerms: 0,
-                _variantText: 0,
-                _customizationText: 0,
-                _attributeText: 0,
-                combinationPrices: 0,
-                validCombinationPrices: 0,
-                textScore: 0
-              }
-            }
+  $project: {
+    _id: 1,
+    product_code: 1,
+    vendor_id: 1,
+    category: 1,
+    brand_id: 1,
+    exchangePolicy: 1,
+    parent_id: 1,
+    product_title: 1,
+    product_type: 1,
+    sale_price: 1,
+    price: 1,
+    image: 1,
+    edited_image: 1,
+    altText: 1,
+    slug: 1,
+    stock: 1,
+    status: 1,
+    top_rated: 1,
+    featured: 1,
+    bestseller: 1,
+    popular_gifts: 1,
+    ratingAvg: 1,
+    userReviewCount: 1,
+    product_bedge: 1,
+    viewCount: 1,
+    wishlistCount: 1,
+    isCombination: 1,
+    variant_id: 1,
+    variant_attribute_id: 1,
+    matchedVariant: 1,
+    matchedCustomization: 1,
+    searchPrice: 1,
+    vendorDetails: 1,
+    promotionData: 1
+  }
+}
           ],
 
           metadata: [
