@@ -4189,6 +4189,14 @@ console.log('===========================================\n');
                                     }
                                   }
                                 },
+                                priceDifference: {
+                                  $convert: {
+                                    input: "$$option.priceDifference",
+                                    to: "double",
+                                    onError: 0,
+                                    onNull: 0
+                                  }
+                                },
                                 image: {
                                   $let: {
                                     vars: {
@@ -4751,31 +4759,50 @@ console.log('===========================================\n');
         $addFields: {
           searchPrice: {
             $cond: [
-              {
-                $ne: ['$matchedVariantPrice', null]
-              },
+              { $ne: ['$matchedVariantPrice', null] },
               '$matchedVariantPrice',
               {
                 $cond: [
+                  { $ne: ['$matchedCustomization', null] },
                   {
-                    $and: [
-                      { $eq: ['$isCombination', true] },
+                    $add: [
                       {
-                        $gt: [
-                          { $size: '$validCombinationPrices' },
-                          0
+                        $cond: [
+                          { $gt: [{ $size: '$validCombinationPrices' }, 0] },
+                          { $min: '$validCombinationPrices' },
+                          {
+                            $convert: {
+                              input: '$sale_price',
+                              to: 'double',
+                              onError: 0,
+                              onNull: 0
+                            }
+                          }
                         ]
+                      },
+                      {
+                        $convert: {
+                          input: '$matchedCustomization.priceDifference',
+                          to: 'double',
+                          onError: 0,
+                          onNull: 0
+                        }
                       }
                     ]
                   },
-                  { $min: '$validCombinationPrices' },
                   {
-                    $convert: {
-                      input: '$sale_price',
-                      to: 'double',
-                      onError: 0,
-                      onNull: 0
-                    }
+                    $cond: [
+                      { $gt: [{ $size: '$validCombinationPrices' }, 0] },
+                      { $min: '$validCombinationPrices' },
+                      {
+                        $convert: {
+                          input: '$sale_price',
+                          to: 'double',
+                          onError: 0,
+                          onNull: 0
+                        }
+                      }
+                    ]
                   }
                 ]
               }
@@ -6323,75 +6350,66 @@ export const getProductList = async (req: Request, resp: Response) => {
 
     const start = (page - 1) * limit;
 
-const paginatedData = filteredData.slice(start, start + limit);
+    const paginatedData = filteredData.slice(start, start + limit);
 
-const totalCount = filteredData.length;
-const totalPages = Math.ceil(totalCount / limit);
+    const totalCount = filteredData.length;
+    const totalPages = Math.ceil(totalCount / limit);
 
     // PROMOTIONAL OFFER ENRICHMENT
     const productIds = paginatedData.map((p: any) => p._id);
 
-const vendorIds = Array.from(
-  new Set(paginatedData.map((p: any) => p.vendor_id.toString()))
-).map((id) => new mongoose.Types.ObjectId(id));
+    const vendorIds = Array.from(new Set(paginatedData.map((p: any) => p.vendor_id.toString()))).map((id) => new mongoose.Types.ObjectId(id));
 
     let enrichedData = filteredData;
 
     if (productIds.length) {
-        const promotions = await PromotionalOfferModel.find({
+      const promotions = await PromotionalOfferModel.find({
         product_id: { $in: productIds },
         vendor_id: { $in: vendorIds },
         status: true,
-    }).select("product_id promotional_title offer_type offer_amount promotion_type discount_amount qty start_date expiry_date status").lean();
+      }).select("product_id promotional_title offer_type offer_amount promotion_type discount_amount qty start_date expiry_date status").lean();
 
-const promoMap = new Map<string, any[]>();
+      const promoMap = new Map<string, any[]>();
 
-promotions.forEach(p => {
-  (p.product_id || []).forEach((pid: any) => {
-    const key = pid.toString();
+      promotions.forEach(p => {(p.product_id || []).forEach((pid: any) => {
+        const key = pid.toString();
 
-    if (!promoMap.has(key)) {
-      promoMap.set(key, []);
-    }
+        if (!promoMap.has(key)) {
+          promoMap.set(key, []);
+        }
 
-    promoMap.get(key)!.push(p);
-  });
-});
+        promoMap.get(key)!.push(p);
+      });
+      });
     enrichedData = paginatedData.map((item: any) => {
-    let originalPrice = +item.sale_price;
-    let finalPrice = originalPrice;
+      let originalPrice = +item.sale_price;
+      let finalPrice = originalPrice;
 
-    // 🔹 Handle combination products
-    if (item.isCombination) {
-      const combos = (item.combinationData || []).flatMap(
-        (c: any) => c.combinations || []
-      );
+      // 🔹 Handle combination products
+      if (item.isCombination) {
+        const combos = (item.combinationData || []).flatMap((c: any) => c.combinations || []);
 
-      const minComboPrice = combos
-        .filter((c: any) => c.price && +c.price > 0)
-        .reduce((min: number, c: any) => Math.min(min, +c.price), Infinity);
+        const minComboPrice = combos.filter((c: any) => c.price && +c.price > 0).reduce((min: number, c: any) => Math.min(min, +c.price), Infinity);
 
-      originalPrice = minComboPrice === Infinity
-        ? originalPrice
-        : minComboPrice;
+        originalPrice = minComboPrice === Infinity ? originalPrice : minComboPrice;
 
-      finalPrice = originalPrice;
-    }
+        finalPrice = originalPrice;
+      }
 
-    // 🔹 Apply best promotion
-    const promo = promoMap.get(item._id.toString()) || [];
+      // 🔹 Apply best promotion
+      const promo = promoMap.get(item._id.toString()) || [];
 
-    const promotionResult = getProductPromotionData( promo, originalPrice, item.shop_name || "" );
+      const promotionResult = getProductPromotionData( promo, originalPrice, item.shop_name || "" );
 
-     return {
-      ...item,
-      originalPrice: promotionResult.originalPrice,
-      finalPrice: promotionResult.finalPrice,
-      currentPromotion: promotionResult.currentPromotion,
-      nextPromotion: promotionResult.nextPromotion,
-      promotionLabel: promotionResult.promotionLabel,
-      promotionData: promotionResult.promotionData
-    };
+      return {
+        ...item,
+        originalPrice: promotionResult.originalPrice,
+        finalPrice: promotionResult.finalPrice,
+        currentPromotion: promotionResult.currentPromotion,
+        nextPromotion: promotionResult.nextPromotion,
+        promotionLabel: promotionResult.promotionLabel,
+        promotionData: promotionResult.promotionData
+      };
     });
   }
     // const totalCount = filteredData.length
@@ -6456,22 +6474,22 @@ export const getProductById = async (req: Request, resp: Response) => {
   }
 
   try {
-let query: any = {
-  status: true,
-  isDeleted: false,
-  draft_status: false
-};
+    let query: any = {
+      status: true,
+      isDeleted: false,
+      draft_status: false
+    };
 
-if (mongoose.Types.ObjectId.isValid(productParam)) {
-  query.$or = [
-    { _id: new mongoose.Types.ObjectId(productParam) },
-    { product_code: productParam }
-  ];
-} else {
-  query.product_code = productParam;
-}
+    if (mongoose.Types.ObjectId.isValid(productParam)) {
+      query.$or = [
+        { _id: new mongoose.Types.ObjectId(productParam) },
+        { product_code: productParam }
+      ];
+    } else {
+      query.product_code = productParam;
+    }
 
-const data = await ProductModel.findOne(query)
+    const data = await ProductModel.findOne(query)
       .populate({ path: 'vendor_id', match: { status: true } })
       .populate({ path: 'category', match: { status: true } })
       .populate({ path: 'brand_id', match: { status: true } })
