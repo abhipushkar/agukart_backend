@@ -3753,15 +3753,15 @@ console.log('===========================================\n');
                     initialValue: [],
                     in: {
                       $concatArrays: [
-                      "$$value",
-                      {
-                        $map: {
-                          input: { $ifNull: ["$$this.variant_attributes", []] },
-                          as: "attr",
-                          in: {
-                            variantName: {
-                              $convert: {
-                                input: "$$this.variant_name",
+                        "$$value",
+                        {
+                          $map: {
+                            input: { $ifNull: ["$$this.variant_attributes", []] },
+                            as: "attr",
+                            in: {
+                              variantName: {
+                                $convert: {
+                                  input: "$$this.variant_name",
                                   to: "string",
                                   onError: "",
                                   onNull: ""
@@ -3780,15 +3780,409 @@ console.log('===========================================\n');
                               attribute: {
                                 $convert: {
                                   input: "$$attr.attribute",
+                                  to: "string",
+                                  onError: "",
+                                  onNull: ""
+                                }
+                              },
+                              attributeLower: {
+                                $toLower: {
+                                  $convert: {
+                                    input: "$$attr.attribute",
+                                    to: "string",
+                                    onError: "",
+                                    onNull: ""
+                                  }
+                                }
+                              },
+                              image: {
+                                $let: {
+                                  vars: {
+                                    editImage: {
+                                      $trim: {
+                                        input: {
+                                          $convert: {
+                                            input: "$$attr.edit_main_image",
+                                            to: "string",
+                                            onError: "",
+                                            onNull: ""
+                                          }
+                                        }
+                                      }
+                                    },
+                                    validImages: {
+                                      $cond: [
+                                        { $isArray: "$$attr.main_images" },
+                                        {
+                                          $filter: {
+                                            input: "$$attr.main_images",
+                                            as: "image",
+                                            cond: {
+                                              $and: [
+                                                { $ne: ["$$image", null] },
+                                                {
+                                                  $ne: [
+                                                    {
+                                                      $trim: {
+                                                        input: {
+                                                          $convert: {
+                                                            input: "$$image",
+                                                            to: "string",
+                                                            onError: "",
+                                                            onNull: ""
+                                                          }
+                                                        }
+                                                      }
+                                                    },
+                                                    ""
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        []
+                                      ]
+                                    }
+                                  },
+                                  in: {
+                                    $cond: [
+                                      { $ne: ["$$editImage", ""] },
+                                      "$$editImage",
+                                      { $arrayElemAt: ["$$validImages", 0] }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              in: {
+                $let: {
+                  vars: {
+                    scoredVariants: {
+                      $map: {
+                        input: "$$allVariantAttributes",
+                        as: "variant",
+                        in: {
+                          variant: "$$variant",
+                            score: {
+                              $let: {
+                                vars: {
+                                  attributeMatches: {
+                                    $filter: {
+                                      input: searchWords,
+                                      as: "word",
+                                      cond: {
+                                        $regexMatch: {
+                                          input: "$$variant.attributeLower",
+                                          regex: {
+                                            $concat: [
+                                              "(^|[^a-z0-9])",
+                                              { $toLower: "$$word" }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  variantNameMatches: {
+                                    $filter: {
+                                      input: searchWords,
+                                      as: "word",
+                                      cond: {
+                                        $regexMatch: {
+                                          input: "$$variant.variantNameLower",
+                                          regex: {
+                                            $concat: [
+                                              "(^|[^a-z0-9])",
+                                              { $toLower: "$$word" },
+                                              "([^a-z0-9]|$)"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                in: {
+                                  $add: [
+                                    {
+                                      $multiply: [
+                                        { $size: "$$attributeMatches" },
+                                        2000
+                                      ]
+                                    },
+                                    {
+                                      $multiply: [
+                                        { $size: "$$variantNameMatches" },
+                                        500
+                                      ]
+                                    },
+                                    {
+                                      $cond: [
+                                        {
+                                          $and: [
+                                            {
+                                              $eq: [
+                                                { $size: "$$attributeMatches" },
+                                                1
+                                              ]
+                                            },
+                                            {
+                                              $in: [
+                                                "$$variant.attributeLower",
+                                                searchWords
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        1000,
+                                        0
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                        }
+                      }
+                    }
+                  },
+                  in: {
+                    $let: {
+                      vars: {
+                        bestVariant: {
+                          $reduce: {
+                            input: "$$scoredVariants",
+                            initialValue: null,
+                            in: {
+                              $cond: [
+                                {
+                                  $or: [
+                                    { $eq: ["$$value", null] },
+                                    {
+                                      $gt: [
+                                        "$$this.score",
+                                        "$$value.score"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "$$this",
+                                "$$value"
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      in: {
+                        $cond: [
+                          {
+                            $and: [
+                              { $ne: ["$$bestVariant", null] },
+                              { $gt: ["$$bestVariant.score", 0] }
+                            ]
+                          },
+                          "$$bestVariant.variant",
+                          null
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          matchedVariantPrice: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$isCombination', true] },
+                  { $eq: ['$form_values.isCheckedPrice', true] },
+                  { $ne: ['$matchedVariant', null] },
+                  { $ne: [{ $ifNull: ['$matchedVariant.image', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$form_values.prices', ''] }, ''] }
+                ]
+              },
+              {
+                $let: {
+                  vars: {
+                    matchingPrices: {
+                      $reduce: {
+                        input: { $ifNull: ['$combinationData', []] },
+                        initialValue: [],
+                        in: {
+                        $concatArrays: [
+                          '$$value',
+                          {
+                            $map: {
+                              input: {
+                                $filter: {
+                                  input: { $ifNull: ['$$this.combinations', []] },
+                                  as: 'combination',
+                                  cond: {
+                                    $and: [
+                                      {
+                                        $eq: [
+                                          {
+                                            $toLower: {
+                                              $ifNull: ['$$combination.priceInput', '']
+                                            }
+                                          },
+                                          {
+                                            $toLower: {
+                                              $ifNull: ['$form_values.prices', '']
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        $gt: [
+                                          {
+                                            $size: {
+                                              $filter: {
+                                                input: {
+                                                  $ifNull: ['$$combination.combValues', []]
+                                                },
+                                                as: 'value',
+                                                cond: {
+                                                  $eq: [
+                                                    {
+                                                      $toLower: {
+                                                        $convert: {
+                                                          input: '$$value',
+                                                          to: 'string',
+                                                          onError: '',
+                                                          onNull: ''
+                                                        }
+                                                      }
+                                                    },
+                                                    {
+                                                      $toLower: {
+                                                        $ifNull: ['$matchedVariant.attribute', '']
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          },
+                                          0
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              as: 'combination',
+                              in: {
+                                $convert: {
+                                  input: '$$combination.price',
+                                  to: 'double',
+                                  onError: 0,
+                                  onNull: 0
+                                }
+                              }
+                            }
+                          }
+                        ]
+                        }
+                      }
+                    }
+                  },
+                  in: {
+                    $let: {
+                      vars: {
+                        validMatchedPrices: {
+                          $filter: {
+                            input: '$$matchingPrices',
+                            as: 'price',
+                            cond: {
+                              $gt: ['$$price', 0]
+                            }
+                          }
+                        }
+                      },
+                      in: {
+                        $cond: [
+                          {
+                            $gt: [
+                              { $size: '$$validMatchedPrices' },
+                              0
+                            ]
+                          },
+                          {
+                            $min: '$$validMatchedPrices'
+                          },
+                          null
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              null
+            ]
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          matchedCustomization: {
+            $let: {
+              vars: {
+                allCustomizations: {
+                  $reduce: {
+                    input: { $ifNull: ["$customizationData.customizations", []] },
+                    initialValue: [],
+                    in: {
+                      $concatArrays: [
+                        "$$value",
+                        {
+                          $map: {
+                            input: { $ifNull: ["$$this.optionList", []] },
+                            as: "option",
+                              in: {
+                                title: {
+                                  $convert: {
+                                    input: "$$this.title",
                                     to: "string",
                                     onError: "",
                                     onNull: ""
                                   }
                                 },
-                                attributeLower: {
+                                label: {
+                                  $convert: {
+                                    input: "$$this.label",
+                                    to: "string",
+                                    onError: "",
+                                    onNull: ""
+                                  }
+                                },
+                                optionName: {
+                                  $convert: {
+                                    input: "$$option.optionName",
+                                    to: "string",
+                                    onError: "",
+                                    onNull: ""
+                                  }
+                                },
+                                optionNameLower: {
                                   $toLower: {
                                     $convert: {
-                                      input: "$$attr.attribute",
+                                      input: "$$option.optionName",
                                       to: "string",
                                       onError: "",
                                       onNull: ""
@@ -3802,7 +4196,7 @@ console.log('===========================================\n');
                                         $trim: {
                                           input: {
                                             $convert: {
-                                              input: "$$attr.edit_main_image",
+                                              input: "$$option.edit_main_image",
                                               to: "string",
                                               onError: "",
                                               onNull: ""
@@ -3812,10 +4206,10 @@ console.log('===========================================\n');
                                       },
                                       validImages: {
                                         $cond: [
-                                          { $isArray: "$$attr.main_images" },
+                                          { $isArray: "$$option.main_images" },
                                           {
                                             $filter: {
-                                              input: "$$attr.main_images",
+                                              input: "$$option.main_images",
                                               as: "image",
                                               cond: {
                                                 $and: [
@@ -3855,274 +4249,128 @@ console.log('===========================================\n');
                                   }
                                 }
                               }
-                        }
-                      }
-                    ]
-                  }
-              }
-            }
-          },
-          in: {
-          $let: {
-            vars: {
-              scoredVariants: {
-                $map: {
-                  input: "$$allVariantAttributes",
-                  as: "variant",
-                  in: {
-                    variant: "$$variant",
-                    score: {
-                      $max: {
-                        $map: {
-                          input: searchWords,
-                          as: "word",
-                          in: {
-                            $switch: {
-                              branches: [
-                                {
-                                  case: {
-                                    $eq: [
-                                      "$$variant.attributeLower",
-                                      { $toLower: "$$word" }
-                                    ]
-                                  },
-                                  then: 1000
-                                },
-                                {
-                                  case: {
-                                    $eq: [
-                                      "$$variant.variantNameLower",
-                                      { $toLower: "$$word" }
-                                    ]
-                                  },
-                                  then: 900
-                                },
-                                {
-                                  case: {
-                                    $regexMatch: {
-                                      input: "$$variant.attributeLower",
-                                      regex: {
-                                        $concat: [
-                                          "^",
-                                          { $toLower: "$$word" },
-                                          "($|[^a-z0-9])"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  then: 600
-                                },
-                                {
-                                  case: {
-                                    $regexMatch: {
-                                      input: "$$variant.attributeLower",
-                                      regex: {
-                                        $concat: [
-                                          "(^|[^a-z0-9])",
-                                          { $toLower: "$$word" },
-                                          "([^a-z0-9]|$)"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  then: 400
-                                }
-                              ],
-                              default: 0
                             }
                           }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            in: {
-              $let: {
-                vars: {
-                  bestVariant: {
-                    $reduce: {
-                      input: "$$scoredVariants",
-                      initialValue: null,
-                      in: {
-                        $cond: [
-                          {
-                            $or: [
-                              { $eq: ["$$value", null] },
-                              {
-                                $gt: [
-                                  "$$this.score",
-                                  "$$value.score"
-                                ]
-                              }
-                            ]
-                          },
-                          "$$this",
-                          "$$value"
                         ]
                       }
                     }
                   }
                 },
                 in: {
-                  $cond: [
-                    {
-                      $and: [
-                        { $ne: ["$$bestVariant", null] },
-                        { $gt: ["$$bestVariant.score", 0] }
-                      ]
-                    },
-                    "$$bestVariant.variant",
-                    null
-                  ]
-                }
-              }
-            }
-          }
-        }
-        }
-        }
-        }
-      },
-
-      {
-        $addFields: {
-          matchedCustomization: {
-            $let: {
-              vars: {
-                matchedCustomizations: {
-                  $reduce: {
-                    input: { $ifNull: ["$customizationData.customizations", []] },
-                    initialValue: [],
-                    in: {
-                      $concatArrays: [
-                        "$$value",
-                        {
-                          $map: {
-                            input: {
-                              $filter: {
-                                input: { $ifNull: ["$$this.optionList", []] },
-                                as: "option",
-                                cond: {
-                                  $anyElementTrue: {
-                                    $map: {
+                  $let: {
+                    vars: {
+                      scoredCustomizations: {
+                        $map: {
+                          input: "$$allCustomizations",
+                          as: "customization",
+                          in: {
+                            customization: "$$customization",
+                            score: {
+                              $let: {
+                                vars: {
+                                  matchedWords: {
+                                    $filter: {
                                       input: searchWords,
                                       as: "word",
-                                      in: {
-                                        $gte: [
-                                          {
-                                            $indexOfCP: [
-                                              {
-                                                $toLower: {
-                                                  $convert: {
-                                                    input: "$$option.optionName",
-                                                    to: "string",
-                                                    onError: "",
-                                                    onNull: ""
-                                                  }
-                                                }
-                                              },
-                                              "$$word"
+                                      cond: {
+                                        $regexMatch: {
+                                        input: "$$customization.optionNameLower",
+                                          regex: {
+                                            $concat: [
+                                              "(^|[^a-z0-9])",
+                                              { $toLower: "$$word" }
                                             ]
-                                          },
-                                          0
-                                        ]
+                                          }
+                                        }
                                       }
                                     }
                                   }
-                                }
-                              }
-                            },
-                            as: "option",
-                            in: {
-                              title: {
-                                $convert: {
-                                  input: "$$this.title",
-                            to: "string",
-                            onError: "",
-                            onNull: ""
-                          }
-                        },
-                        label: {
-                          $convert: {
-                            input: "$$this.label",
-                            to: "string",
-                            onError: "",
-                            onNull: ""
-                          }
-                        },
-                        optionName: {
-                          $convert: {
-                            input: "$$option.optionName",
-                            to: "string",
-                            onError: "",
-                            onNull: ""
-                          }
-                        },
-                        image: {
-                          $let: {
-                            vars: {
-                              editImage: {
-                                $trim: {
-                                  input: {
-                                    $convert: {
-                                      input: "$$option.edit_main_image",
-                                      to: "string",
-                                      onError: "",
-                                      onNull: ""
-                                    }
-                                  }
-                                }
-                              },
-                              validImages: {
-                                $filter: {
-                                  input: { $ifNull: ["$$option.main_images", []] },
-                                    as: "image",
-                                    cond: {
-                                      $and: [
-                                        { $ne: ["$$image", null] },
+                                },
+                                in: {
+                                  $add: [
+                                    {
+                                      $multiply: [
+                                        { $size: "$$matchedWords" },
+                                        2000
+                                      ]
+                                    },
+                                    {
+                                      $cond: [
                                         {
-                                          $ne: [
+                                          $and: [
                                             {
-                                              $trim: {
-                                                input: {
-                                                  $convert: {
-                                                    input: "$$image",
-                                                    to: "string",
-                                                    onError: "",
-                                                    onNull: ""
-                                                  }
-                                                }
-                                              }
+                                              $eq: [
+                                                { $size: "$$matchedWords" },
+                                                1
+                                              ]
                                             },
-                                            ""
+                                            {
+                                              $in: [
+                                                "$$customization.optionNameLower",
+                                                searchWords
+                                              ]
+                                            }
                                           ]
-                                        }
+                                        },
+                                        1000,
+                                        0
                                       ]
                                     }
+                                  ]
                                 }
                               }
-                            },
-                            in: {
-                              $cond: [
-                                { $ne: ["$$editImage", ""] },
-                                "$$editImage",
-                                { $arrayElemAt: ["$$validImages", 0] }
-                              ]
                             }
                           }
                         }
                       }
+                    },
+                    in: {
+                      $let: {
+                        vars: {
+                          bestCustomization: {
+                            $reduce: {
+                              input: "$$scoredCustomizations",
+                              initialValue: null,
+                              in: {
+                                $cond: [
+                                  {
+                                    $or: [
+                                      { $eq: ["$$value", null] },
+                                      {
+                                        $gt: [
+                                          "$$this.score",
+                                          "$$value.score"
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "$$this",
+                                  "$$value"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        in: {
+                          $cond: [
+                            {
+                              $and: [
+                                { $ne: ["$$bestCustomization", null] },
+                                {
+                                  $gt: [
+                                    "$$bestCustomization.score",
+                                    0
+                                  ]
+                                }
+                              ]
+                            },
+                            "$$bestCustomization.customization",
+                            null
+                          ]
+                        }
                       }
-                      }
-                      ]
                     }
-                  }
                 }
-              },
-              in: {
-                $arrayElemAt: ["$$matchedCustomizations", 0]
               }
             }
           }
@@ -4504,32 +4752,32 @@ console.log('===========================================\n');
           searchPrice: {
             $cond: [
               {
-                $and: [
+                $ne: ['$matchedVariantPrice', null]
+              },
+              '$matchedVariantPrice',
+              {
+                $cond: [
                   {
-                    $eq: ['$isCombination', true]
-                  },
-                  {
-                    $gt: [
+                    $and: [
+                      { $eq: ['$isCombination', true] },
                       {
-                        $size: '$validCombinationPrices'
-                      },
-                      0
+                        $gt: [
+                          { $size: '$validCombinationPrices' },
+                          0
+                        ]
+                      }
                     ]
+                  },
+                  { $min: '$validCombinationPrices' },
+                  {
+                    $convert: {
+                      input: '$sale_price',
+                      to: 'double',
+                      onError: 0,
+                      onNull: 0
+                    }
                   }
                 ]
-              },
-
-              {
-                $min: '$validCombinationPrices'
-              },
-
-              {
-                $convert: {
-                  input: '$sale_price',
-                  to: 'double',
-                  onError: 0,
-                  onNull: 0
-                }
               }
             ]
           },
@@ -4603,7 +4851,8 @@ console.log('===========================================\n');
             {
               $project: {
                 _id: 0,
-                shop_name: 1
+                shop_name: 1,
+                slug: 1
               }
             },
             {
@@ -5126,43 +5375,43 @@ console.log('===========================================\n');
             //   }
             // }
             {
-  $project: {
-    _id: 1,
-    product_code: 1,
-    vendor_id: 1,
-    category: 1,
-    brand_id: 1,
-    exchangePolicy: 1,
-    parent_id: 1,
-    product_title: 1,
-    product_type: 1,
-    sale_price: 1,
-    price: 1,
-    image: 1,
-    edited_image: 1,
-    altText: 1,
-    slug: 1,
-    stock: 1,
-    status: 1,
-    top_rated: 1,
-    featured: 1,
-    bestseller: 1,
-    popular_gifts: 1,
-    ratingAvg: 1,
-    userReviewCount: 1,
-    product_bedge: 1,
-    viewCount: 1,
-    wishlistCount: 1,
-    isCombination: 1,
-    variant_id: 1,
-    variant_attribute_id: 1,
-    matchedVariant: 1,
-    matchedCustomization: 1,
-    searchPrice: 1,
-    vendorDetails: 1,
-    promotionData: 1
-  }
-}
+              $project: {
+                _id: 1,
+                product_code: 1,
+                vendor_id: 1,
+                category: 1,
+                brand_id: 1,
+                exchangePolicy: 1,
+                parent_id: 1,
+                product_title: 1,
+                product_type: 1,
+                sale_price: 1,
+                price: 1,
+                image: 1,
+                edited_image: 1,
+                altText: 1,
+                slug: 1,
+                stock: 1,
+                status: 1,
+                top_rated: 1,
+                featured: 1,
+                bestseller: 1,
+                popular_gifts: 1,
+                ratingAvg: 1,
+                userReviewCount: 1,
+                product_bedge: 1,
+                viewCount: 1,
+                wishlistCount: 1,
+                isCombination: 1,
+                variant_id: 1,
+                variant_attribute_id: 1,
+                matchedVariant: 1,
+                matchedCustomization: 1,
+                searchPrice: 1,
+                vendorDetails: 1,
+                promotionData: 1
+              }
+            }
           ],
 
           metadata: [
