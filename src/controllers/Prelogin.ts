@@ -642,6 +642,7 @@ export const getCategoryList = async (req: Request, resp: Response) => {
         slug: parentCategory.fullSlug,
         description: parentCategory.description,
         parent_slug: parentCategory.parent_slug,
+        img_dimensions: parentCategory.img_dimension,
         meta_title: parentCategory.meta_title,
         meta_description: parentCategory.meta_description,
         meta_keywords: parentCategory.meta_keywords,
@@ -9070,14 +9071,9 @@ export const getProductByVendorIdandStoreId = async (req: Request, res: Response
     }
 
     // --- Fetch products (no change needed in selection) ---
-    const rawProducts = await ProductModel.find(query)
-      .select(
+    const rawProducts = await ProductModel.find(query).select(
         "product_title sale_price isCombination combinationData ratingAvg createdAt image edited_image videos zoom product_bedge userReviewCount product_code slug form_values product_variants"
-      )
-      .sort(sort_by === "newest" ? { createdAt: -1 } : {})
-      .skip(skip)
-      .limit(l)
-      .lean();
+      ).sort(sort_by === "newest" ? { createdAt: -1 } : {}).skip(skip).limit(l).lean();
 
     const productIds = rawProducts.map((p) => p._id);
 

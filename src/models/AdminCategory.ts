@@ -55,6 +55,11 @@ const adminCategorySchema = new Schema(
             type: String,
             default: ''
         },
+        img_dimension: {
+            type: String,
+            enum: ['2x3', '4x3'],
+            default: '2x3'
+        },
         special: {
             type: Boolean,
             required: true,

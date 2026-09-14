@@ -48,6 +48,11 @@ const categorySchema = new Schema(
         default: ''
       }
     },
+    img_dimension: {
+      type: String,
+      enum: ['2x3', '4x3'],
+      default: '2x3'
+    },
     bestseller: {
       type: String,
       enum: ['Yes', 'No'],

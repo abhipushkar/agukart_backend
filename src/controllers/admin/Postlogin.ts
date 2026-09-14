@@ -503,7 +503,8 @@ export const addCategory = async (req: CustomRequest, resp: Response) => {
       restricted_keywords,
       search_keywords = [],
       block_keywords = [],
-      search_terms = []
+      search_terms = [],
+      img_dimension
     } = req.body;
 
     let categoryDoc: any;
@@ -637,6 +638,7 @@ categoryDoc.parent_slug = parentSlug || '';
        categoryDoc.isAutomatic = req.body.isAutomatic || false;
        categoryDoc.categoryScope = req.body.categoryScope || 'all';
        categoryDoc.selectedCategories = req.body.selectedCategories || [];
+       categoryDoc.img_dimension = img_dimension;
 
         await categoryDoc.save();
 
@@ -690,6 +692,7 @@ categoryDoc.parent_slug = parentSlug || '';
     categoryDoc.isAutomatic = req.body.isAutomatic ?? false;
     categoryDoc.categoryScope = req.body.categoryScope || 'all';
     categoryDoc.selectedCategories = req.body.selectedCategories || [];
+    categoryDoc.img_dimension = img_dimension;
 
     await categoryDoc.save();
 
@@ -1188,6 +1191,7 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
           slug: 1,
           image: 1,
           topRatedImage: 1,
+          img_dimension: 1,
           equalTo: 1,
           productsMatch: 1,
           value: 1,
@@ -1232,6 +1236,7 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
       slug: category.slug,
       parent_id: category.parent_id,
       bestseller: category.bestseller,
+      img_dimension: category.img_dimension,
       variant_id: category.variant_id,
       attributeList_id: category.attributeList_id,
       image: {
@@ -9290,7 +9295,7 @@ export const getAllSearchTerms = async (req: CustomRequest, res: Response) => {
 
 export const addAdminCategory = async (req: CustomRequest, res: Response) => {
     try {
-        const { title, _id, tag, parent_id, productsMatch, equalTo, value, restricted_keywords, description, meta_title, meta_description, meta_keyword, search_terms, image_alt } = req.body;
+        const { title, _id, tag, parent_id, productsMatch, equalTo, value, restricted_keywords, description, meta_title, meta_description, meta_keyword, search_terms, image_alt, img_dimension } = req.body;
 
         let parentId: any;
 
@@ -9330,6 +9335,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                meta_keyword,
                search_terms,
                image_alt,
+               img_dimension,
                isAutomatic: req.body.isAutomatic,
                categoryScope: req.body.categoryScope,
                selectedCategories: req.body.selectedCategories || [],
@@ -9431,6 +9437,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                 meta_keyword,
                 search_terms,
                 image_alt,
+                img_dimension,
                 isAutomatic: req.body.isAutomatic,
                 categoryScope: req.body.categoryScope,
                 selectedCategories: req.body.selectedCategories || [],
@@ -9459,6 +9466,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                meta_keyword,
                search_terms,
                image_alt,
+               img_dimension,
                isAutomatic: req.body.isAutomatic,
                categoryScope: req.body.categoryScope,
                selectedCategories: req.body.selectedCategories || [],
@@ -9686,6 +9694,7 @@ export const getAdminCategory = async (req: CustomRequest, res: Response) => {
             special: adminCategory.special,
             image: baseurl + adminCategory.image,
             image_alt: adminCategory.image_alt,
+            img_dimension: adminCategory.img_dimension,
             status: adminCategory.status,
             productsMatch: adminCategory.productsMatch,
             equalTo: adminCategory.equalTo,
