@@ -151,7 +151,12 @@ const categorySchema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
       default: []
-    }]
+    }],
+    refresh_date: {
+      type: Date,
+      default: Date.now,
+      index: true
+    }
   },
   {
     timestamps: true,

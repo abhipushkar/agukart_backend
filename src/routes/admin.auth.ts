@@ -275,7 +275,8 @@ import {
     recheckInventory,
     refreshProducts,
     getSalesCount,
-    addAdminProfile
+    addAdminProfile,
+    refreshCategory
 } from "../controllers/admin/Postlogin";
 
 
@@ -304,6 +305,7 @@ routes.post('/change-status-category', validationMiddleware(statusValid), catego
 routes.post('/change-status-category-Fields', updateCategoryField);
 routes.delete('/delete-category/:id', deleteCategory);
 routes.get('/edit-category/:id', getCategory);
+routes.post("/refresh-category/:categoryId", refreshCategory);
 
 //User Module API's
 routes.get('/user-list', userList)

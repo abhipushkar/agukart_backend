@@ -617,28 +617,28 @@ categoryDoc.parent_slug = parentSlug || '';
         finalAttributes = mergeIds([finalAttributes, ...parentAttributes]);
       }
 
-// assign remaining fields
-categoryDoc.description = description;
-categoryDoc.meta_title = meta_title;
-categoryDoc.meta_keywords = meta_keywords;
-categoryDoc.meta_description = meta_description;
-categoryDoc.variant_id = finalVariants;
-categoryDoc.attributeList_id = finalAttributes;
-categoryDoc.bestseller = bestseller;
-categoryDoc.productsMatch = productsMatch;
-categoryDoc.equalTo = equalTo;
-categoryDoc.value = value;
-categoryDoc.restricted_keywords = restricted_keywords;
-categoryDoc.search_terms = search_terms;
-categoryDoc.block_keywords = block_keywords;
-categoryDoc.search_keywords = search_keywords;
-categoryDoc.conditions = req.body.conditions || [];
-categoryDoc.conditionType = req.body.conditionType || 'all';
-categoryDoc.isAutomatic = req.body.isAutomatic || false;
-categoryDoc.categoryScope = req.body.categoryScope || 'all';
-categoryDoc.selectedCategories = req.body.selectedCategories || [];
+       // assign remaining fields
+       categoryDoc.description = description;
+       categoryDoc.meta_title = meta_title;
+       categoryDoc.meta_keywords = meta_keywords;
+       categoryDoc.meta_description = meta_description;
+       categoryDoc.variant_id = finalVariants;
+       categoryDoc.attributeList_id = finalAttributes;
+       categoryDoc.bestseller = bestseller;
+       categoryDoc.productsMatch = productsMatch;
+       categoryDoc.equalTo = equalTo;
+       categoryDoc.value = value;
+       categoryDoc.restricted_keywords = restricted_keywords;
+       categoryDoc.search_terms = search_terms;
+       categoryDoc.block_keywords = block_keywords;
+       categoryDoc.search_keywords = search_keywords;
+       categoryDoc.conditions = req.body.conditions || [];
+       categoryDoc.conditionType = req.body.conditionType || 'all';
+       categoryDoc.isAutomatic = req.body.isAutomatic || false;
+       categoryDoc.categoryScope = req.body.categoryScope || 'all';
+       categoryDoc.selectedCategories = req.body.selectedCategories || [];
 
-await categoryDoc.save();
+        await categoryDoc.save();
 
       return resp.status(200).json({
         message: 'Category created successfully.',
@@ -670,42 +670,42 @@ await categoryDoc.save();
     const finalVariants = cleanVariantIds;
     const finalAttributes = cleanAttributeIds;
 
-// assign update fields
-categoryDoc.description = description;
-categoryDoc.meta_title = meta_title;
-categoryDoc.meta_keywords = meta_keywords;
-categoryDoc.meta_description = meta_description;
-categoryDoc.variant_id = finalVariants;
-categoryDoc.attributeList_id = finalAttributes;
-categoryDoc.bestseller = bestseller;
-categoryDoc.productsMatch = productsMatch;
-categoryDoc.equalTo = equalTo;
-categoryDoc.value = value;
-categoryDoc.restricted_keywords = restricted_keywords;
-categoryDoc.search_terms = search_terms;
-categoryDoc.search_keywords = search_keywords;
-categoryDoc.block_keywords = block_keywords;
-categoryDoc.conditions = req.body.conditions || [];
-categoryDoc.conditionType = req.body.conditionType || 'all';
-categoryDoc.isAutomatic = req.body.isAutomatic ?? false;
-categoryDoc.categoryScope = req.body.categoryScope || 'all';
-categoryDoc.selectedCategories = req.body.selectedCategories || [];
+    // assign update fields
+    categoryDoc.description = description;
+    categoryDoc.meta_title = meta_title;
+    categoryDoc.meta_keywords = meta_keywords;
+    categoryDoc.meta_description = meta_description;
+    categoryDoc.variant_id = finalVariants;
+    categoryDoc.attributeList_id = finalAttributes;
+    categoryDoc.bestseller = bestseller;
+    categoryDoc.productsMatch = productsMatch;
+    categoryDoc.equalTo = equalTo;
+    categoryDoc.value = value;
+    categoryDoc.restricted_keywords = restricted_keywords;
+    categoryDoc.search_terms = search_terms;
+    categoryDoc.search_keywords = search_keywords;
+    categoryDoc.block_keywords = block_keywords;
+    categoryDoc.conditions = req.body.conditions || [];
+    categoryDoc.conditionType = req.body.conditionType || 'all';
+    categoryDoc.isAutomatic = req.body.isAutomatic ?? false;
+    categoryDoc.categoryScope = req.body.categoryScope || 'all';
+    categoryDoc.selectedCategories = req.body.selectedCategories || [];
 
-await categoryDoc.save();
+    await categoryDoc.save();
 
-const children = await getAllChildren(categoryDoc._id);
+    const children = await getAllChildren(categoryDoc._id);
 
-for (const child of children) {
-  const childDoc = await Category.findById(child._id);
+    for (const child of children) {
+       const childDoc = await Category.findById(child._id);
 
-  if (!childDoc) continue;
+       if (!childDoc) continue;
 
-  const { fullSlug, parentSlug } = await buildCategoryMeta(childDoc);
+       const { fullSlug, parentSlug } = await buildCategoryMeta(childDoc);
 
-  const oldSlug = childDoc.fullSlug;
+       const oldSlug = childDoc.fullSlug;
 
-  childDoc.fullSlug = fullSlug;
-  childDoc.parent_slug = parentSlug || '';
+       childDoc.fullSlug = fullSlug;
+       childDoc.parent_slug = parentSlug || '';
 
   console.log({
   childId: childDoc._id,
@@ -713,33 +713,29 @@ for (const child of children) {
   fullSlug
 });
 
-if (!fullSlug || fullSlug.trim() === "") {
-  console.error("❌ INVALID CHILD SLUG", {
-    childId: childDoc._id,
-    parent: childDoc.parent_id
-  });
-  continue; // skip this child
-}
-  await childDoc.save();
+        if (!fullSlug || fullSlug.trim() === "") {
+          console.error("❌ INVALID CHILD SLUG", {
+          childId: childDoc._id,
+          parent: childDoc.parent_id
+        });
+        continue; // skip this child
+        }
+        await childDoc.save();
 
-  // redirect for child
-if (
-  oldSlug &&
-  fullSlug &&
-  oldSlug !== fullSlug
-) {
-  await UrlRedirect.updateOne(
-    { oldSlug: oldSlug, entityId: childDoc._id, entityType: "category" },
-    {
-      $set: {
-        newSlug: fullSlug,
-        entityType: "category"
-      }
-    },
-    { upsert: true }
-  );
-}
-}
+        // redirect for child
+        if ( oldSlug && fullSlug && oldSlug !== fullSlug ) {
+           await UrlRedirect.updateOne(
+           { oldSlug: oldSlug, entityId: childDoc._id, entityType: "category" },
+           {
+              $set: {
+                newSlug: fullSlug,
+                entityType: "category"
+            }
+           },
+           { upsert: true }
+        );
+        }
+     }
 
 if (
   oldFullSlug &&
@@ -1281,6 +1277,47 @@ export const getCategory = async (req: CustomRequest, resp: Response) => {
     return resp
       .status(500)
       .json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
+export const refreshCategory = async (req: CustomRequest, resp: Response) => {
+  try {
+    const { categoryId } = req.params;
+
+    if (!categoryId) {
+      return resp.status(400).json({
+        success: false,
+        message: "categoryId is required"
+      });
+    }
+
+    const category = await Category.findByIdAndUpdate(
+      categoryId,
+      { $set: { refresh_date: new Date() } },
+      { new: true }
+    );
+
+    if (!category) {
+      return resp.status(404).json({
+        success: false,
+        message: "Category not found"
+      });
+    }
+
+    return resp.status(200).json({
+      success: true,
+      message: "Category refreshed successfully.",
+      data: {
+        _id: category._id,
+        refresh_date: category.refresh_date
+      }
+    });
+  } catch (err) {
+    console.log(err);
+    return resp.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again."
+    });
   }
 };
 
