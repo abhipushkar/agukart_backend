@@ -8205,6 +8205,7 @@ export const getAdminCategoryBySlug = async (req: Request, resp: Response) => {
       title: parent.title,
       slug: parent.slug,
       fullSlug: parent.fullSlug,
+      img_dimension: parent.img_dimension,
       meta_title: parent.meta_title,
       meta_description: parent.meta_description,
       meta_keyword: parent.meta_keyword,

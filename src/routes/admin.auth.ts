@@ -276,7 +276,9 @@ import {
     refreshProducts,
     getSalesCount,
     addAdminProfile,
-    refreshCategory
+    refreshCategory,
+    getAdminCategoryChildren,
+    reorderAdminCategories
 } from "../controllers/admin/Postlogin";
 
 
@@ -507,6 +509,8 @@ routes.get('/getAllSearchTerms', getAllSearchTerms);
 routes.post('/add-admin-category', addAdminCategory);
 routes.post('/add-admin-category-image', multer().single('file'), uploadAdminCategoryImage);
 routes.get('/get-admin-category', adminCategoryList);
+routes.get('/get-admin-category/children', getAdminCategoryChildren);
+routes.patch("/reorder-admin-category", reorderAdminCategories);
 routes.post('/change-admin-status-category', adminCategoryChangeStatus);
 routes.post('/change-category-popular', adminCategoryPopular);
 routes.post('/change-category-special', adminCategorySpecial);

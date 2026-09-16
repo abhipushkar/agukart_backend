@@ -9316,31 +9316,39 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                 if (!req.body.password) {
                     return res.status(400).json({ message: "Password is required for root category." });
                 }
+
                 if (req.body.password !== process.env.ADMIN_CATEGORY_PASSWORD) {
                     return res.status(400).json({ message: "Incorrect password for Admin category." });
                 }
             }
 
-               adminCategory = new AdminCategoryModel({
-               title,
-               tag,
-               parent_id: parentId,
-               productsMatch,
-               equalTo,
-               value,
-               restricted_keywords,
-               description,
-               meta_title,
-               meta_description,
-               meta_keyword,
-               search_terms,
-               image_alt,
-               img_dimension,
-               isAutomatic: req.body.isAutomatic,
-               categoryScope: req.body.categoryScope,
-               selectedCategories: req.body.selectedCategories || [],
-               conditionType: req.body.conditionType,
-               conditions: req.body.conditions || []
+            const siblingFilter: any = parentId === null ? { parent_id: null } : { parent_id: parentId };
+
+            const lastSibling = await AdminCategoryModel.findOne(siblingFilter).sort({ sortOrder: -1 }).select("sortOrder").lean();
+
+            const nextSortOrder = (lastSibling?.sortOrder || 0) + 1;
+
+            adminCategory = new AdminCategoryModel({
+                title,
+                tag,
+                parent_id: parentId,
+                sortOrder: nextSortOrder,
+                productsMatch,
+                equalTo,
+                value,
+                restricted_keywords,
+                description,
+                meta_title,
+                meta_description,
+                meta_keyword,
+                search_terms,
+                image_alt,
+                img_dimension,
+                isAutomatic: req.body.isAutomatic,
+                categoryScope: req.body.categoryScope,
+                selectedCategories: req.body.selectedCategories || [],
+                conditionType: req.body.conditionType,
+                conditions: req.body.conditions || []
             });
 
            const slug = await createOrUpdateSlug({
@@ -9369,12 +9377,14 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
             message: "Category added successfully.",
             adminCategory
           });
-          } else {
+        } else {
 
             const oldCategory = await AdminCategoryModel.findById(_id);
             if (!oldCategory) {
                 return res.status(404).json({ message: "Category not found." });
             }
+
+            const isParentChanged = String(oldCategory.parent_id || '') !== String(parentId || '');
 
             const isBecomingRoot = String(oldCategory.parent_id) !== String(parentId) && parentId === null;
 
@@ -9387,6 +9397,17 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                     return res.status(400).json({ message: "Incorrect password for Admin category." });
                 }    
             }
+            
+            let newSortOrder = oldCategory.sortOrder;
+
+            if (isParentChanged) {
+                const siblingFilter: any = parentId === null ? { parent_id: null, _id: { $ne: _id } } : { parent_id: parentId, _id: { $ne: _id } };
+
+                const lastSibling = await AdminCategoryModel.findOne(siblingFilter).sort({ sortOrder: -1 }).select("sortOrder").lean();
+
+                newSortOrder = (lastSibling?.sortOrder || 0) + 1;
+            }
+
 
             const slug = await createOrUpdateSlug({
                 model: AdminCategoryModel,
@@ -9427,6 +9448,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                 fullSlug: newFullSlug,
                 parent_id: parentId,
                 restricted_keywords,
+                sortOrder: newSortOrder,
                 tag,
                 productsMatch,
                 equalTo,
@@ -9456,6 +9478,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                 title,
                 parent_id: parentId,
                 restricted_keywords,
+                sortOrder: newSortOrder,
                 tag,
                 productsMatch,
                 equalTo,
@@ -9619,6 +9642,202 @@ export const adminCategoryList = async (req: CustomRequest, res: Response) => {
     }
 };
 
+export const getAdminCategoryChildren = async (req: CustomRequest, res: Response) => {
+    try {
+        const categoryId = String(req.query.categoryId || '').trim();
+        const search = String(req.query.search || '').trim();
+
+        const page = Math.max(parseInt(String(req.query.page || "1"), 10) || 1, 1);
+        const limit = Math.max(parseInt(String(req.query.limit || "10"), 10) || 10, 1);
+        const skip = (page - 1) * limit;
+
+        const filter: any = categoryId
+            ? { parent_id: categoryId }
+            : { parent_id: null };
+
+        if (search) {
+            filter.title = { $regex: search, $options: "i" };
+        }
+
+        const [categories, total] = await Promise.all([
+            AdminCategoryModel.find(filter)
+                .sort({ sortOrder: 1, _id: 1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            AdminCategoryModel.countDocuments(filter)
+        ]);
+
+        const baseurl = process.env.ASSET_URL + `/uploads/admin-category/`;
+
+        const data = categories.map((category) => ({
+            _id: category._id,
+            title: category.title,
+            slug: category.slug,
+            fullSlug: category.fullSlug,
+            parent_id: category.parent_id,
+            sortOrder: category.sortOrder,
+            tag: category.tag,
+            popular: category.popular,
+            special: category.special,
+            menuStatus: category.menuStatus,
+            status: category.status,
+            image: category.image ? baseurl + category.image : "",
+            createdAt: category.createdAt,
+            updatedAt: category.updatedAt
+        }));
+
+        return res.status(200).json({
+            success: true,
+            message: "Admin category children fetched successfully.",
+            data,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+                hasNextPage: page < Math.ceil(total / limit),
+                hasPreviousPage: page > 1
+            }
+        });
+
+    } catch (err) {
+        console.error("getAdminCategoryChildren error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong. Please try again."
+        });
+    }
+};
+
+export const reorderAdminCategories = async (req: CustomRequest, res: Response) => {
+    try {
+        const { parentId, orderedIds } = req.body;
+
+        if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "orderedIds must be a non-empty array."
+            });
+        }
+
+        if (orderedIds.some((id: string) => !mongoose.Types.ObjectId.isValid(id))) {
+            return res.status(400).json({
+                success: false,
+                message: "One or more category IDs are invalid."
+            });
+        }
+
+        const normalizedParentId = parentId === null || parentId === undefined || parentId === ""
+            ? null
+            : parentId;
+
+        if (normalizedParentId && !mongoose.Types.ObjectId.isValid(normalizedParentId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid parent category ID."
+            });
+        }
+
+        const uniqueIds = new Set(orderedIds.map((id: string) => String(id)));
+
+        if (uniqueIds.size !== orderedIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: "Duplicate category IDs are not allowed."
+            });
+        }
+
+        const categoryIds = orderedIds.map((id: string) => new mongoose.Types.ObjectId(id));
+
+        const categories = await AdminCategoryModel.find({
+            _id: { $in: categoryIds }
+        })
+            .select("_id parent_id")
+            .lean();
+
+        if (categories.length !== orderedIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: "One or more categories were not found."
+            });
+        }
+
+        const invalidCategory = categories.find((category) => {
+            const categoryParentId = category.parent_id ? String(category.parent_id) : null;
+            return categoryParentId !== normalizedParentId;
+        });
+
+        if (invalidCategory) {
+            return res.status(400).json({
+                success: false,
+                message: "All categories must belong to the same parent category."
+            });
+        }
+
+        const siblingFilter: any = normalizedParentId
+            ? { parent_id: new mongoose.Types.ObjectId(normalizedParentId) }
+            : { parent_id: null };
+
+        const siblings = await AdminCategoryModel.find(siblingFilter)
+            .select("_id")
+            .lean();
+
+        if (siblings.length !== orderedIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: "orderedIds must contain all sibling categories."
+            });
+        }
+
+        const siblingIdSet = new Set(siblings.map((category) => String(category._id)));
+
+        const missingSibling = orderedIds.find((id: string) => !siblingIdSet.has(String(id)));
+
+        if (missingSibling) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid category ordering. All categories must belong to the same sibling group."
+            });
+        }
+
+        const operations = orderedIds.map((categoryId: string, index: number) => ({
+            updateOne: {
+                filter: {
+                    _id: new mongoose.Types.ObjectId(categoryId)
+                },
+                update: {
+                    $set: {
+                        sortOrder: index + 1
+                    }
+                }
+            }
+        }));
+
+        await AdminCategoryModel.bulkWrite(operations);
+
+        const updatedCategories = await AdminCategoryModel.find(siblingFilter)
+            .sort({ sortOrder: 1, _id: 1 })
+            .select("_id title parent_id sortOrder")
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: "Admin categories reordered successfully.",
+            data: updatedCategories
+        });
+    } catch (err: any) {
+        console.error("reorderAdminCategories error:", err);
+        console.error("message:", err?.message);
+        console.error("stack:", err?.stack);
+
+        return res.status(500).json({
+            success: false,
+            message: err?.message || "Something went wrong while reordering categories."
+        });
+    }
+};
 
 export const adminCategoryChangeStatus = async (req: CustomRequest, res: Response) => {
     try {

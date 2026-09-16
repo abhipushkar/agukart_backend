@@ -78,7 +78,7 @@ const adminCategorySchema = new Schema(
         status: {
             type: Boolean,
             required: true,
-            default: false
+            default: true
         },
         productsMatch: {
             type: String,
@@ -122,7 +122,12 @@ const adminCategorySchema = new Schema(
         conditions: {
             type: Array,
             default: []
-        }
+        },
+        sortOrder: {
+            type: Number,
+            default: 0,
+            index: true
+        },
     },
     {
         timestamps: true,
