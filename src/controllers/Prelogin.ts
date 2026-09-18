@@ -753,7 +753,7 @@ export const getAdminSubcategory = async (req: Request, resp: Response) => {
   try {
     const id = req.body.id;
 
-    const adminCategory = await AdminCategoryModel.find({ parent_id: id, status: true }).sort({ createdAt: -1 });
+    const adminCategory = await AdminCategoryModel.find({ parent_id: id, status: true }).sort({ sortOrder: 1, createdAt: -1 });
 
     const baseurl = process.env.ASSET_URL + `/uploads/admin-category/`;
 
@@ -845,21 +845,26 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     const condVariantIds: mongoose.Types.ObjectId[] = [];
 
     allCategories.forEach((cat: any) => {
-      (cat.conditions || []).forEach((c: any) => {
-        if (c.field === "Attributes Tag" && c.value?.attributeId) {
-          condAttributeIds.push(new mongoose.Types.ObjectId(c.value.attributeId));
-        }
-        if (c.field === "Variant Tag") {
-          if (Array.isArray(c.value?.attributeIds)) {
-            c.value.attributeIds.forEach((id: string) =>
-              condVariantAttributeIds.push(new mongoose.Types.ObjectId(id))
-            );
+      if (cat.isAutomatic !== true) return;
+      for (const group of cat.conditionGroups || []) {
+        for (const c of group.conditions || []) {
+          if (c.field === "Attributes Tag" && c.value?.attributeId) {
+            condAttributeIds.push(new mongoose.Types.ObjectId(c.value.attributeId));
           }
-          if (c.value?.variantId) {
-            condVariantIds.push(new mongoose.Types.ObjectId(c.value.variantId));
+
+          if (c.field === "Variant Tag" || c.field === "Customization Tag") {
+            if (Array.isArray(c.value?.attributeIds)) {
+              c.value.attributeIds.forEach((id: string) => {
+                condVariantAttributeIds.push(new mongoose.Types.ObjectId(id));
+              });
+            }
+
+            if (c.value?.variantId) {
+              condVariantIds.push(new mongoose.Types.ObjectId(c.value.variantId));
+            }
           }
         }
-      });
+      }
     });
 
     // 4️⃣ Fetch lookup docs
@@ -883,14 +888,29 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
     const productMap = new Map<string, any>();
 
     for (const cat of allCategories) {
-      if (!Array.isArray(cat.conditions) || cat.conditions.length === 0) continue;
+      if (cat.isAutomatic !== true) continue;
+      if (!Array.isArray(cat.conditionGroups) || cat.conditionGroups.length === 0) continue;
 
-      const autoFilters: any[] = [];
-      for (const cond of cat.conditions) {
-        const f = buildCond(cond, lookup);
-        if (f) autoFilters.push(f);
+      const groupFilters: any[] = [];
+
+      for (const group of cat.conditionGroups) {
+        if (!Array.isArray(group.conditions) || group.conditions.length === 0) continue;
+
+        const conditionFilters: any[] = [];
+
+        for (const cond of group.conditions) {
+          const f = buildCond(cond, lookup);
+          if (f) conditionFilters.push(f);
+        }
+
+        if (conditionFilters.length === 0) continue;
+
+        const groupFilter = group.conditionType === "all" ? { $and: conditionFilters } : { $or: conditionFilters };
+
+        groupFilters.push(groupFilter);
       }
-      if (autoFilters.length === 0) continue;
+
+      if (groupFilters.length === 0) continue;
 
       const filter: any = {
         isDeleted: false,
@@ -914,10 +934,7 @@ export const getProductBySlug = async (req: Request, resp: Response) => {
       }
 
       // conditionType
-      filter.$and =
-        cat.conditionType === "all"
-          ? autoFilters
-          : [{ $or: autoFilters }];
+      filter.$and = groupFilters;
 
       // search q
       if (q) {
@@ -1993,13 +2010,7 @@ async function searchProductQuery(q: any) {
     ...brands.map(item => ({ ...item, source: 'brand' }))
   ];
 
-  const uniqueResults = Array.from(
-    new Map(
-      combined
-        .filter(item => item.title)
-        .map(item => [`${item.source}:${String(item.title).toLowerCase().trim()}`, item])
-    ).values()
-  );
+  const uniqueResults = Array.from(new Map(combined.filter(item => item.title).map(item => [`${item.source}:${String(item.title).toLowerCase().trim()}`, item])).values());
 
   return uniqueResults.slice(0, 10);
 }
@@ -5633,6 +5644,52 @@ const buildCond = (cond: any, lookup: any) => {
     } else {
       return { search_terms: { $elemMatch: { $regex: regex } } };
     }
+  }
+
+  // --------------------------
+  // Customization Tag
+  // --------------------------
+  if (field === "Customization Tag") {
+    const variantId = cond.value?.variantId;
+    const attributeIds = cond.value?.attributeIds || [];
+
+    if (!variantId || !Array.isArray(attributeIds) || attributeIds.length === 0) {
+      return null;
+    }
+
+    const matched = (lookup.variantAttributesData || []).filter((v: any) =>
+      attributeIds.includes(String(v._id))
+    );
+
+    const values = matched.map((v: any) => v.attribute_value).filter(Boolean);
+
+    if (values.length === 0) return null;
+
+    const variantObjectId = new mongoose.Types.ObjectId(variantId);
+
+    const orConditions = values.map((val: string) => {
+      const regex = buildRegex(val, operator);
+
+      return {
+        $and: [
+          { variant_id: variantObjectId },
+          {
+            "customizationData.customizations": {
+              $elemMatch: {
+                isVariant: { $in: [true, "true"] },
+                optionList: {
+                  $elemMatch: {
+                    optionName: { $regex: regex }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      };
+    });
+
+    return orConditions.length === 1 ? orConditions[0] : { $or: orConditions };
   }
 
   // --------------------------

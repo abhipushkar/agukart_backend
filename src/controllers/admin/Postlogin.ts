@@ -9347,8 +9347,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                 isAutomatic: req.body.isAutomatic,
                 categoryScope: req.body.categoryScope,
                 selectedCategories: req.body.selectedCategories || [],
-                conditionType: req.body.conditionType,
-                conditions: req.body.conditions || []
+                conditionGroups: req.body.conditionGroups || []
             });
 
            const slug = await createOrUpdateSlug({
@@ -9463,8 +9462,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                 isAutomatic: req.body.isAutomatic,
                 categoryScope: req.body.categoryScope,
                 selectedCategories: req.body.selectedCategories || [],
-                conditionType: req.body.conditionType,
-                conditions: req.body.conditions || []
+                conditionGroups: req.body.conditionGroups || []
             },
             { new: true, runValidators: true }
             );
@@ -9493,8 +9491,7 @@ export const addAdminCategory = async (req: CustomRequest, res: Response) => {
                isAutomatic: req.body.isAutomatic,
                categoryScope: req.body.categoryScope,
                selectedCategories: req.body.selectedCategories || [],
-               conditionType: req.body.conditionType,
-               conditions: req.body.conditions || []
+               conditionGroups: req.body.conditionGroups || []
                },
                { new: true, runValidators: true }
                );
@@ -9924,8 +9921,7 @@ export const getAdminCategory = async (req: CustomRequest, res: Response) => {
             isAutomatic: adminCategory.isAutomatic,
             categoryScope: adminCategory.categoryScope,
             selectedCategories: adminCategory.selectedCategories,
-            conditionType: adminCategory.conditionType,
-            conditions: adminCategory.conditions
+            conditionGroups: adminCategory.conditionGroups
         };
 
         return res.status(200).json({ message: "Category fetched successfully.", data });
